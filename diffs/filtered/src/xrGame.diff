@@ -835,11 +835,6 @@ diff -U1 -w -B -r coc-1.4-xray-64/src/xrGame/Actor.cpp xray-monolith/src/xrGame/
 -#endif
 -//-Alundaio
  
-@@ -182,3 +187,3 @@
- 
--    //разрешить использование пояса в inventory
-+	//Г°Г Г§Г°ГҐГёГЁГІГј ГЁГ±ГЇГ®Г«ГјГ§Г®ГўГ Г­ГЁГҐ ГЇГ®ГїГ±Г  Гў inventory
-     inventory().SetBeltUseful(true);
 @@ -230,3 +235,17 @@
  	// Alex ADD: for smooth crouch fix
 -	CurrentHeight = 0.f;
@@ -882,27 +877,12 @@ diff -U1 -w -B -r coc-1.4-xray-64/src/xrGame/Actor.cpp xray-monolith/src/xrGame/
      m_fFeelGrenadeTime *= 1000.0f;
 -#endif
  
-@@ -444,3 +474,3 @@
- 
--    // настройки дисперсии стрельбы
-+	// Г­Г Г±ГІГ°Г®Г©ГЄГЁ Г¤ГЁГ±ГЇГҐГ°Г±ГЁГЁ Г±ГІГ°ГҐГ«ГјГЎГ»
-     m_fDispBase = pSettings->r_float(section, "disp_base");
 @@ -475,5 +507,2 @@
      m_sHeadShotParticle = READ_IF_EXISTS(pSettings, r_string, section, "HeadShotParticle", 0);
 -
 -	// Alex ADD: for smooth crouch fix
 -	CurrentHeight = CameraHeight();
  }
-@@ -528,3 +556,3 @@
-             {
--                // вычислить позицию и направленность партикла
-+				// ГўГ»Г·ГЁГ±Г«ГЁГІГј ГЇГ®Г§ГЁГ¶ГЁГѕ ГЁ Г­Г ГЇГ°Г ГўГ«ГҐГ­Г­Г®Г±ГІГј ГЇГ Г°ГІГЁГЄГ«Г 
-                 Fmatrix pos;
-@@ -533,3 +561,3 @@
- 
--                // установить particles
-+				// ГіГ±ГІГ Г­Г®ГўГЁГІГј particles
-                 CParticlesObject* ps = NULL;
 @@ -595,4 +624,3 @@
      {
 -        bool const is_special_burn_hit_2_self = (pHDS->who == this) && (pHDS->boneID == BI_NONE) &&
@@ -944,11 +924,6 @@ diff -U1 -w -B -r coc-1.4-xray-64/src/xrGame/Actor.cpp xray-monolith/src/xrGame/
 +extern BOOL firstPersonDeath;
 +
  void CActor::Die(CObject* who)
-@@ -863,3 +884,3 @@
- 
--        ///!!! чистка пояса
-+		///!!! Г·ГЁГ±ГІГЄГ  ГЇГ®ГїГ±Г 
-         TIItemContainer &l_blist = inventory().m_belt;
 @@ -904,7 +925,21 @@
      {
 -#ifdef FP_DEATH
@@ -1429,31 +1404,6 @@ diff -U1 -w -B -r coc-1.4-xray-64/src/xrGame/Actor.cpp xray-monolith/src/xrGame/
 +				}
 +			}
          }
-@@ -1346,3 +1736,3 @@
- 
--    //эффектор включаемый при ходьбе
-+	//ГЅГґГґГҐГЄГІГ®Г° ГўГЄГ«ГѕГ·Г ГҐГ¬Г»Г© ГЇГ°ГЁ ГµГ®Г¤ГјГЎГҐ
-     if (!pCamBobbing)
-@@ -1354,3 +1744,3 @@
- 
--    //звук тяжелого дыхания при уталости и хромании
-+	//Г§ГўГіГЄ ГІГїГ¦ГҐГ«Г®ГЈГ® Г¤Г»ГµГ Г­ГЁГї ГЇГ°ГЁ ГіГІГ Г«Г®Г±ГІГЁ ГЁ ГµГ°Г®Г¬Г Г­ГЁГЁ
-     if (this == Level().CurrentControlEntity() && !g_dedicated_server)
-@@ -1422,3 +1812,3 @@
- 
--    //если в режиме HUD, то сама модель актера не рисуется
-+	//ГҐГ±Г«ГЁ Гў Г°ГҐГ¦ГЁГ¬ГҐ HUD, ГІГ® Г±Г Г¬Г  Г¬Г®Г¤ГҐГ«Гј Г ГЄГІГҐГ°Г  Г­ГҐ Г°ГЁГ±ГіГҐГІГ±Гї
-     if (!character_physics_support()->IsRemoved())
-@@ -1426,3 +1816,3 @@
- 
--    //что актер видит перед собой
-+	//Г·ГІГ® Г ГЄГІГҐГ° ГўГЁГ¤ГЁГІ ГЇГҐГ°ГҐГ¤ Г±Г®ГЎГ®Г©
-     collide::rq_result& RQ = HUD().GetCurrentRayQuery();
-@@ -1501,3 +1893,3 @@
- 
--    //для свойст артефактов, находящихся на поясе
-+	//Г¤Г«Гї Г±ГўГ®Г©Г±ГІ Г Г°ГІГҐГґГ ГЄГІГ®Гў, Г­Г ГµГ®Г¤ГїГ№ГЁГµГ±Гї Г­Г  ГЇГ®ГїГ±ГҐ
-     UpdateArtefactsOnBeltAndOutfit();
 @@ -1511,2 +1904,8 @@
      inherited::renderable_Render();
 +
@@ -4732,11 +4682,6 @@ diff -U1 -w -B -r coc-1.4-xray-64/src/xrGame/ai/trader/trader_animation.cpp xray
 -#include "pch_script.h"
 +п»ї#include "pch_script.h"
  #include "trader_animation.h"
-@@ -53,3 +54,3 @@
- 
--	// назначить анимацию головы
-+	// РЅР°Р·РЅР°С‡РёС‚СЊ Р°РЅРёРјР°С†РёСЋ РіРѕР»РѕРІС‹
- 	IKinematicsAnimated	*kinematics_animated	= smart_cast<IKinematicsAnimated*>(m_trader->Visual());
 @@ -70,3 +71,3 @@
  	m_sound->create		(sound,st_Effect,SOUND_TYPE_WORLD);
 -	m_sound->play		(NULL, sm_2D);
@@ -4761,17 +4706,6 @@ diff -U1 -w -B -r coc-1.4-xray-64/src/xrGame/ai/trader/trader_animation.cpp xray
 +	if (!m_motion_global)
 +	{
  		m_trader->callback(GameObject::eTraderGlobalAnimationRequest)();
-@@ -100,5 +107,7 @@
- 
--	// назначить анимацию головы
--	if (!m_motion_head) {
--		if (m_sound && m_sound->_feedback()) {
-+	// Г­Г Г§Г­Г Г·ГЁГІГј Г Г­ГЁГ¬Г Г¶ГЁГѕ ГЈГ®Г«Г®ГўГ»
-+	if (!m_motion_head)
-+	{
-+		if (m_sound && m_sound->_feedback())
-+		{
- 			m_trader->callback(GameObject::eTraderHeadAnimationRequest)();
 @@ -117,3 +126,3 @@
  	m_sound->create			(phrase,st_Effect,SOUND_TYPE_WORLD);
 -	m_sound->play			(NULL, sm_2D);
@@ -8723,70 +8657,12 @@ diff -U1 -w -B -r coc-1.4-xray-64/src/xrGame/entity_alive.cpp xray-monolith/src/
 -#include "pch_script.h"
 +п»ї#include "pch_script.h"
  #include "entity_alive.h"
-@@ -26,3 +26,3 @@
- 
--//отметки крови на стенах 
-+//РѕС‚РјРµС‚РєРё РєСЂРѕРІРё РЅР° СС‚РµРЅР°С… 
- FactoryPtr<IWallMarkArray>* CEntityAlive::m_pBloodMarksVector = NULL;
-@@ -33,3 +33,3 @@
- 
--//капание крови
-+//РєР°РїР°РЅРёРµ РєСЂРѕРІРё
- FactoryPtr<IWallMarkArray>* CEntityAlive::m_pBloodDropsVector = NULL;
-@@ -40,8 +40,8 @@
- 
--//минимальный размер ожега, после которого горят партиклы
--//минимальное время горения
-+//РјРёРЅРёРјР°Р»СЊРЅС‹Р№ СЂР°Р·РјРµСЂ РѕР¶РµРіР°, РїРѕСР»Рµ РєРѕС‚РѕСЂРѕРіРѕ РіРѕСЂСС‚ РїР°СЂС‚РёРєР»С‹
-+//РјРёРЅРёРјР°Р»СЊРЅРѕРµ РІСЂРµРјС РіРѕСЂРµРЅРёС
- u32	  CEntityAlive::m_dwMinBurnTime = 10000;
--//размер раны, чтоб запустить партиклы
-+//СЂР°Р·РјРµСЂ СЂР°РЅС‹, С‡С‚РѕР± Р·Р°РїСѓСС‚РёС‚СЊ РїР°СЂС‚РёРєР»С‹
- float CEntityAlive::m_fStartBurnWoundSize = 0.3f;
--//размер раны, чтоб остановить партиклы
-+//СЂР°Р·РјРµСЂ СЂР°РЅС‹, С‡С‚РѕР± РѕСС‚Р°РЅРѕРІРёС‚СЊ РїР°СЂС‚РёРєР»С‹
- float CEntityAlive::m_fStopBurnWoundSize = 0.1f;
-@@ -98,3 +97,3 @@
- 
--	//биолог. вид к торому принадлежит монстр или персонаж
-+	//Р±РёРѕР»РѕРі. РІРёРґ Рє С‚РѕСЂРѕРјСѓ РїСЂРёРЅР°РґР»РµР¶РёС‚ РјРѕРЅСС‚СЂ РёР»Рё РїРµСЂСРѕРЅР°Р¶
- 	monster_community->set	(pSettings->r_string(section, "species"));
-@@ -109,3 +108,3 @@
- 	
--	//кровавые отметки на стенах
-+	//РєСЂРѕРІР°РІС‹Рµ РѕС‚РјРµС‚РєРё РЅР° СС‚РµРЅР°С…
- 	string256	tmp;
 @@ -125,4 +124,3 @@
  
 -
 -	//капли крови с открытых ран
 +	//РєР°РїР»Рё РєСЂРѕРІРё С РѕС‚РєСЂС‹С‚С‹С… СЂР°РЅ
  	wallmarks_name = pSettings->r_string(section, "blood_drops");
-@@ -216,13 +217,14 @@
- 	conditions().UpdateCondition		();
--	//Обновление партиклов огня
-+	//РћР±РЅРѕРІР»РµРЅРёРµ РїР°СЂС‚РёРєР»РѕРІ РѕРіРЅС
- 	UpdateFireParticles	();
--	//капли крови
-+	//РєР°РїР»Рё РєСЂРѕРІРё
- 	UpdateBloodDrops	();
--	//обновить раны
-+	//РѕР±РЅРѕРІРёС‚СЊ СЂР°РЅС‹
- 	conditions().UpdateWounds		();
- 
--	//убить сущность
-+	//СѓР±РёС‚СЊ ССѓС‰РЅРѕСС‚СЊ
- 	if(Local() && !g_Alive() && !AlreadyDie())
- 	{
--		if(conditions().GetWhoHitLastTime()) {
-+		if (conditions().GetWhoHitLastTime())
-+		{
- //			Msg			("%6d : KillEntity from CEntityAlive (using who hit last time) for object %s",Device.dwTimeGlobal,*cName());
-@@ -239,3 +242,3 @@
- {
--	//установить команду в соответствии с community
-+	//СѓСС‚Р°РЅРѕРІРёС‚СЊ РєРѕРјР°РЅРґСѓ РІ СРѕРѕС‚РІРµС‚СС‚РІРёРё С community
- /*	if(monster_community->team() != 255)
 @@ -244,16 +247,16 @@
  	conditions().reinit			();
 -	inherited::net_Spawn		(DC);
@@ -8837,11 +8713,6 @@ diff -U1 -w -B -r coc-1.4-xray-64/src/xrGame/entity_alive.cpp xray-monolith/src/
 +	{
 +		//Г¤Г®ГЎГ ГўГЁГІГј ГЄГ°Г®ГўГј Г­Г  Г±ГІГҐГ­Г»
  		if (!use_simplified_visual())
-@@ -339,3 +344,3 @@
- 
--//вывзывает при подсчете хита
-+//РІС‹РІР·С‹РІР°РµС‚ РїСЂРё РїРѕРґСС‡РµС‚Рµ С…РёС‚Р°
- float CEntityAlive::CalcCondition(float /**hit/**/)
 @@ -369,5 +377,6 @@
  }
 +
@@ -8850,30 +8721,6 @@ diff -U1 -w -B -r coc-1.4-xray-64/src/xrGame/entity_alive.cpp xray-monolith/src/
 -//добавление кровавых отметок на стенах, после получения хита
 +//РґРѕР±Р°РІР»РµРЅРёРµ РєСЂРѕРІР°РІС‹С… РѕС‚РјРµС‚РѕРє РЅР° СС‚РµРЅР°С…, РїРѕСР»Рµ РїРѕР»СѓС‡РµРЅРёС С…РёС‚Р°
  void CEntityAlive::BloodyWallmarks (float P, const Fvector &dir, s16 element, 
-@@ -378,3 +387,3 @@
- 
--	//вычислить координаты попадания
-+	//РІС‹С‡РёСР»РёС‚СЊ РєРѕРѕСЂРґРёРЅР°С‚С‹ РїРѕРїР°РґР°РЅРёС
- 	IKinematics* V = smart_cast<IKinematics*>(Visual());
-@@ -421,3 +429,3 @@
- 
--	//если кровь долетела до статического объекта
-+	//РµСР»Рё РєСЂРѕРІСЊ РґРѕР»РµС‚РµР»Р° РґРѕ СС‚Р°С‚РёС‡РµСРєРѕРіРѕ РѕР±СЉРµРєС‚Р°
- 	if(reach_wall)
-@@ -429,6 +437,6 @@
- 		{
--			//вычислить нормаль к пораженной поверхности
-+			//РІС‹С‡РёСР»РёС‚СЊ РЅРѕСЂРјР°Р»СЊ Рє РїРѕСЂР°Р¶РµРЅРЅРѕР№ РїРѕРІРµСЂС…РЅРѕСС‚Рё
- 			Fvector*	pVerts	= Level().ObjectSpace.GetStaticVerts();
- 
--			//вычислить точку попадания
-+			//РІС‹С‡РёСР»РёС‚СЊ С‚РѕС‡РєСѓ РїРѕРїР°РґР°РЅРёС
- 			Fvector end_point;
-@@ -441,3 +449,3 @@
- 			{
--				//добавить отметку на материале
-+				//РґРѕР±Р°РІРёС‚СЊ РѕС‚РјРµС‚РєСѓ РЅР° РјР°С‚РµСЂРёР°Р»Рµ
- 				//::Render->add_StaticWallmark(wallmarkShader, end_point, wallmark_size, pTri, pVerts);
 @@ -455,9 +462,2 @@
  	{
 -		if(std::find(m_ParticleWounds.begin(),
@@ -11408,11 +11255,6 @@ diff -U1 -w -B -r coc-1.4-xray-64/src/xrGame/inventory_item.h xray-monolith/src/
 -	virtual bool				Useful				() const;									// !!! Переопределить. (см. в Inventory.cpp)
 +	virtual bool Useful() const; // !!! пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ. (пїЅпїЅ. пїЅ Inventory.cpp)
  	virtual bool				IsUsingCondition() const { return ( m_flags.test( FUsingCondition ) > 0 ); };
-@@ -105,3 +114,3 @@
- 	virtual bool				Detach				(PIItem pIItem) {return false;}
--	//при детаче спаунится новая вещь при заданно названии секции
-+	//пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ
- 	virtual bool				Detach				(const char* item_section_name, bool b_spawn_item);
 @@ -112,6 +121,8 @@
  	virtual bool				IsSingleHanded		()	const	{return true;};	
 -	virtual bool				ActivateItem		();									// !!! Переопределить. (см. в Inventory.cpp)
@@ -16236,18 +16078,6 @@ diff -U1 -w -B -r coc-1.4-xray-64/src/xrGame/PDA.cpp xray-monolith/src/xrGame/PD
 +}
 +
  void CPda::UpdateActiveContacts	()
-@@ -132,6 +915,8 @@
- 
--	//включить PDA только если оно находится у первого владельца
--	if(H_Parent()->ID() == m_idOriginalOwner){
-+	//Switch on PDA only in case of a new product with auxiliary control
-+	if (H_Parent()->ID() == m_idOriginalOwner)
-+	{
- 		TurnOn					();
--		if(m_sFullName.empty()){
-+		if (m_sFullName.empty())
-+		{
- 			m_sFullName.assign( NameItem() );
 @@ -147,7 +932,27 @@
  	inherited::OnH_B_Independent(just_before_destroy);
 -	
@@ -29286,30 +29116,10 @@ diff -U1 -w -B -r coc-1.4-xray-64/src/xrGame/Weapon.cpp xray-monolith/src/xrGame
 +}
 +
  void CWeapon::ForceUpdateFireParticles()
-@@ -245,5 +459,5 @@
-     ////////////////////////////////////////////////////
--    // дисперсия стрельбы
-+	// Г¤ГЁГ±ГЇГҐГ°Г±ГЁГї Г±ГІГ°ГҐГ«ГјГЎГ»
- 
--    //подбрасывание камеры во время отдачи
-+	//ГЇГ®Г¤ГЎГ°Г Г±Г»ГўГ Г­ГЁГҐ ГЄГ Г¬ГҐГ°Г» ГўГ® ГўГ°ГҐГ¬Гї Г®ГІГ¤Г Г·ГЁ
-     u8 rm = READ_IF_EXISTS(pSettings, r_u8, section, "cam_return", 1);
-@@ -297,4 +511,4 @@
- 
--    //подбрасывание камеры во время отдачи в режиме zoom ==> ironsight or scope
--    //zoom_cam_recoil.Clone( cam_recoil ); ==== нельзя !!!!!!!!!!
-+	//ГЇГ®Г¤ГЎГ°Г Г±Г»ГўГ Г­ГЁГҐ ГЄГ Г¬ГҐГ°Г» ГўГ® ГўГ°ГҐГ¬Гї Г®ГІГ¤Г Г·ГЁ Гў Г°ГҐГ¦ГЁГ¬ГҐ zoom ==> ironsight or scope
-+	//zoom_cam_recoil.Clone( cam_recoil ); ==== Г­ГҐГ«ГјГ§Гї !!!!!!!!!!
-     zoom_cam_recoil.RelaxSpeed = cam_recoil.RelaxSpeed;
 @@ -359,2 +573,3 @@
      m_pdm.m_fPDM_disp_crouch_no_acc = pSettings->r_float(section, "PDM_disp_crouch_no_acc");
 +	m_pdm.m_fPDM_disp_buckShot = READ_IF_EXISTS(pSettings, r_float, section, "PDM_disp_buckshot", 1.f);
      m_crosshair_inertion = READ_IF_EXISTS(pSettings, r_float, section, "crosshair_inertion", 5.91f);
-@@ -389,3 +605,3 @@
- 
--    // информация о возможных апгрейдах и их визуализации в инвентаре
-+	// ГЁГ­ГґГ®Г°Г¬Г Г¶ГЁГї Г® ГўГ®Г§Г¬Г®Г¦Г­Г»Гµ Г ГЇГЈГ°ГҐГ©Г¤Г Гµ ГЁ ГЁГµ ГўГЁГ§ГіГ Г«ГЁГ§Г Г¶ГЁГЁ Гў ГЁГ­ГўГҐГ­ГІГ Г°ГҐ
-     m_eScopeStatus = (ALife::EWeaponAddonStatus)pSettings->r_s32(section, "scope_status");
 @@ -394,4 +610,8 @@
  
 +	m_altAimPos = READ_IF_EXISTS(pSettings, r_bool, section, "use_alt_aim_hud", false);
@@ -29393,11 +29203,6 @@ diff -U1 -w -B -r coc-1.4-xray-64/src/xrGame/Weapon.cpp xray-monolith/src/xrGame
 -    m_DefaultCartridge.Load(m_ammoTypes[m_ammoType].c_str(), m_ammoType);
 +	m_DefaultCartridge.Load(m_ammoTypes[m_ammoType].c_str(), m_ammoType, m_APk);
      if (iAmmoElapsed)
-@@ -551,3 +817,3 @@
- 
--    //удалить объекты партиклов
-+	//ГіГ¤Г Г«ГЁГІГј Г®ГЎГєГҐГЄГІГ» ГЇГ Г°ГІГЁГЄГ«Г®Гў
-     StopFlameParticles();
 @@ -691,3 +960,3 @@
          if (OnClient()) SetAmmoElapsed(int(AmmoElapsed));
 -        OnStateSwitch(u32(state));
@@ -29415,11 +29220,6 @@ diff -U1 -w -B -r coc-1.4-xray-64/src/xrGame/Weapon.cpp xray-monolith/src/xrGame
 +	m_fUD_ShootingFactor = 0.f;
 +	m_fBACKW_ShootingFactor = 0.f;
      m_dwWeaponIndependencyTime = Level().timeServer();
-@@ -751,3 +1027,3 @@
-     inherited::OnActiveItem();
--    //если мы занружаемся и оружие было в руках
-+	//ГҐГ±Г«ГЁ Г¬Г» Г§Г Г­Г°ГіГ¦Г ГҐГ¬Г±Гї ГЁ Г®Г°ГіГ¦ГЁГҐ ГЎГ»Г«Г® Гў Г°ГіГЄГ Гµ
-     //.	SetState					(eIdle);
 @@ -788,2 +1064,13 @@
  
 +bool CWeapon::NeedBlendAnm()
@@ -29442,15 +29242,6 @@ diff -U1 -w -B -r coc-1.4-xray-64/src/xrGame/Weapon.cpp xray-monolith/src/xrGame
 -    return true;
 +	return !Actor()->is_safemode();
  }
-@@ -807,6 +1095,6 @@
-     UpdateHUDAddonsVisibility();
--    //подсветка от выстрела
-+	//ГЇГ®Г¤Г±ГўГҐГІГЄГ  Г®ГІ ГўГ»Г±ГІГ°ГҐГ«Г 
-     UpdateLight();
- 
--    //нарисовать партиклы
-+	//Г­Г Г°ГЁГ±Г®ГўГ ГІГј ГЇГ Г°ГІГЁГЄГ«Г»
-     UpdateFlameParticles();
 @@ -823,2 +1111,3 @@
              if (hud_adj_mode == 0 &&
 +				g_player_hud->script_anim_part == u8(-1) &&
@@ -29621,11 +29412,6 @@ diff -U1 -w -B -r coc-1.4-xray-64/src/xrGame/Weapon.cpp xray-monolith/src/xrGame
 +		return 999;
 +
      int ae_count = iAmmoElapsed;
-@@ -1092,3 +1437,3 @@
- 
--    //чтоб не делать лишних пересчетов
-+	//Г·ГІГ®ГЎ Г­ГҐ Г¤ГҐГ«Г ГІГј Г«ГЁГёГ­ГЁГµ ГЇГҐГ°ГҐГ±Г·ГҐГІГ®Гў
-     if (m_pInventory->ModifyFrame() <= m_BriefInfo_CalcFrame)
 @@ -1195,3 +1541,3 @@
  
 -BOOL CWeapon::IsMisfire() const
@@ -30636,11 +30422,6 @@ diff -U1 -w -B -r coc-1.4-xray-64/src/xrGame/Weapon.h xray-monolith/src/xrGame/W
 +	virtual bool NeedBlendAnm();
 +
  public:
-@@ -99,3 +150,3 @@
- protected:
--    //время удаления оружия
-+	//ГўГ°ГҐГ¬Гї ГіГ¤Г Г«ГҐГ­ГЁГї Г®Г°ГіГ¦ГЁГї
-     ALife::_TIME_ID			m_dwWeaponRemoveTime;
 @@ -104,2 +155,4 @@
      virtual bool			IsHudModeNow();
 +	virtual bool SOParentIsActor() { return ParentIsActor(); }
@@ -30673,19 +30454,6 @@ diff -U1 -w -B -r coc-1.4-xray-64/src/xrGame/Weapon.h xray-monolith/src/xrGame/W
 +	bool IsCustomReloadAvaible;
 +
      bool IsGrenadeLauncherAttached() const;
-@@ -187,9 +255,9 @@
- 	
--    //обновление видимости для косточек аддонов
-+	//Г®ГЎГ­Г®ГўГ«ГҐГ­ГЁГҐ ГўГЁГ¤ГЁГ¬Г®Г±ГІГЁ Г¤Г«Гї ГЄГ®Г±ГІГ®Г·ГҐГЄ Г Г¤Г¤Г®Г­Г®Гў
-     void UpdateAddonsVisibility();
-     void UpdateHUDAddonsVisibility();
--    //инициализация свойств присоединенных аддонов
-+	//ГЁГ­ГЁГ¶ГЁГ Г«ГЁГ§Г Г¶ГЁГї Г±ГўГ®Г©Г±ГІГў ГЇГ°ГЁГ±Г®ГҐГ¤ГЁГ­ГҐГ­Г­Г»Гµ Г Г¤Г¤Г®Г­Г®Гў
-     virtual void InitAddons();
- 
--    //для отоброажения иконок апгрейдов в интерфейсе
-+	//Г¤Г«Гї Г®ГІГ®ГЎГ°Г®Г Г¦ГҐГ­ГЁГї ГЁГЄГ®Г­Г®ГЄ Г ГЇГЈГ°ГҐГ©Г¤Г®Гў Гў ГЁГ­ГІГҐГ°ГґГҐГ©Г±ГҐ
-     int	GetScopeX()
 @@ -223,4 +296,9 @@
      }
 +
@@ -30712,11 +30480,6 @@ diff -U1 -w -B -r coc-1.4-xray-64/src/xrGame/Weapon.h xray-monolith/src/xrGame/W
 -    //названия секций подключаемых аддонов
 +
      shared_str		m_sScopeName;
-@@ -259,3 +340,3 @@
- 
--    //смещение иконов апгрейдов в инвентаре
-+	//Г±Г¬ГҐГ№ГҐГ­ГЁГҐ ГЁГЄГ®Г­Г®Гў Г ГЇГЈГ°ГҐГ©Г¤Г®Гў Гў ГЁГ­ГўГҐГ­ГІГ Г°ГҐ
-     int	m_iScopeX, m_iScopeY;
 @@ -268,15 +349,13 @@
      {
 -        bool			m_bZoomEnabled;			//разрешение режима приближения
@@ -30755,11 +30518,6 @@ diff -U1 -w -B -r coc-1.4-xray-64/src/xrGame/Weapon.h xray-monolith/src/xrGame/W
 -    }
 +	bool ZoomHideCrosshair();
  
-@@ -324,3 +405,3 @@
-     virtual	float			CurrentZoomFactor();
--    //показывает, что оружие находится в соостоянии поворота для приближенного прицеливания
-+	//ГЇГ®ГЄГ Г§Г»ГўГ ГҐГІ, Г·ГІГ® Г®Г°ГіГ¦ГЁГҐ Г­Г ГµГ®Г¤ГЁГІГ±Гї Гў Г±Г®Г®Г±ГІГ®ГїГ­ГЁГЁ ГЇГ®ГўГ®Г°Г®ГІГ  Г¤Г«Гї ГЇГ°ГЁГЎГ«ГЁГ¦ГҐГ­Г­Г®ГЈГ® ГЇГ°ГЁГ¶ГҐГ«ГЁГўГ Г­ГЁГї
-     bool			IsRotatingToZoom() const
 @@ -332,2 +413,22 @@
  
 +	// Tronex script exports
@@ -30845,20 +30603,6 @@ diff -U1 -w -B -r coc-1.4-xray-64/src/xrGame/Weapon.h xray-monolith/src/xrGame/W
 +	virtual void FireStart();
 +
      virtual void			FireEnd();
-@@ -446,5 +576,6 @@
- 
--    // обработка визуализации выстрела
-+	// Г®ГЎГ°Г ГЎГ®ГІГЄГ  ГўГЁГ§ГіГ Г«ГЁГ§Г Г¶ГЁГЁ ГўГ»Г±ГІГ°ГҐГ«Г 
-     virtual void			OnShot()
--    {};
-+	{
-+	};
-     virtual void			AddShotEffector();
-@@ -467,3 +600,3 @@
- 
--    //параметы оружия в зависимоти от его состояния исправности
-+	//ГЇГ Г°Г Г¬ГҐГІГ» Г®Г°ГіГ¦ГЁГї Гў Г§Г ГўГЁГ±ГЁГ¬Г®ГІГЁ Г®ГІ ГҐГЈГ® Г±Г®Г±ГІГ®ГїГ­ГЁГї ГЁГ±ГЇГ°Г ГўГ­Г®Г±ГІГЁ
-     float					GetConditionDispersionFactor() const;
 @@ -476,7 +609,43 @@
  
 +	// Getters
@@ -30957,11 +30701,6 @@ diff -U1 -w -B -r coc-1.4-xray-64/src/xrGame/Weapon.h xray-monolith/src/xrGame/W
 -    //для второго ствола
 +	//Г¤Г«Гї ГўГІГ®Г°Г®ГЈГ® Г±ГІГўГ®Г«Г 
      void			StartFlameParticles2();
-@@ -531,3 +715,3 @@
-     shared_str				m_sFlameParticles2;
--    //объект партиклов для стрельбы из 2-го ствола
-+	//Г®ГЎГєГҐГЄГІ ГЇГ Г°ГІГЁГЄГ«Г®Гў Г¤Г«Гї Г±ГІГ°ГҐГ«ГјГЎГ» ГЁГ§ 2-ГЈГ® Г±ГІГўГ®Г«Г 
-     CParticlesObject*		m_pFlameParticles2;
 @@ -540,3 +724,3 @@
      {
 -        return /*int(m_magazine.size())*/iAmmoElapsed;
@@ -31755,11 +31494,6 @@ diff -U1 -w -B -r coc-1.4-xray-64/src/xrGame/WeaponAutomaticShotgun.cpp xray-mon
 -		m_DefaultCartridge.Load(m_ammoTypes[m_ammoType].c_str(), m_ammoType);
 +		m_DefaultCartridge.Load(m_ammoTypes[m_ammoType].c_str(), m_ammoType, m_APk);
  	CCartridge l_cartridge = m_DefaultCartridge;
-@@ -220,3 +294,3 @@
- 
--	//выкинуть коробку патронов, если она пустая
-+	//пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ
- 	if(m_pCurrentAmmo && !m_pCurrentAmmo->m_boxCurr && OnServer()) 
 @@ -251,3 +325,3 @@
  #endif
 -		l_cartridge.Load( m_ammoTypes[LocalAmmoType].c_str(), LocalAmmoType );
@@ -32360,11 +32094,6 @@ diff -U1 -w -B -r coc-1.4-xray-64/src/xrGame/WeaponMagazined.cpp xray-monolith/s
 +	if (WeaponSoundExist(section, "snd_holster_actor"))
 +		m_sounds.LoadSound(section, "snd_holster_actor", "sndHideActor", true, m_eSoundHide);
  
-@@ -121,3 +141,3 @@
- 
--    //звуки и партиклы глушителя, еслит такой есть
-+	//Г§ГўГіГЄГЁ ГЁ ГЇГ Г°ГІГЁГЄГ«Г» ГЈГ«ГіГёГЁГІГҐГ«Гї, ГҐГ±Г«ГЁГІ ГІГ ГЄГ®Г© ГҐГ±ГІГј
-     if (m_eSilencerStatus == ALife::eAddonAttachable || m_eSilencerStatus == ALife::eAddonPermanent)
 @@ -130,7 +150,2 @@
  		//Alundaio: LAYERED_SND_SHOOT Silencer
 -#ifdef LAYERED_SND_SHOOT
@@ -32495,25 +32224,6 @@ diff -U1 -w -B -r coc-1.4-xray-64/src/xrGame/WeaponMagazined.cpp xray-monolith/s
 +		}
 +	}
  
-@@ -401,3 +496,3 @@
- 
--        //попытаться найти в инвентаре патроны текущего типа
-+		//ГЇГ®ГЇГ»ГІГ ГІГјГ±Гї Г­Г Г©ГІГЁ Гў ГЁГ­ГўГҐГ­ГІГ Г°ГҐ ГЇГ ГІГ°Г®Г­Г» ГІГҐГЄГіГ№ГҐГЈГ® ГІГЁГЇГ 
-         m_pCurrentAmmo = smart_cast<CWeaponAmmo*>(m_pInventory->GetAny(tmp_sect_name));
-@@ -408,3 +503,3 @@
-             {
--                //проверить патроны всех подходящих типов
-+				//ГЇГ°Г®ГўГҐГ°ГЁГІГј ГЇГ ГІГ°Г®Г­Г» ГўГ±ГҐГµ ГЇГ®Г¤ГµГ®Г¤ГїГ№ГЁГµ ГІГЁГЇГ®Гў
-                 m_pCurrentAmmo = smart_cast<CWeaponAmmo*>(m_pInventory->GetAny(m_ammoTypes[i].c_str()));
-@@ -419,6 +514,6 @@
- 
--    //нет патронов для перезарядки
-+	//Г­ГҐГІ ГЇГ ГІГ°Г®Г­Г®Гў Г¤Г«Гї ГЇГҐГ°ГҐГ§Г Г°ГїГ¤ГЄГЁ
-     if (!m_pCurrentAmmo && !unlimited_ammo()) return;
- 
--    //разрядить магазин, если загружаем патронами другого типа
-+	//Г°Г Г§Г°ГїГ¤ГЁГІГј Г¬Г ГЈГ Г§ГЁГ­, ГҐГ±Г«ГЁ Г§Г ГЈГ°ГіГ¦Г ГҐГ¬ ГЇГ ГІГ°Г®Г­Г Г¬ГЁ Г¤Г°ГіГЈГ®ГЈГ® ГІГЁГЇГ 
-     if (!m_bLockType && !m_magazine.empty() &&
 @@ -426,3 +521,3 @@
          *m_magazine.back().m_ammoSect)))
 -        UnloadMagazine();
@@ -32524,11 +32234,6 @@ diff -U1 -w -B -r coc-1.4-xray-64/src/xrGame/WeaponMagazined.cpp xray-monolith/s
 -        m_DefaultCartridge.Load(m_ammoTypes[m_ammoType].c_str(), m_ammoType);
 +		m_DefaultCartridge.Load(m_ammoTypes[m_ammoType].c_str(), m_ammoType, m_APk);
      CCartridge l_cartridge = m_DefaultCartridge;
-@@ -446,3 +541,3 @@
- 
--    //выкинуть коробку патронов, если она пустая
-+	//ГўГ»ГЄГЁГ­ГіГІГј ГЄГ®Г°Г®ГЎГЄГі ГЇГ ГІГ°Г®Г­Г®Гў, ГҐГ±Г«ГЁ Г®Г­Г  ГЇГіГ±ГІГ Гї
-     if (m_pCurrentAmmo && !m_pCurrentAmmo->m_boxCurr && OnServer())
 @@ -460,5 +555,6 @@
  
 -void CWeaponMagazined::OnStateSwitch(u32 S)
@@ -32552,13 +32257,6 @@ diff -U1 -w -B -r coc-1.4-xray-64/src/xrGame/WeaponMagazined.cpp xray-monolith/s
              m_sounds_enabled = owner->CanPlayShHdRldSounds();
 +		if (oldState != eHiding)
          switch2_Hiding();
-@@ -505,4 +605,4 @@
- 
--    //когда происходит апдейт состояния оружия
--    //ничего другого не делать
-+	//ГЄГ®ГЈГ¤Г  ГЇГ°Г®ГЁГ±ГµГ®Г¤ГЁГІ Г ГЇГ¤ГҐГ©ГІ Г±Г®Г±ГІГ®ГїГ­ГЁГї Г®Г°ГіГ¦ГЁГї
-+	//Г­ГЁГ·ГҐГЈГ® Г¤Г°ГіГЈГ®ГЈГ® Г­ГҐ Г¤ГҐГ«Г ГІГј
-     if (GetNextState() == GetState())
 @@ -522,5 +623,6 @@
              state_Fire(dt);
 -        }break;
@@ -32727,15 +32425,6 @@ diff -U1 -w -B -r coc-1.4-xray-64/src/xrGame/WeaponMagazined.cpp xray-monolith/s
 +	HUD_VisualBulletUpdate();
 +
      // Shell Drop
-@@ -723,6 +853,6 @@
- 
--    // Огонь из ствола
-+	// ГЋГЈГ®Г­Гј ГЁГ§ Г±ГІГўГ®Г«Г 
-     StartFlameParticles();
- 
--    //дым из ствола
-+	//Г¤Г»Г¬ ГЁГ§ Г±ГІГўГ®Г«Г 
-     ForceUpdateFireParticles();
 @@ -728,3 +858,13 @@
      ForceUpdateFireParticles();
 +
@@ -32919,11 +32608,6 @@ diff -U1 -w -B -r coc-1.4-xray-64/src/xrGame/WeaponMagazined.cpp xray-monolith/s
          PlaySound("sndShow", get_LastFP());
 +	}
  
-@@ -881,3 +1104,3 @@
- 
--    //если оружие чем-то занято, то ничего не делать
-+	//ГҐГ±Г«ГЁ Г®Г°ГіГ¦ГЁГҐ Г·ГҐГ¬-ГІГ® Г§Г Г­ГїГІГ®, ГІГ® Г­ГЁГ·ГҐГЈГ® Г­ГҐ Г¤ГҐГ«Г ГІГј
-     if (IsPending()) return false;
 @@ -889,2 +1112,6 @@
          if (flags&CMD_START)
 +			{
@@ -33034,11 +32718,6 @@ diff -U1 -w -B -r coc-1.4-xray-64/src/xrGame/WeaponMagazined.cpp xray-monolith/s
      }
 -    //	   return true;
      else if (m_eSilencerStatus == ALife::eAddonAttachable &&
-@@ -1016,3 +1311,3 @@
-         {
--            //уничтожить подсоединенную вещь из инвентаря
-+			//ГіГ­ГЁГ·ГІГ®Г¦ГЁГІГј ГЇГ®Г¤Г±Г®ГҐГ¤ГЁГ­ГҐГ­Г­ГіГѕ ГўГҐГ№Гј ГЁГ§ ГЁГ­ГўГҐГ­ГІГ Г°Гї
-             //.			pIItem->Drop					();
 @@ -1094,11 +1389,6 @@
  }
 -/*
@@ -33097,16 +32776,6 @@ diff -U1 -w -B -r coc-1.4-xray-64/src/xrGame/WeaponMagazined.cpp xray-monolith/s
 -    if (IsSilencerAttached()/* && SilencerAttachable() */)
 +	if (IsSilencerAttached())
      {
-@@ -1149,3 +1435,3 @@
- 
--        //подсветка от выстрела
-+		//Load silencer values
-         LoadLights(*cNameSect(), "silencer_");
-@@ -1159,3 +1445,3 @@
- 
--        //подсветка от выстрела
-+		//Load normal values
-         LoadLights(*cNameSect(), "");
 @@ -1178,10 +1464,45 @@
          m_silencer_koef.cam_disper_inc = READ_IF_EXISTS(pSettings, r_float, sect, "cam_dispersion_inc_k", 1.0f);
 +		m_silencer_koef.pdm_base = READ_IF_EXISTS(pSettings, r_float, sect, "PDM_disp_base_k", 1.0f);
@@ -33620,21 +33289,6 @@ diff -U1 -w -B -r coc-1.4-xray-64/src/xrGame/WeaponMagazinedWGrenade.cpp xray-mo
 -    }
 +	}*/
      return false;
-@@ -242,3 +320,3 @@
- 
--    //режим стрельбы подствольника
-+	//пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
-     if (m_bGrenadeMode)
-@@ -267,3 +345,3 @@
-     }
--    //режим стрельбы очередями
-+		//пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
-     else
-@@ -419,3 +497,3 @@
- 
--    //перезарядка подствольного гранатомета
-+	//пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
-     if (iAmmoElapsed && !getRocketCount() && m_bGrenadeMode)
 @@ -428,3 +506,3 @@
  
 -void CWeaponMagazinedWGrenade::OnStateSwitch(u32 S)
@@ -33658,11 +33312,6 @@ diff -U1 -w -B -r coc-1.4-xray-64/src/xrGame/WeaponMagazinedWGrenade.cpp xray-mo
 +		}
 +		break;
      case eFire:
-@@ -511,3 +593,3 @@
- 
--        //уничтожить подствольник из инвентаря
-+		//пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
-         if (b_send_event)
 @@ -536,7 +618,10 @@
          m_flagsAddOnState &= ~CSE_ALifeItemWeapon::eWeaponAddonGrenadeLauncher;
 -        if (m_bGrenadeMode)
@@ -33730,11 +33379,6 @@ diff -U1 -w -B -r coc-1.4-xray-64/src/xrGame/WeaponMagazinedWGrenade.cpp xray-mo
 -    if (IsGrenadeLauncherAttached() && m_bGrenadeMode) return m_zoom_params.m_fIronSightZoomFactor;
 +	if (IsGrenadeLauncherAttached() && m_bGrenadeMode) return m_zoom_params.m_fScopeZoomFactor;
      return inherited::CurrentZoomFactor();
-@@ -579,3 +704,3 @@
- 
--//виртуальные функции для проигрывания анимации HUD
-+//пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ HUD
- void CWeaponMagazinedWGrenade::PlayAnimShow()
 @@ -586,8 +711,15 @@
          if (!m_bGrenadeMode)
 -            PlayHUDMotion("anm_show_w_gl", FALSE, this, GetState());
@@ -34039,11 +33683,6 @@ diff -U1 -w -B -r coc-1.4-xray-64/src/xrGame/WeaponMagazinedWGrenade.h xray-mono
 +
 +
  	virtual void	state_Fire		(float dt);
-@@ -52,3 +56,3 @@
- 
--	//переключение в режим подствольника
-+	//РїРµСЂРµРєР»СЋС‡РµРЅРёРµ РІ СЂРµР¶РёРј РїРѕРґСС‚РІРѕР»СЊРЅРёРєР°
- 	virtual bool	SwitchMode		();
 @@ -60,4 +64,4 @@
  	virtual bool	IsNecessaryItem	    (const shared_str& item_sect);
 -
@@ -34633,11 +34272,6 @@ diff -U1 -w -B -r coc-1.4-xray-64/src/xrGame/WeaponShotgun.cpp xray-monolith/src
 -		m_DefaultCartridge.Load(m_ammoTypes[m_ammoType].c_str(), m_ammoType);
 +		m_DefaultCartridge.Load(m_ammoTypes[m_ammoType].c_str(), m_ammoType, m_APk);
  
-@@ -232,3 +277,3 @@
- 
--	//выкинуть коробку патронов, если она пустая
-+	//пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ
- 	if(m_pCurrentAmmo && !m_pCurrentAmmo->m_boxCurr && OnServer()) 
 @@ -263,3 +308,3 @@
  #endif
 -		l_cartridge.Load( m_ammoTypes[LocalAmmoType].c_str(), LocalAmmoType );

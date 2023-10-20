@@ -19,13 +19,25 @@ def extract_relevant_diffs(diff_content):
             add = []
             i += 1
             while i < len(lines) and not (lines[i].startswith('@@') or lines[i].startswith('diff ') or lines[i].startswith('Only in ')):
-                chunk.append(lines[i])
-                if lines[i].startswith('-'):
-                    rem.append(lines[i][1:])
-                elif lines[i].startswith('+'):
-                    add.append(lines[i][1:])
+                iline = lines[i]
                 i += 1
-            
+                chunk.append(iline)
+                if iline.startswith('-'):
+                    rem.append(iline[1:])
+                elif iline.startswith('+'):
+                    add.append(iline[1:])
+
+            j = 0
+            while j < len(rem):
+                rline = rem[j]
+                aline = add[j] if j < len(add) else None
+                if aline and rline.strip().startswith('//') and aline.strip().startswith('//'):
+                    print(f"Found comment pair to ignore\n{rline}\n{aline}", file=sys.stderr)
+                    del rem[j]
+                    del add[j]
+                else:
+                    j += 1
+
             rem = ''.join(rem).translate({ord(c): None for c in string.whitespace})
             add = ''.join(add).translate({ord(c): None for c in string.whitespace})
             if rem != add:

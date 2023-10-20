@@ -376,11 +376,6 @@ diff -U1 -w -B -r coc-1.4-xray-64/src/xrServerEntities/script_engine_script.cpp 
          def("time_global_async", &script_time_global_async),
 +        def("add_scope_radii", &AddScope),
  #ifdef XRGAME_EXPORTS
-@@ -257,3 +264,3 @@
-     //function(L, "print_stack", PrintStack);
--    //function(L, "log", LuaLog);
-+	//function(L, "log", LuaLog1);
-     //function(L, "error_log", ErrorLog);
 diff -U1 -w -B -r coc-1.4-xray-64/src/xrServerEntities/script_fmatrix_script.cpp xray-monolith/src/xrServerEntities/script_fmatrix_script.cpp
 --- coc-1.4-xray-64/src/xrServerEntities/script_fmatrix_script.cpp	2023-10-20 20:54:52.122326700 +0100
 +++ xray-monolith/src/xrServerEntities/script_fmatrix_script.cpp	2023-10-20 20:54:33.531038000 +0100
@@ -1045,11 +1040,6 @@ diff -U1 -w -B -r coc-1.4-xray-64/src/xrServerEntities/specific_character.cpp xr
 +	}
 +
  	data()->m_icon_name		= pXML->Read("icon", 0, "ui_npc_u_barman");
-@@ -121,3 +158,3 @@
- 
--	//игровое имя персонажа
-+	//РёРіСЂРѕРІРѕРµ РёРјС РїРµСЂСРѕРЅР°Р¶Р°
- 	data()->m_sGameName		= pXML->Read("name", 0, "");
 @@ -188,6 +225,32 @@
  
 -	data()->m_Rank			= pXML->ReadInt("rank", 0, NO_RANK);
