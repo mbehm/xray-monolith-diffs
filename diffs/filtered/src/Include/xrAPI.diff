@@ -1,0 +1,28 @@
+diff -U1 -w -B -r coc-1.4-xray-64/src/Include/xrAPI/xrAPI.h xray-monolith/src/Include/xrAPI/xrAPI.h
+--- coc-1.4-xray-64/src/Include/xrAPI/xrAPI.h	2023-10-20 20:54:49.042008700 +0100
++++ xray-monolith/src/Include/xrAPI/xrAPI.h	2023-10-20 20:54:32.139036400 +0100
+@@ -5,5 +5,7 @@
+ #ifdef XRAPI_EXPORTS
+-#define XRAPI_API __declspec(dllexport)
++#define XRAPI_API
++//__declspec(dllexport)
+ #else
+-#define XRAPI_API __declspec(dllimport)
++#define XRAPI_API
++//__declspec(dllimport)
+ #endif
+@@ -16,4 +17,4 @@
+ 
+-class IRenderFactory;
+-extern XRAPI_API IRenderFactory*	RenderFactory;
++class dxRenderFactory;
++extern XRAPI_API dxRenderFactory* RenderFactory;
+ 
+@@ -34,6 +35,4 @@
+ 
+-#ifdef DEBUG
+ 	class IDebugRender;
+ 	extern XRAPI_API IDebugRender*	DRender;
+-#endif // DEBUG
+ 
+

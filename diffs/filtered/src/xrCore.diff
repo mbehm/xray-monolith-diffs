@@ -1,0 +1,3636 @@
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrCore/_math.cpp xray-monolith/src/xrCore/_math.cpp
+--- coc-1.4-xray-64/src/xrCore/_math.cpp	2023-10-20 20:54:50.384326700 +0100
++++ xray-monolith/src/xrCore/_math.cpp	2023-10-20 20:54:32.420035900 +0100
+@@ -205,3 +212,3 @@
+     qpc_overhead = 0;
+-    for (i = 0; i < 256; i++)
++		for (int i = 0; i < 256; i++)
+     {
+@@ -212,3 +219,3 @@
+ 
+-    SetPriorityClass(GetCurrentProcess(), NORMAL_PRIORITY_CLASS);
++		SetPriorityClass(GetCurrentProcess(), HIGH_PRIORITY_CLASS);
+ 
+@@ -382,23 +391,23 @@
+ 
+-void spline1(float t, Fvector* p, Fvector* ret)
+-{
+-    float t2 = t * t;
+-    float t3 = t2 * t;
+-    float m[4];
+-
+-    ret->x = 0.0f;
+-    ret->y = 0.0f;
+-    ret->z = 0.0f;
+-    m[0] = (0.5f * ((-1.0f * t3) + (2.0f * t2) + (-1.0f * t)));
+-    m[1] = (0.5f * ((3.0f * t3) + (-5.0f * t2) + (0.0f * t) + 2.0f));
+-    m[2] = (0.5f * ((-3.0f * t3) + (4.0f * t2) + (1.0f * t)));
+-    m[3] = (0.5f * ((1.0f * t3) + (-1.0f * t2) + (0.0f * t)));
+-
+-    for (int i = 0; i < 4; i++)
+-    {
+-        ret->x += p[i].x * m[i];
+-        ret->y += p[i].y * m[i];
+-        ret->z += p[i].z * m[i];
+-    }
+-}
++//void spline1(float t, Fvector* p, Fvector* ret)
++//{
++//    float t2 = t * t;
++//    float t3 = t2 * t;
++//    float m[4];
++//
++//    ret->x = 0.0f;
++//    ret->y = 0.0f;
++//    ret->z = 0.0f;
++//    m[0] = (0.5f * ((-1.0f * t3) + (2.0f * t2) + (-1.0f * t)));
++//    m[1] = (0.5f * ((3.0f * t3) + (-5.0f * t2) + (0.0f * t) + 2.0f));
++//    m[2] = (0.5f * ((-3.0f * t3) + (4.0f * t2) + (1.0f * t)));
++//    m[3] = (0.5f * ((1.0f * t3) + (-1.0f * t2) + (0.0f * t)));
++//
++//    for (int i = 0; i < 4; i++)
++//    {
++//        ret->x += p[i].x * m[i];
++//        ret->y += p[i].y * m[i];
++//        ret->z += p[i].z * m[i];
++//    }
++//}
+ 
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrCore/_matrix.h xray-monolith/src/xrCore/_matrix.h
+--- coc-1.4-xray-64/src/xrCore/_matrix.h	2023-10-20 20:54:50.384326700 +0100
++++ xray-monolith/src/xrCore/_matrix.h	2023-10-20 20:54:32.421037900 +0100
+@@ -312,2 +326,9 @@
+     }
++
++	IC SelfRef translate_add(T _x, T _y, T _z) // combine translation
++	{
++		c.add(_x, _y, _z);
++		return *this;
++	}
++
+     IC SelfRef scale(T x, T y, T z) // setup scale matrix
+@@ -757,2 +876,5 @@
+     }
++
++	ICF SelfRef setHPB(Tvector const& hpb) { return setHPB(hpb.x, hpb.y, hpb.z); }
++
+     IC SelfRef setXYZ(T x, T y, T z) { return setHPB(y, x, z); }
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrCore/_quaternion.h xray-monolith/src/xrCore/_quaternion.h
+--- coc-1.4-xray-64/src/xrCore/_quaternion.h	2023-10-20 20:54:50.386326600 +0100
++++ xray-monolith/src/xrCore/_quaternion.h	2023-10-20 20:54:32.423036400 +0100
+@@ -142,3 +142,3 @@
+ template <class T>
+-struct XRCORE_API _quaternion
++struct _quaternion
+ {
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrCore/_stl_extensions.h xray-monolith/src/xrCore/_stl_extensions.h
+--- coc-1.4-xray-64/src/xrCore/_stl_extensions.h	2023-10-20 20:54:50.388326500 +0100
++++ xray-monolith/src/xrCore/_stl_extensions.h	2023-10-20 20:54:32.425038700 +0100
+@@ -5,2 +5,3 @@
+ 
++#include <functional>
+ #include "_type_traits.h"
+@@ -87,5 +105,10 @@
+     void deallocate(void* p, size_type n) const { xr_free(p); }
+-    void construct(pointer p, const T& _Val) { std::_Construct(p, _Val); }
+-    void destroy(pointer p) { std::_Destroy(p); }
+-    size_type max_size() const { size_type _Count = (size_type)(-1) / sizeof(T); return (0 < _Count ? _Count : 1); }
++	void construct(pointer p, const T& _Val) { ::new((void*)p) T(_Val); }
++	void destroy(pointer p) { p->~value_type(); }
++
++	size_type max_size() const
++	{
++		size_type _Count = (size_type)(-1) / sizeof(T);
++		return (0 < _Count ? _Count : 1);
++	}
+ };
+@@ -209,7 +275,42 @@
+ 
+-template <typename T, typename allocator = xalloc<T> > class xr_list : public std::list < T, allocator > { public: u32 size() const { return (u32)__super::size(); } };
+-template <typename K, class P = std::less<K>, typename allocator = xalloc<K> > class xr_set : public std::set < K, P, allocator > { public: u32 size() const { return (u32)__super::size(); } };
+-template <typename K, class P = std::less<K>, typename allocator = xalloc<K> > class xr_multiset : public std::multiset < K, P, allocator > { public: u32 size() const { return (u32)__super::size(); } };
+-template <typename K, class V, class P = std::less<K>, typename allocator = xalloc<std::pair<K, V> > > class xr_map : public std::map < K, V, P, allocator > { public: u32 size() const { return (u32)__super::size(); } };
+-template <typename K, class V, class P = std::less<K>, typename allocator = xalloc<std::pair<K, V> > > class xr_multimap : public std::multimap < K, V, P, allocator > { public: u32 size() const { return (u32)__super::size(); } };
++#include <unordered_map>
++
++template <typename K, class V, class Hasher = std::hash<K>, class Traits = std::equal_to<K>,
++          typename allocator = xalloc<std::pair<const K, V>>>
++using xr_unordered_map = std::unordered_map<K, V, Hasher, Traits, allocator>;
++
++template <typename T, typename allocator = xalloc<T>>
++class xr_list : public std::list<T, allocator>
++{
++public:
++	u32 size() const { return (u32)__super::size(); }
++};
++
++template <typename K, class P = std::less<K>, typename allocator = xalloc<K>>
++class xr_set : public std::set<K, P, allocator>
++{
++public:
++	u32 size() const { return (u32)__super::size(); }
++};
++
++template <typename K, class P = std::less<K>, typename allocator = xalloc<K>>
++class xr_multiset : public std::multiset<K, P, allocator>
++{
++public:
++	u32 size() const { return (u32)__super::size(); }
++};
++
++template <typename K, class V, class P = std::less<K>, typename allocator = xalloc<std::pair<K, V>>>
++class xr_map : public std::map<K, V, P, allocator>
++{
++public:
++	u32 size() const { return (u32)__super::size(); }
++};
++
++template <typename K, class V, class P = std::less<K>, typename allocator = xalloc<std::pair<K, V>>>
++class xr_multimap : public std::multimap<K, V, P, allocator>
++{
++public:
++	u32 size() const { return (u32)__super::size(); }
++};
+ 
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrCore/_vector3d.h xray-monolith/src/xrCore/_vector3d.h
+--- coc-1.4-xray-64/src/xrCore/_vector3d.h	2023-10-20 20:54:50.390326500 +0100
++++ xray-monolith/src/xrCore/_vector3d.h	2023-10-20 20:54:32.426036700 +0100
+@@ -23,38 +23,242 @@
+ 
+-    ICF SelfRef set(T _x, T _y, T _z) { x = _x; y = _y; z = _z; return *this; };
+-    ICF SelfRef set(const _vector3<float>& v) { x = T(v.x); y = T(v.y); z = T(v.z); return *this; };
+-    ICF SelfRef set(const _vector3<double>& v) { x = T(v.x); y = T(v.y); z = T(v.z); return *this; };
+-    ICF SelfRef set(float* p) { x = p[0]; y = p[1]; z = p[2]; return *this; };
+-    ICF SelfRef set(double* p) { x = p[0]; y = p[1]; z = p[2]; return *this; };
+-
+-    ICF SelfRef add(const Self& v) { x += v.x; y += v.y; z += v.z; return *this; };
+-    ICF SelfRef add(T s) { x += s; y += s; z += s; return *this; };
+-    ICF SelfRef add(const Self& a, const Self& v) { x = a.x + v.x; y = a.y + v.y; z = a.z + v.z; return *this; };
+-    ICF SelfRef add(const Self& a, T s) { x = a.x + s; y = a.y + s; z = a.z + s; return *this; };
+-
+-    ICF SelfRef sub(const Self& v) { x -= v.x; y -= v.y; z -= v.z; return *this; };
+-    ICF SelfRef sub(T s) { x -= s; y -= s; z -= s; return *this; };
+-    ICF SelfRef sub(const Self& a, const Self& v) { x = a.x - v.x; y = a.y - v.y; z = a.z - v.z; return *this; };
+-    ICF SelfRef sub(const Self& a, T s) { x = a.x - s; y = a.y - s; z = a.z - s; return *this; };
+-
+-    ICF SelfRef mul(const Self& v) { x *= v.x; y *= v.y; z *= v.z; return *this; };
+-    ICF SelfRef mul(T s) { x *= s; y *= s; z *= s; return *this; };
+-    ICF SelfRef mul(const Self& a, const Self& v) { x = a.x*v.x; y = a.y*v.y; z = a.z*v.z; return *this; };
+-    ICF SelfRef mul(const Self& a, T s) { x = a.x*s; y = a.y*s; z = a.z*s; return *this; };
+-
+-    ICF SelfRef div(const Self& v) { x /= v.x; y /= v.y; z /= v.z; return *this; };
+-    ICF SelfRef div(T s) { x /= s; y /= s; z /= s; return *this; };
+-    ICF SelfRef div(const Self& a, const Self& v) { x = a.x / v.x; y = a.y / v.y; z = a.z / v.z; return *this; };
+-    ICF SelfRef div(const Self& a, T s) { x = a.x / s; y = a.y / s; z = a.z / s; return *this; };
+-
+-    IC SelfRef invert() { x = -x; y = -y; z = -z; return *this; }
+-    IC SelfRef invert(const Self& a) { x = -a.x; y = -a.y; z = -a.z; return *this; }
+-
+-    IC SelfRef min(const Self& v1, const Self& v2) { x = _min(v1.x, v2.x); y = _min(v1.y, v2.y); z = _min(v1.z, v2.z); return *this; }
+-    IC SelfRef min(const Self& v) { x = _min(x, v.x); y = _min(y, v.y); z = _min(z, v.z); return *this; }
+-    IC SelfRef max(const Self& v1, const Self& v2) { x = _max(v1.x, v2.x); y = _max(v1.y, v2.y); z = _max(v1.z, v2.z); return *this; }
+-    IC SelfRef max(const Self& v) { x = _max(x, v.x); y = _max(y, v.y); z = _max(z, v.z); return *this; }
++	ICF SelfRef set(T _x, T _y, T _z)
++	{
++		x = _x;
++		y = _y;
++		z = _z;
++		return *this;
++	};
++	ICF SelfRef set(const _vector3<float>& v)
++	{
++		x = T(v.x);
++		y = T(v.y);
++		z = T(v.z);
++		return *this;
++	};
++	ICF SelfRef set(const _vector3<double>& v)
++	{
++		x = T(v.x);
++		y = T(v.y);
++		z = T(v.z);
++		return *this;
++	};
++	ICF SelfRef set(float* p)
++	{
++		x = p[0];
++		y = p[1];
++		z = p[2];
++		return *this;
++	};
++	ICF SelfRef set(double* p)
++	{
++		x = p[0];
++		y = p[1];
++		z = p[2];
++		return *this;
++	};
++
++	ICF SelfRef add(const Self& v)
++	{
++		x += v.x;
++		y += v.y;
++		z += v.z;
++		return *this;
++	};
++	ICF SelfRef add(T s)
++	{
++		x += s;
++		y += s;
++		z += s;
++		return *this;
++	};
++	ICF SelfRef add(T _x, T _y, T _z)
++	{
++		x += _x;
++		y += _y;
++		z += _z;
++		return *this;
++	};
++	ICF SelfRef add(const Self& a, const Self& v)
++	{
++		x = a.x + v.x;
++		y = a.y + v.y;
++		z = a.z + v.z;
++		return *this;
++	};
++	ICF SelfRef add(const Self& a, T s)
++	{
++		x = a.x + s;
++		y = a.y + s;
++		z = a.z + s;
++		return *this;
++	};
++
++	ICF SelfRef sub(const Self& v)
++	{
++		x -= v.x;
++		y -= v.y;
++		z -= v.z;
++		return *this;
++	};
++	ICF SelfRef sub(T s)
++	{
++		x -= s;
++		y -= s;
++		z -= s;
++		return *this;
++	};
++	ICF SelfRef sub(T _x, T _y, T _z)
++	{
++		x -= _x;
++		y -= _y;
++		z -= _z;
++		return *this;
++	};
++	ICF SelfRef sub(const Self& a, const Self& v)
++	{
++		x = a.x - v.x;
++		y = a.y - v.y;
++		z = a.z - v.z;
++		return *this;
++	};
++	ICF SelfRef sub(const Self& a, T s)
++	{
++		x = a.x - s;
++		y = a.y - s;
++		z = a.z - s;
++		return *this;
++	};
+ 
+-    IC SelfRef abs(const Self& v) { x = _abs(v.x); y = _abs(v.y); z = _abs(v.z); return *this; }
+-    ICF BOOL similar(const Self& v, T E = EPS_L) const { return _abs(x - v.x) < E && _abs(y - v.y) < E && _abs(z - v.z) < E; };
++	ICF SelfRef mul(const Self& v)
++	{
++		x *= v.x;
++		y *= v.y;
++		z *= v.z;
++		return *this;
++	};
++	ICF SelfRef mul(T s)
++	{
++		x *= s;
++		y *= s;
++		z *= s;
++		return *this;
++	};
++	ICF SelfRef mul(T _x, T _y, T _z)
++	{
++		x *= _x;
++		y *= _y;
++		z *= _z;
++		return *this;
++	};
++	ICF SelfRef mul(const Self& a, const Self& v)
++	{
++		x = a.x * v.x;
++		y = a.y * v.y;
++		z = a.z * v.z;
++		return *this;
++	};
++	ICF SelfRef mul(const Self& a, T s)
++	{
++		x = a.x * s;
++		y = a.y * s;
++		z = a.z * s;
++		return *this;
++	};
++
++	ICF SelfRef div(const Self& v)
++	{
++		x /= v.x;
++		y /= v.y;
++		z /= v.z;
++		return *this;
++	};
++	ICF SelfRef div(T s)
++	{
++		x /= s;
++		y /= s;
++		z /= s;
++		return *this;
++	};
++	ICF SelfRef div(T _x, T _y, T _z)
++	{
++		x /= _x;
++		y /= _y;
++		z /= _z;
++		return *this;
++	};
++	ICF SelfRef div(const Self& a, const Self& v)
++	{
++		x = a.x / v.x;
++		y = a.y / v.y;
++		z = a.z / v.z;
++		return *this;
++	};
++	ICF SelfRef div(const Self& a, T s)
++	{
++		x = a.x / s;
++		y = a.y / s;
++		z = a.z / s;
++		return *this;
++	};
++
++	IC SelfRef invert()
++	{
++		x = -x;
++		y = -y;
++		z = -z;
++		return *this;
++	}
++
++	IC SelfRef invert(const Self& a)
++	{
++		x = -a.x;
++		y = -a.y;
++		z = -a.z;
++		return *this;
++	}
++
++	IC SelfRef min(const Self& v1, const Self& v2)
++	{
++		x = _min(v1.x, v2.x);
++		y = _min(v1.y, v2.y);
++		z = _min(v1.z, v2.z);
++		return *this;
++	}
++
++	IC SelfRef min(const Self& v)
++	{
++		x = _min(x, v.x);
++		y = _min(y, v.y);
++		z = _min(z, v.z);
++		return *this;
++	}
++
++	IC SelfRef max(const Self& v1, const Self& v2)
++	{
++		x = _max(v1.x, v2.x);
++		y = _max(v1.y, v2.y);
++		z = _max(v1.z, v2.z);
++		return *this;
++	}
++
++	IC SelfRef max(const Self& v)
++	{
++		x = _max(x, v.x);
++		y = _max(y, v.y);
++		z = _max(z, v.z);
++		return *this;
++	}
++
++	IC SelfRef abs(const Self& v)
++	{
++		x = _abs(v.x);
++		y = _abs(v.y);
++		z = _abs(v.z);
++		return *this;
++	}
++
++	ICF BOOL similar(const Self& v, T E = EPS_L) const
++	{
++		return _abs(x - v.x) < E && _abs(y - v.y) < E && _abs(z - v.z) < E;
++	};
+ 
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrCore/_vector4.h xray-monolith/src/xrCore/_vector4.h
+--- coc-1.4-xray-64/src/xrCore/_vector4.h	2023-10-20 20:54:50.391326300 +0100
++++ xray-monolith/src/xrCore/_vector4.h	2023-10-20 20:54:32.427039200 +0100
+@@ -17,28 +17,210 @@
+ 
+-    IC SelfRef set(T _x, T _y, T _z, T _w = 1) { x = _x; y = _y; z = _z; w = _w; return *this; }
+-    IC SelfRef set(const Self& v) { x = v.x; y = v.y; z = v.z; w = v.w; return *this; }
++	IC SelfRef set(T _x, T _y, T _z, T _w = 1)
++	{
++		x = _x;
++		y = _y;
++		z = _z;
++		w = _w;
++		return *this;
++	}
++
++	IC SelfRef set(const Self& v)
++	{
++		x = v.x;
++		y = v.y;
++		z = v.z;
++		w = v.w;
++		return *this;
++	}
++
++	IC SelfRef add(const Self& v)
++	{
++		x += v.x;
++		y += v.y;
++		z += v.z;
++		w += v.w;
++		return *this;
++	}
++
++	IC SelfRef add(T s)
++	{
++		x += s;
++		y += s;
++		z += s;
++		w += s;
++		return *this;
++	}
++
++	IC SelfRef add(const Self& a, const Self& v)
++	{
++		x = a.x + v.x;
++		y = a.y + v.y;
++		z = a.z + v.z;
++		w = a.w + v.w;
++		return *this;
++	}
++
++	IC SelfRef add(const Self& a, T s)
++	{
++		x = a.x + s;
++		y = a.y + s;
++		z = a.z + s;
++		w = a.w + s;
++		return *this;
++	}
++
++	IC SelfRef sub(T _x, T _y, T _z, T _w = 1)
++	{
++		x -= _x;
++		y -= _y;
++		z -= _z;
++		w -= _w;
++		return *this;
++	}
++
++	IC SelfRef sub(const Self& v)
++	{
++		x -= v.x;
++		y -= v.y;
++		z -= v.z;
++		w -= v.w;
++		return *this;
++	}
++
++	IC SelfRef sub(T s)
++	{
++		x -= s;
++		y -= s;
++		z -= s;
++		w -= s;
++		return *this;
++	}
++
++	IC SelfRef sub(const Self& a, const Self& v)
++	{
++		x = a.x - v.x;
++		y = a.y - v.y;
++		z = a.z - v.z;
++		w = a.w - v.w;
++		return *this;
++	}
++
++	IC SelfRef sub(const Self& a, T s)
++	{
++		x = a.x - s;
++		y = a.y - s;
++		z = a.z - s;
++		w = a.w - s;
++		return *this;
++	}
++
++	IC SelfRef mul(T _x, T _y, T _z, T _w = 1)
++	{
++		x *= _x;
++		y *= _y;
++		z *= _z;
++		w *= _w;
++		return *this;
++	}
++
++	IC SelfRef mul(const Self& v)
++	{
++		x *= v.x;
++		y *= v.y;
++		z *= v.z;
++		w *= v.w;
++		return *this;
++	}
++
++	IC SelfRef mul(T s)
++	{
++		x *= s;
++		y *= s;
++		z *= s;
++		w *= s;
++		return *this;
++	}
++
++	IC SelfRef mul(const Self& a, const Self& v)
++	{
++		x = a.x * v.x;
++		y = a.y * v.y;
++		z = a.z * v.z;
++		w = a.w * v.w;
++		return *this;
++	}
++
++	IC SelfRef mul(const Self& a, T s)
++	{
++		x = a.x * s;
++		y = a.y * s;
++		z = a.z * s;
++		w = a.w * s;
++		return *this;
++	}
++
++	IC SelfRef div(const Self& v)
++	{
++		x /= v.x;
++		y /= v.y;
++		z /= v.z;
++		w /= v.w;
++		return *this;
++	}
++
++	IC SelfRef div(T s)
++	{
++		x /= s;
++		y /= s;
++		z /= s;
++		w /= s;
++		return *this;
++	}
++
++	IC SelfRef div(const Self& a, const Self& v)
++	{
++		x = a.x / v.x;
++		y = a.y / v.y;
++		z = a.z / v.z;
++		w = a.w / v.w;
++		return *this;
++	}
++
++	IC SelfRef div(const Self& a, T s)
++	{
++		x = a.x / s;
++		y = a.y / s;
++		z = a.z / s;
++		w = a.w / s;
++		return *this;
++	}
+ 
+-    IC SelfRef add(const Self& v) { x += v.x; y += v.y; z += v.z; w += v.w; return *this; }
+-    IC SelfRef add(T s) { x += s; y += s; z += s; w += s; return *this; }
+-    IC SelfRef add(const Self& a, const Self& v) { x = a.x + v.x; y = a.y + v.y; z = a.z + v.z; w = a.w + v.w; return *this; }
+-    IC SelfRef add(const Self& a, T s) { x = a.x + s; y = a.y + s; z = a.z + s; w = a.w + s; return *this; }
+-
+-    IC SelfRef sub(T _x, T _y, T _z, T _w = 1) { x -= _x; y -= _y; z -= _z; w -= _w; return *this; }
+-    IC SelfRef sub(const Self& v) { x -= v.x; y -= v.y; z -= v.z; w -= v.w; return *this; }
+-    IC SelfRef sub(T s) { x -= s; y -= s; z -= s; w -= s; return *this; }
+-    IC SelfRef sub(const Self& a, const Self& v) { x = a.x - v.x; y = a.y - v.y; z = a.z - v.z; w = a.w - v.w; return *this; }
+-    IC SelfRef sub(const Self& a, T s) { x = a.x - s; y = a.y - s; z = a.z - s; w = a.w - s; return *this; }
+-
+-    IC SelfRef mul(T _x, T _y, T _z, T _w = 1) { x *= _x; y *= _y; z *= _z; w *= _w; return *this; }
+-    IC SelfRef mul(const Self& v) { x *= v.x; y *= v.y; z *= v.z; w *= v.w; return *this; }
+-    IC SelfRef mul(T s) { x *= s; y *= s; z *= s; w *= s; return *this; }
+-    IC SelfRef mul(const Self& a, const Self& v) { x = a.x*v.x; y = a.y*v.y; z = a.z*v.z; w = a.w*v.w; return *this; }
+-    IC SelfRef mul(const Self& a, T s) { x = a.x*s; y = a.y*s; z = a.z*s; w = a.w*s; return *this; }
+-
+-    IC SelfRef div(const Self& v) { x /= v.x; y /= v.y; z /= v.z; w /= v.w; return *this; }
+-    IC SelfRef div(T s) { x /= s; y /= s; z /= s; w /= s; return *this; }
+-    IC SelfRef div(const Self& a, const Self& v) { x = a.x / v.x; y = a.y / v.y; z = a.z / v.z; w = a.w / v.w; return *this; }
+-    IC SelfRef div(const Self& a, T s) { x = a.x / s; y = a.y / s; z = a.z / s; w = a.w / s; return *this; }
++	// Clamp vector3
++	IC SelfRef clamp(const Self& min, const Self& max)
++	{
++		::clamp(x, min.x, max.x);
++		::clamp(y, min.y, max.y);
++		::clamp(z, min.z, max.z);
++		::clamp(w, min.w, max.w);
++		return *this;
++	}
+ 
+-    IC BOOL similar(const Self& v, T E = EPS_L) { return _abs(x - v.x) < E && _abs(y - v.y) < E && _abs(z - v.z) < E && _abs(w - v.w) < E; };
++	IC SelfRef clamp(const Self& _v)
++	{
++		Self v;
++		v.x = _abs(_v.x);
++		v.y = _abs(_v.y);
++		v.z = _abs(_v.z);
++		v.z = _abs(_v.w);
++		::clamp(x, -v.x, v.x);
++		::clamp(y, -v.y, v.y);
++		::clamp(z, -v.z, v.z);
++		::clamp(w, -v.w, v.w);
++		return *this;
++	}
++
++	IC BOOL similar(const Self& v, T E = EPS_L)
++	{
++		return _abs(x - v.x) < E && _abs(y - v.y) < E && _abs(z - v.z) < E && _abs(w - v.w) < E;
++	};
+ 
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrCore/cpuid.cpp xray-monolith/src/xrCore/cpuid.cpp
+--- coc-1.4-xray-64/src/xrCore/cpuid.cpp	2023-10-20 20:54:50.399326600 +0100
++++ xray-monolith/src/xrCore/cpuid.cpp	2023-10-20 20:54:32.436035200 +0100
+@@ -4,2 +4,3 @@
+ #include "cpuid.h"
++#include <intrin.h>
+ 
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrCore/FS_impl.h xray-monolith/src/xrCore/FS_impl.h
+--- coc-1.4-xray-64/src/xrCore/FS_impl.h	2023-10-20 20:54:50.373326300 +0100
++++ xray-monolith/src/xrCore/FS_impl.h	2023-10-20 20:54:32.408036500 +0100
+@@ -186,4 +189,5 @@
+     }
+-
++#ifdef DEBUG
+     VERIFY((u32)impl().tell() + dwSize <= (u32)impl().length());
++#endif
+     if (bCompressed) *bCompressed = dwType & CFS_CompressMark;
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrCore/FS_internal.h xray-monolith/src/xrCore/FS_internal.h
+--- coc-1.4-xray-64/src/xrCore/FS_internal.h	2023-10-20 20:54:50.373326300 +0100
++++ xray-monolith/src/xrCore/FS_internal.h	2023-10-20 20:54:32.408036500 +0100
+@@ -27,6 +27,4 @@
+             int handle = _sopen(*fName,_O_WRONLY|_O_TRUNC|_O_CREAT|_O_BINARY,SH_DENYWR);
+-#ifdef _EDITOR
+             if (handle==-1)
+                 Msg("!Can't create file: '%s'. Error: '%s'.", *fName, _sys_errlist[errno]);
+-#endif
+             hf = _fdopen(handle, "wb");
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrCore/FTimer.cpp xray-monolith/src/xrCore/FTimer.cpp
+--- coc-1.4-xray-64/src/xrCore/FTimer.cpp	2023-10-20 20:54:50.373326300 +0100
++++ xray-monolith/src/xrCore/FTimer.cpp	2023-10-20 20:54:32.408036500 +0100
+@@ -24,6 +25,9 @@
+ 
+-XRCORE_API pauseMngr g_pauseMngr;
+-
++XRCORE_API pauseMngr& g_pauseMngr()
++{
++	static pauseMngr manager;
++	return manager;
++}
+ 
+-pauseMngr::pauseMngr() :m_paused(FALSE)
++pauseMngr::pauseMngr() : m_paused(false)
+ {
+@@ -32,3 +36,3 @@
+ 
+-void pauseMngr::Pause(BOOL b)
++void pauseMngr::Pause(const bool b)
+ {
+@@ -43,10 +47,10 @@
+ 
+-void pauseMngr::Register(CTimer_paused* t)
++void pauseMngr::Register(CTimer_paused& t)
+ {
+-    m_timers.push_back(t);
++	m_timers.push_back(&t);
+ }
+ 
+-void pauseMngr::UnRegister(CTimer_paused* t)
++void pauseMngr::UnRegister(CTimer_paused& t)
+ {
+-    xr_vector<CTimer_paused*>::iterator it = std::find(m_timers.begin(), m_timers.end(), t);
++	const auto it = std::find(m_timers.cbegin(), m_timers.cend(), &t);
+     if (it != m_timers.end())
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrCore/FTimer.h xray-monolith/src/xrCore/FTimer.h
+--- coc-1.4-xray-64/src/xrCore/FTimer.h	2023-10-20 20:54:50.374326400 +0100
++++ xray-monolith/src/xrCore/FTimer.h	2023-10-20 20:54:32.409036500 +0100
+@@ -9,12 +9,12 @@
+     xr_vector<CTimer_paused*> m_timers;
+-    BOOL m_paused;
++	bool m_paused;
+ public:
+     pauseMngr();
+-    BOOL Paused() { return m_paused; };
+-    void Pause(BOOL b);
+-    void Register(CTimer_paused* t);
+-    void UnRegister(CTimer_paused* t);
++	bool Paused() { return m_paused; };
++	void Pause(bool b);
++	void Register(CTimer_paused& t);
++	void UnRegister(CTimer_paused& t);
+ };
+ 
+-extern XRCORE_API pauseMngr g_pauseMngr;
++extern XRCORE_API pauseMngr& g_pauseMngr();
+ 
+@@ -26,7 +26,20 @@
+     u64 qwPauseAccum;
+-    BOOL bPause;
++	bool bPause;
+ public:
+-    CTimerBase() : qwStartTime(0), qwPausedTime(0), qwPauseAccum(0), bPause(FALSE) { }
+-    ICF void Start() { if (bPause) return; qwStartTime = CPU::QPC() - qwPauseAccum; }
+-    ICF u64 GetElapsed_ticks()const { if (bPause) return qwPausedTime; else return CPU::QPC() - qwStartTime - CPU::qpc_overhead - qwPauseAccum; }
++	CTimerBase() : qwStartTime(0), qwPausedTime(0), qwPauseAccum(0), bPause(false)
++	{
++	}
++
++	ICF void Start()
++	{
++		if (bPause) return;
++		qwStartTime = CPU::QPC() - qwPauseAccum;
++	}
++
++	ICF u64 GetElapsed_ticks() const
++	{
++		if (bPause) return qwPausedTime;
++		else return CPU::QPC() - qwStartTime - CPU::qpc_overhead - qwPauseAccum;
++	}
++
+     IC u32 GetElapsed_ms()const { return u32(GetElapsed_ticks()*u64(1000) / CPU::qpc_freq); }
+@@ -139,6 +155,12 @@
+ public:
+-    CTimer_paused_ex() { }
+-    virtual ~CTimer_paused_ex() { }
+-    IC BOOL Paused()const { return bPause; }
+-    IC void Pause(BOOL b)
++	CTimer_paused_ex()
++	{
++	}
++
++	virtual ~CTimer_paused_ex()
++	{
++	}
++
++	IC bool Paused() const { return bPause; }
++	IC void Pause(const bool b)
+     {
+@@ -163,4 +185,4 @@
+ public:
+-    CTimer_paused() { g_pauseMngr.Register(this); }
+-    virtual ~CTimer_paused() { g_pauseMngr.UnRegister(this); }
++	CTimer_paused() { g_pauseMngr().Register(*this); }
++	virtual ~CTimer_paused() { g_pauseMngr().UnRegister(*this); }
+ };
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrCore/LocatorAPI.cpp xray-monolith/src/xrCore/LocatorAPI.cpp
+--- coc-1.4-xray-64/src/xrCore/LocatorAPI.cpp	2023-10-20 20:54:50.376327500 +0100
++++ xray-monolith/src/xrCore/LocatorAPI.cpp	2023-10-20 20:54:32.411036100 +0100
+@@ -11,2 +11,4 @@
+ #include <sys\stat.h>
++#define _SILENCE_EXPERIMENTAL_FILESYSTEM_DEPRECATION_WARNING
++#include <experimental\filesystem>
+ #pragma warning(default:4995)
+@@ -35,2 +37,4 @@
+ 
++std::experimental::filesystem::path fsRoot;
++
+ struct _open_file
+@@ -248,3 +266,4 @@
+     string_path folder;
+-    while (temp[0])
++	u32 vfs_id = vfs;
++	while (temp[0] && temp[1])
+     {
+@@ -255,3 +274,3 @@
+             desc.name = xr_strdup(path);
+-            desc.vfs = 0xffffffff;
++			desc.vfs = vfs_id;
+             desc.ptr = 0;
+@@ -264,4 +283,5 @@
+         }
+-        xr_strcpy(temp, sizeof(temp), folder);
++		xr_strcpy(temp, sizeof(temp), path);
+         if (xr_strlen(temp)) temp[xr_strlen(temp) - 1] = 0;
++		vfs_id = 0xffffffff;
+     }
+@@ -633,3 +651,3 @@
+ 
+-void CLocatorAPI::setup_fs_path(LPCSTR fs_name, string_path& fs_path)
++/*void CLocatorAPI::setup_fs_path(LPCSTR fs_name, string_path& fs_path)
+ {
+@@ -646,24 +664,49 @@
+     *(slash + 1) = 0;
++}*/
++
++static void searchForFsltx(const char* fs_name, string_path& fsltxPath)
++{
++	//#TODO: Update code, when std::filesystem is out (not much work, standards don't change dramatically)
++	const char* realFsltxName = nullptr;
++	if (fs_name)
++	{
++		realFsltxName = fs_name;
++	}
++	else
++	{
++		realFsltxName = FSLTX;
+ }
+ 
+-void CLocatorAPI::setup_fs_path(LPCSTR fs_name)
++	//try in working dir
++	if (std::experimental::filesystem::exists(realFsltxName))
+ {
+-    string_path fs_path;
+-    setup_fs_path(fs_name, fs_path);
++		xr_strcpy(fsltxPath, realFsltxName);
++		return;
++	}
++
++	auto tryPathFunc = [realFsltxName](std::experimental::filesystem::path possibleLocationFsltx,
++	                                   string_path& fsltxPath) -> bool
++	{
++		possibleLocationFsltx.append(realFsltxName);
++
++		if (std::experimental::filesystem::exists(possibleLocationFsltx))
++		{
++			xr_strcpy(fsltxPath, possibleLocationFsltx.generic_string().c_str());
++			return true;
++		}
++		return false;
++	};
+ 
++	//try parent directory
++	if (tryPathFunc("../", fsltxPath)) return;
+ 
+-    string_path full_current_directory;
+-    _fullpath(full_current_directory, fs_path, sizeof(full_current_directory));
++	//same for application path (fix for launching the game from discord)
++	if (tryPathFunc(Core.ApplicationPath, fsltxPath)) return;
+ 
+-    FS_Path* path = xr_new<FS_Path>(full_current_directory, "", "", "", 0);
+-#ifdef DEBUG
+-    Msg("$fs_root$ = %s", full_current_directory);
+-#endif // #ifdef DEBUG
++	//parent directory again
++	std::experimental::filesystem::path test_path;
++	test_path.assign(Core.ApplicationPath);
++	test_path.append("../");
+ 
+-    pathes.insert(
+-        std::make_pair(
+-        xr_strdup("$fs_root$"),
+-        path
+-        )
+-        );
++	if (tryPathFunc(test_path, fsltxPath)) return;
+ }
+@@ -672,14 +715,13 @@
+ {
+-    setup_fs_path(fs_name);
+-
+-    // if (m_Flags.is(flTargetFolderOnly)) {
+-    // append_path ("$fs_root$", "", 0, FALSE);
+-    // return (0);
+-    // }
+-
+-    LPCSTR fs_file_name = FSLTX;
+-    if (fs_name && *fs_name)
+-        fs_file_name = fs_name;
++	string_path fs_path;
++	memset(fs_path, 0, sizeof(fs_path));
++	searchForFsltx(fs_name, fs_path);
++	CHECK_OR_EXIT(fs_path[0] != 0,
++	              make_string("Cannot find fsltx file: \"%s\"\nCheck your working directory", fs_name));
++	xr_strlwr(fs_path);
++	fsRoot = fs_path;
++	fsRoot = std::experimental::filesystem::absolute(fsRoot);
++	fsRoot = fsRoot.parent_path();
+ 
+-    Log("using fs-ltx", fs_file_name);
++	Msg("using fs-ltx %s", fs_path);
+ 
+@@ -687,10 +729,8 @@
+     u32 file_size;
+-    IReader* result = 0;
+-    CHECK_OR_EXIT(
+-        file_handle_internal(fs_file_name, file_size, file_handle),
+-        make_string("Cannot open file \"%s\".\nCheck your working folder.", fs_file_name)
+-        );
++	IReader* result = nullptr;
++	CHECK_OR_EXIT(file_handle_internal(fs_path, file_size, file_handle),
++	              make_string("Cannot open file \"%s\".\nCheck your working folder.", fs_name));
+ 
+-    void* buffer = FileDownload(fs_file_name, file_handle, file_size);
+-    result = xr_new<CTempReader>(buffer, file_size, 0);
++	void* buffer = FileDownload(fs_path, file_handle, file_size);
++	result = new CTempReader(buffer, (int)file_size, 0);
+ 
+@@ -698,3 +738,3 @@
+     if (result && m_Flags.is(flBuildCopy | flReady))
+-        copy_file_to_build(result, fs_file_name);
++		copy_file_to_build(result, fs_path);
+ #endif // DEBUG
+@@ -702,3 +742,3 @@
+     if (m_Flags.test(flDumpFileActivity))
+-        _register_open_file(result, fs_file_name);
++		_register_open_file(result, fs_path);
+ 
+@@ -724,3 +764,3 @@
+     if (m_Flags.is(flScanAppRoot))
+-        append_path("$app_root$", Core.ApplicationPath, 0, FALSE);
++		append_path("$app_root$", Core.ApplicationPath, nullptr, FALSE);
+ 
+@@ -732,3 +772,3 @@
+     {
+-        append_path("$target_folder$", target_folder, 0, TRUE);
++		append_path("$target_folder$", target_folder, nullptr, TRUE);
+     }
+@@ -737,30 +777,5 @@
+         IReader* pFSltx = setup_fs_ltx(fs_name);
+-        /*
+-         LPCSTR fs_ltx = (fs_name&&fs_name[0])?fs_name:FSLTX;
+-         F = r_open(fs_ltx);
+-         if (!F&&m_Flags.is(flScanAppRoot))
+-         F = r_open("$app_root$",fs_ltx);
+-
+-         if (!F)
+-         {
+-         string_path tmpAppPath = "";
+-         xr_strcpy(tmpAppPath,sizeof(tmpAppPath), Core.ApplicationPath);
+-         if (xr_strlen(tmpAppPath))
+-         {
+-         tmpAppPath[xr_strlen(tmpAppPath)-1] = 0;
+-         if (strrchr(tmpAppPath, '\\'))
+-         *(strrchr(tmpAppPath, '\\')+1) = 0;
+-
+-         FS_Path* pFSRoot = FS.get_path("$fs_root$");
+-         pFSRoot->_set_root (tmpAppPath);
+-         rescan_path (pFSRoot->m_Path, pFSRoot->m_Flags.is(FS_Path::flRecurse));
+-         }
+-         F = r_open("$fs_root$",fs_ltx);
+-         }
+-
+-         Log ("using fs-ltx",fs_ltx);
+-         */
+         // append all pathes
+         string_path id, root, add, def, capt;
+-        LPCSTR lp_add, lp_def, lp_capt;
++		const char *lp_add, *lp_def, *lp_capt;
+         string16 b_v;
+@@ -797,15 +812,23 @@
+ 
+-
+             xr_strlwr(root);
+-            lp_add = (cnt >= 4) ? xr_strlwr(add) : 0;
+-            lp_def = (cnt >= 5) ? def : 0;
+-            lp_capt = (cnt >= 6) ? capt : 0;
++			lp_add = (cnt >= 4) ? xr_strlwr(add) : nullptr;
++			lp_def = (cnt >= 5) ? def : nullptr;
++			lp_capt = (cnt >= 6) ? capt : nullptr;
++
++			auto p_it = pathes.find(root);
+ 
+-            PathPairIt p_it = pathes.find(root);
++			if (p_it == pathes.end() && xr_strcmp(root, "$fs_root$") == 0)
++			{
++				//Old good fsltx
++				//replace root with predefined path
++				//xr_strcpy(root, fsRoot.generic_string().c_str());
++				FS_Path* P = new FS_Path(xr_strdup(fsRoot.generic_string().c_str()), nullptr, nullptr, nullptr, 0);
++				pathes.insert(std::make_pair(xr_strdup("$fs_root$"), P));
++				p_it = pathes.find(root);
++			}
+ 
+-            std::pair<PathPairIt, bool> I;
+-            FS_Path* P = xr_new<FS_Path>((p_it != pathes.end()) ? p_it->second->m_Path : root, lp_add, lp_def, lp_capt, fl);
++			FS_Path* P = new FS_Path((p_it != pathes.end()) ? p_it->second->m_Path : root, lp_add, lp_def, lp_capt, fl);
+             bNoRecurse = !(fl&FS_Path::flRecurse);
+             Recurse(P->m_Path);
+-            I = pathes.insert(mk_pair(xr_strdup(id), P));
++			auto I = pathes.insert(std::make_pair(xr_strdup(id), P));
+ #ifndef DEBUG
+@@ -814,3 +837,3 @@
+ 
+-            CHECK_OR_EXIT(I.second, "The file 'fsgame.ltx' is corrupted (it contains duplicated lines).\nPlease reinstall the game or fix the problem manually.");
++			//CHECK_OR_EXIT		(I.second,"The file 'fsgame.ltx' is corrupted (it contains duplicated lines).\nPlease reinstall the game or fix the problem manually.");
+         }
+@@ -821,2 +844,3 @@
+ 
++	Msg("File System Ready...");
+ 	size_t M2 = Memory.mem_usage();
+@@ -842,5 +866,2 @@
+         }
+-
+-        int x = 0;
+-        x = x;
+     }
+@@ -1322,2 +1341,4 @@
+ 
++#include "..\xrGame\Actor_Flags.h"
++
+ template <typename T>
+@@ -1331,3 +1352,7 @@
+     if (!check_for_file(path, _fname, fname, desc))
++	{
++		if (m_Flags.test(flPrintLTX))
++			Log("Warning : Unable to find", _fname);
+         return (0);
++	}
+ 
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrCore/LocatorAPI.h xray-monolith/src/xrCore/LocatorAPI.h
+--- coc-1.4-xray-64/src/xrCore/LocatorAPI.h	2023-10-20 20:54:50.377327100 +0100
++++ xray-monolith/src/xrCore/LocatorAPI.h	2023-10-20 20:54:32.412036500 +0100
+@@ -90,2 +97,3 @@
+         flDumpFileActivity = (1 << 9),
++		flPrintLTX = (1 << 10),
+     };
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrCore/log.cpp xray-monolith/src/xrCore/log.cpp
+--- coc-1.4-xray-64/src/xrCore/log.cpp	2023-10-20 20:54:50.403326500 +0100
++++ xray-monolith/src/xrCore/log.cpp	2023-10-20 20:54:32.439036000 +0100
+@@ -24,3 +24,3 @@
+ {
+-    if (!no_log)
++	if (!no_log && LogFile != nullptr)
+     {
+@@ -56,4 +56,28 @@
+         shared_str temp = shared_str(split);
++		static shared_str last_str;
++		static int items_count;
++
++		if (last_str.equal(temp))
++		{
++			xr_string tmp = temp.c_str();
++
++			if (items_count == 0)
++				items_count = 2;
++			else
++				items_count++;
++
++			tmp += " [";
++			tmp += std::to_string(items_count).c_str();
++			tmp += "]";
++
++			LogFile->erase(LogFile->end()-1);
++			LogFile->push_back(shared_str(tmp.c_str()));
++		}
++		else
++		{
+         // DUMP_PHASE;
+         LogFile->push_back(temp);
++			last_str = temp;
++			items_count = 0;
++		}
+     }
+@@ -204,2 +232,6 @@
+     {
++		//Alun: Backup existing log
++		xr_string backup_logFName = EFS.ChangeFileExt(logFName, ".bkp");
++		FS.file_rename(logFName, backup_logFName.c_str(), true);
++		//-Alun
+         IWriter* f = FS.w_open(logFName);
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrCore/net_utils.h xray-monolith/src/xrCore/net_utils.h
+--- coc-1.4-xray-64/src/xrCore/net_utils.h	2023-10-20 20:54:50.406326500 +0100
++++ xray-monolith/src/xrCore/net_utils.h	2023-10-20 20:54:32.442036300 +0100
+@@ -100,3 +113,4 @@
+     }
+-    IC void w_seek(u32 pos, const void* p, u32 count);
++
++	void w_seek(u32 pos, const void* p, u32 count);
+     IC u32 w_tell() { return B.count; }
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrCore/rt_compressor.cpp xray-monolith/src/xrCore/rt_compressor.cpp
+--- coc-1.4-xray-64/src/xrCore/rt_compressor.cpp	2023-10-20 20:54:50.418326700 +0100
++++ xray-monolith/src/xrCore/rt_compressor.cpp	2023-10-20 20:54:32.444035500 +0100
+@@ -27,3 +27,3 @@
+ {
+-    u32 out_size = dst_len;
++	lzo_uint out_size = dst_len;
+     int r = lzo1x_1_compress(
+@@ -35,5 +35,6 @@
+ }
++
+ u32 rtc_decompress(void* dst, u32 dst_len, const void* src, u32 src_len)
+ {
+-    u32 out_size = dst_len;
++	lzo_uint out_size = dst_len;
+     int r = lzo1x_decompress(
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrCore/SubAlloc.hpp xray-monolith/src/xrCore/SubAlloc.hpp
+--- coc-1.4-xray-64/src/xrCore/SubAlloc.hpp	2023-10-20 20:54:50.380326500 +0100
++++ xray-monolith/src/xrCore/SubAlloc.hpp	2023-10-20 20:54:32.417036800 +0100
+@@ -138,8 +200,13 @@
+     DWORD* p1=(DWORD*) Dest, * p2=(DWORD*) Src;
+-    do {
+-        p1[0]=p2[0];                        p1[1]=p2[1];
++	do
++	{
++		p1[0] = p2[0];
++		p1[1] = p2[1];
+         p1[2]=p2[2];
+-        p1 += 3;                            p2 += 3;
+-    } while ( --NU );
++		p1 += 3;
++		p2 += 3;
+ }
++	while (--NU);
++}
++
+ inline void* ExpandUnits(void* OldPtr,UINT OldNU)
+@@ -158,11 +228,18 @@
+     if (i0 == i1)                           return OldPtr;
+-    if ( BList[i1].avail() ) {
+-        void* ptr=BList[i1].remove();       UnitsCpy(ptr,OldPtr,NewNU);
++	if (BList[i1].avail())
++	{
++		void* ptr = BList[i1].remove();
++		UnitsCpy(ptr, OldPtr, NewNU);
+         BList[i0].insert(OldPtr,Indx2Units[i0]);
+         return ptr;
+-    } else {
+-        SplitBlock(OldPtr,i0,i1);           return OldPtr;
+     }
++	else
++	{
++		SplitBlock(OldPtr, i0, i1);
++		return OldPtr;
+ }
+-inline void FreeUnits(void* ptr,UINT NU) {
++}
++
++inline void FreeUnits(void* ptr, UINT NU)
++{
+     UINT indx=Units2Indx[NU-1];
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrCore/vector.h xray-monolith/src/xrCore/vector.h
+--- coc-1.4-xray-64/src/xrCore/vector.h	2023-10-20 20:54:50.431326700 +0100
++++ xray-monolith/src/xrCore/vector.h	2023-10-20 20:54:32.455035600 +0100
+@@ -109,10 +113,34 @@
+ };
+-IC float snapto(float value, float snap)
++
++inline float snapto(float value, float snap)
+ {
+-    if (snap <= 0.f) return value;
++	if (snap <= 0.f)
++		return value;
+     return float(iFloor((value + (snap*0.5f)) / snap)) * snap;
+-};
++}
++
++// linear interpolation
++template <class T>
++inline constexpr T _lerp(const T& _val_a, const T& _val_b, const float& _factor)
++{
++	return (_val_a * (1.0 - _factor)) + (_val_b * _factor);
++}
++
++template <class T>
++inline constexpr T _lerpc(const T& _val_a, const T& _val_b, const float& _factor)
++{
++	float factor_c = clampr(_factor, 0.0f, 1.0f);
++	return (_val_a * (1.0 - factor_c)) + (_val_b * factor_c);
++}
++
++// inertion
++IC float _inertion(float _val_cur, float _val_trgt, float _friction)
++{
++	float friction_i = 1.f - _friction;
++	return _val_cur * _friction + _val_trgt * friction_i;
++}
+ 
+ // pre-definitions
+-template <class T> struct _quaternion;
++template <class T>
++struct _quaternion;
+ 
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrCore/Xr_ini.cpp xray-monolith/src/xrCore/Xr_ini.cpp
+--- coc-1.4-xray-64/src/xrCore/Xr_ini.cpp	2023-10-20 20:54:50.381326500 +0100
++++ xray-monolith/src/xrCore/Xr_ini.cpp	2023-10-20 20:54:32.417036800 +0100
+@@ -5,2 +5,10 @@
+ 
++#include <functional>
++#include <regex>
++#include <unordered_map>
++#include <unordered_set>
++#include <vector>
++#include <algorithm>
++#include "mezz_stringbuffer.h"
++
+ XRCORE_API CInifile const* pSettings = NULL;
+@@ -173,4 +187,15 @@
+ 
++std::unordered_map<std::string, std::vector<CInifile::Item>> OverrideModifyListData;
++
+ static void insert_item(CInifile::Sect* tgt, const CInifile::Item& I)
+ {
++	// demonized
++	// DLTX: add or remove item from the section parameter if it has a structure of "name = item1, item2, item3, ..."
++	// >name = item will add item to the list
++	// <name = item will remove item from the list
++	if (*I.first && (I.first.c_str()[0] == '<' || I.first.c_str()[0] == '>')) {
++		OverrideModifyListData[std::string(tgt->Name.c_str())].push_back(I);
++		return;
++	}
++
+     CInifile::SectIt_ sect_it = std::lower_bound(tgt->Data.begin(), tgt->Data.end(), *I.first, item_pred);
+@@ -206,5 +231,54 @@
+     R_ASSERT(F);
++
++	std::string DLTX_DELETE = "DLTX_DELETE";
++
++	std::function<void(std::vector<std::string>*, std::vector<std::string>*, bool)> MergeParentSet = [](std::vector<std::string>* ParentsBase, std::vector<std::string>* ParentsOverride, bool bIncludeRemovers)
++	{
++		for (std::string CurrentParent : *ParentsOverride)
++		{
++			bool bIsParentRemoval = CurrentParent[0] == '!';
++
++			std::string StaleParentString = (!bIsParentRemoval ? "!" : "") + CurrentParent.substr(1);
++
++			for (auto It = ParentsBase->rbegin(); It != ParentsBase->rend(); It++)
++			{
++				if (*It == StaleParentString)
++				{
++					ParentsBase->erase(std::next(It).base());
++				}
++			}
++
++			if (bIncludeRemovers || !bIsParentRemoval)
++			{
++				ParentsBase->insert(ParentsBase->end(), CurrentParent);
++			}
++		}
++	};
++
++	string_path currentFileName;
++	std::unordered_map<std::string, std::unordered_map<std::string, bool>> OverrideToFilename;
++	std::unordered_map<std::string, std::string> SectionToFilename;
++
++	std::function<void
++		(
++		IReader*,
++		LPCSTR,
++		std::unordered_map<std::string, Sect>*,
++		std::unordered_map<std::string, std::vector<std::string>>*,
++		BOOL,
++		BOOL
++		)
++	> LTXLoad = [&]
++		(
++		IReader* F,
++		LPCSTR path,
++		std::unordered_map<std::string, Sect>* OutputData,
++		std::unordered_map<std::string, std::vector<std::string>>* ParentDataMap,
++		BOOL bOverridesOnly,
++		BOOL bIsRootFile
++		)
++	{
+     Sect* Current = 0;
+-    string4096 str;
+-    string4096 str2;
++		MezzStringBuffer str;
++		MezzStringBuffer str2;
+ 
+@@ -212,6 +286,172 @@
+ 
+-    while (!F->eof())
++		BOOL bIsCurrentSectionOverride = FALSE;
++		BOOL bHasLoadedModFiles = FALSE;
++
++		std::function<std::vector<std::string>*(std::string)> GetParentStrings = [&](std::string SectionName)
++		{
++			auto It = ParentDataMap->find(SectionName);
++
++			if (It == ParentDataMap->end())
++			{
++				ParentDataMap->insert(std::pair<std::string, std::vector<std::string>>(SectionName, std::vector<std::string>()));
++
++				It = ParentDataMap->find(SectionName);
++			}
++
++			return &It->second;
++		};
++
++		auto GetParentsSetFromString = [&](const char* ParentString)
++		{
++			std::vector<std::string> ParentSet = std::vector<std::string>();
++
++			u32 ItemCount = _GetItemCount(ParentString);
++
++			for (u32 i = 0; i < ItemCount; i++)
++			{
++				_GetItem(ParentString, i, str2, str2.GetSize());
++
++				ParentSet.insert(ParentSet.end(), str2.GetBuffer());
++			}
++
++			return ParentSet;
++		};
++
++		auto GetRegexMatch = [](std::string InputString, std::string PatternString)
++		{
++			std::regex Pattern = std::regex(PatternString);
++			std::smatch MatchResult;
++
++			std::regex_search(InputString, MatchResult, Pattern);
++
++			if (MatchResult.begin() == MatchResult.end())
++			{
++				return std::string();
++			}
++
++			return MatchResult.begin()->str();
++		};
++
++		auto IsFullRegexMatch = [](std::string InputString, std::string PatternString)
++		{
++			return std::regex_match(InputString, std::regex(PatternString));
++		};
++
++		const auto loadFile = [&, LTXLoad](const string_path _fn, const string_path inc_path, const string_path name)
++		{
++			if (!allow_include_func || allow_include_func(_fn))
++			{
++				IReader* I = FS.r_open(_fn);
++				R_ASSERT3(I, "Can't find include file:", name);
++
++				strcpy(currentFileName, name);
++
++				LTXLoad(I, inc_path, OutputData, ParentDataMap, bOverridesOnly, false);
++
++				FS.r_close(I);
++			}
++		};
++
++		auto StashCurrentSection = [&]()
++		{
++			if (Current && bIsCurrentSectionOverride == bOverridesOnly)
++			{
++				//store previous section
++				auto SectIt = OutputData->find(std::string(Current->Name.c_str()));
++				if (SectIt != OutputData->end())
++				{
++					if (!bIsCurrentSectionOverride)
++					{
++
++						Debug.fatal(DEBUG_INFO, "Duplicate section '%s' wasn't marked as an override.\n\nOverride section by prefixing it with '!' (![%s]) or give it a unique name.\n\nCheck this file and its DLTX mods:\n\"%s\",\nfile with section \"%s\",\nfile with duplicate \"%s\"", *Current->Name, *Current->Name, m_file_name, SectionToFilename[std::string(Current->Name.c_str())].c_str(), currentFileName);
++					}
++
++					//Overwrite existing override data
++					for (Item CurrentItem : Current->Data)
++					{
++						insert_item(&SectIt->second, CurrentItem);
++					}
++
++					OverrideToFilename[SectIt->first][currentFileName] = true;
++				}
++				else
++				{
++					OutputData->emplace(std::pair<std::string, Sect>(std::string(Current->Name.c_str()), *Current));
++					OverrideToFilename[std::string(Current->Name.c_str())][currentFileName] = true;
++					SectionToFilename[std::string(Current->Name.c_str())] = currentFileName;
++				}
++			}
++
++			Current = NULL;
++		};
++
++		std::unordered_set<std::string> sectionsMarkedForCreate;
++
++		while (!F->eof() || (bIsRootFile && !bHasLoadedModFiles))
++		{
++			if (!F->eof())
+     {
+-        F->r_string(str, sizeof(str));
++				F->r_string(str, str.GetSize());
+         _Trim(str);
++			}
++			else if (!bHasLoadedModFiles && bIsRootFile)
++			{
++				StashCurrentSection();
++				bHasLoadedModFiles = TRUE;
++
++				if (!m_file_name[0])
++				{
++					continue;
++				}
++
++				//Assemble paths and filename
++				MezzStringBuffer split_drive;
++				MezzStringBuffer split_dir;
++				MezzStringBuffer split_name;
++
++				_splitpath_s(m_file_name, split_drive, split_drive.GetSize(), split_dir, split_dir.GetSize(), split_name, split_name.GetSize(), NULL, 0);
++
++				std::string FilePath = std::string(split_drive) + std::string(split_dir);
++				std::string FileName = split_name;
++
++				//Collect all files that could potentially be confused as a root file by our mod files
++				FS_FileSet AmbiguousFiles;
++				FS.file_list(AmbiguousFiles, FilePath.c_str(), FS_ListFiles, (FileName + "_*.ltx").c_str());
++
++				//Collect all matching mod files
++				FS_FileSet ModFiles;
++				FS.file_list(ModFiles, FilePath.c_str(), FS_ListFiles, ("mod_" + FileName + "_*.ltx").c_str());
++
++				for (auto It = ModFiles.begin(); It != ModFiles.end(); ++It)
++				{
++					std::string ModFileName = It->name.c_str();
++
++					//Determine if we should load this mod file, or if it's meant for a different root file
++					BOOL bIsModfileMeantForMe = [&]()
++					{
++						for (auto It2 = AmbiguousFiles.begin(); It2 != AmbiguousFiles.end(); ++It2)
++						{
++							std::string AmbiguousFileName = GetRegexMatch(It2->name.c_str(), "^.+(?=.ltx$)");
++							std::string AmbiguousFileMatchPattern = std::string("mod_") + AmbiguousFileName + std::string("_.+.ltx");
++
++							if (IsFullRegexMatch(ModFileName, AmbiguousFileMatchPattern))
++							{
++								return false;
++							}
++						}
++
++						return true;
++					}();
++
++					if (!bIsModfileMeantForMe)
++					{
++						continue;
++					}
++
++					loadFile((FilePath + ModFileName).c_str(), FilePath.c_str(), ModFileName.c_str());
++				}
++
++				continue;
++			}
++
+         LPSTR comm = strchr(str, ';');
+@@ -250,2 +490,15 @@
+ 
++			_Trim(str);
++
++			auto isOverrideSection = [](char* str) {
++				return strstr(str, "![") == &str[0];
++			};
++
++			auto isSafeOverrideSection = [](char* str) {
++				return strstr(str, "@[") == &str[0];
++			};
++
++			auto isModSection = [isOverrideSection, isSafeOverrideSection](char* str) {
++				return isOverrideSection(str) || isSafeOverrideSection(str);
++			};
+ 
+@@ -261,27 +514,30 @@
+                 xr_strcat(inc_path, sizeof(inc_path), folder);
+-#ifndef _EDITOR
+-                if (!allow_include_func || allow_include_func(fn))
+-#endif
++
++
++					if (strstr(inc_name, "*.ltx"))
+                 {
+-                    IReader* I = FS.r_open(fn);
+-                    R_ASSERT3(I, "Can't find include file:", inc_name);
+-                    Load(I, inc_path
+-#ifndef _EDITOR
+-                         , allow_include_func
+-#endif
+-                        );
+-                    FS.r_close(I);
++						FS_FileSet fset;
++						FS.file_list(fset, inc_path, FS_ListFiles, inc_name);
++
++						for (FS_FileSet::iterator it = fset.begin(); it != fset.end(); it++)
++						{
++							LPCSTR _name = it->name.c_str();
++							string_path _fn;
++							strconcat(sizeof(_fn), _fn, inc_path, _name);
++							loadFile(_fn, inc_path, _name);
+                 }
+             }
++					else
++						loadFile(fn, inc_path, inc_name);
++				}
++
++				continue;
+         }
+-        else if (str[0] && (str[0] == '[')) //new section ?
++			else if (str[0] && strstr(str, "!![") == &str[0])	//Section delete
+         {
+-            // insert previous filled section
+-            if (Current)
++				StashCurrentSection();
++
++				if (!bOverridesOnly)
+             {
+-                //store previous section
+-                RootIt I = std::lower_bound(DATA.begin(), DATA.end(), *Current->Name, sect_pred);
+-                if ((I != DATA.end()) && ((*I)->Name == Current->Name))
+-                    Debug.fatal(DEBUG_INFO, "Duplicate section '%s' found.", *Current->Name);
+-                DATA.insert(I, Current);
++					continue;
+             }
+@@ -287,6 +543,56 @@
+             }
++
+             Current = xr_new<Sect>();
+-            Current->Name = 0;
++				*strchr(str, ']') = 0;
++				Current->Name = strlwr(&str[3]);
++
++				bIsCurrentSectionOverride = true;
++
++				Item DeleteItem;
++				DeleteItem.first = DLTX_DELETE.c_str();
++				DeleteItem.second = "";
++
++				insert_item(Current, DeleteItem);
++
++				continue;
++			}
++			else if ((str[0] && (str[0] == '[')) || isModSection(str)) //new section ?
++			{
++				// insert previous filled section
++				StashCurrentSection();
++
++				u32 SectionNameStartPos = (isModSection(str) ? 2 : 1);
++				std::string SecName = std::string(str).substr(SectionNameStartPos, strchr(str, ']') - str - SectionNameStartPos).c_str();
++				for (auto i = SecName.begin(); i != SecName.end(); ++i)
++				{
++					*i = tolower(*i);
++				}
++				
++				if (isOverrideSection(str)) { //Used to detect bad or unintended overrides
++					bIsCurrentSectionOverride = true;
++				} else if (isSafeOverrideSection(str)) { // Create section if it doesnt exist, override if it does
++					bIsCurrentSectionOverride = true;
++					if (bOverridesOnly) {
++						// Msg("using @[, override existing section %s", SecName.c_str());
++					} else {
++						auto SectIt = OutputData->find(SecName);
++						if (SectIt != OutputData->end()) {
++							// Msg("using @[, override existing section %s", SecName.c_str());
++						} else {
++							// Msg("using @[, create new section %s", SecName.c_str());
++							sectionsMarkedForCreate.insert(SecName);
++						}
++					}
++				} else {
++					bIsCurrentSectionOverride = false;
++				}
++
++				Current = xr_new<Sect>();
++				Current->Name = SecName.c_str();
++
+             // start new section
+             R_ASSERT3(strchr(str, ']'), "Bad ini section found: ", str);
++
++				if (bIsCurrentSectionOverride == bOverridesOnly)
++				{
+             LPCSTR inherited_names = strstr(str, "]:");
+@@ -296,26 +602,11 @@
+                 inherited_names += 2;
+-                u32 cnt = _GetItemCount(inherited_names);
+-                u32 total_count = 0;
+-                u32 k = 0;
+-                for (k = 0; k < cnt; ++k)
+-                {
+-                    string512 tmp;
+-                    _GetItem(inherited_names, k, tmp);
+-                    Sect& inherited_section = r_section(tmp);
+-                    total_count += inherited_section.Data.size();
+-                }
+-
+-                Current->Data.reserve(Current->Data.size() + total_count);
+-
+-                for (k = 0; k < cnt; ++k)
+-                {
+-                    string512 tmp;
+-                    _GetItem(inherited_names, k, tmp);
+-                    Sect& inherited_section = r_section(tmp);
+-                    for (SectIt_ it = inherited_section.Data.begin(); it != inherited_section.Data.end(); it++)
+-                        insert_item(Current, *it);
++
++						std::vector<std::string> CurrentParents = GetParentsSetFromString(inherited_names);
++						std::vector<std::string>* SectionParents = GetParentStrings(Current->Name.c_str());
++
++						MergeParentSet(SectionParents, &CurrentParents, true);
+                 }
+             }
+-            *strchr(str, ']') = 0;
+-            Current->Name = strlwr(str + 1);
++
++				continue;
+         }
+@@ -323,6 +614,8 @@
+         {
+-            if (Current)
++				if (Current && bIsCurrentSectionOverride == bOverridesOnly)
+             {
+-                string4096 value_raw;
+-                char* name = str;
++					bool bIsDelete = str[0] == '!';
++
++					MezzStringBuffer value_raw;
++					char* name = (char*) (str + (bIsDelete ? 1 : 0));
+                 char* t = strchr(name, '=');
+@@ -333,3 +626,3 @@
+                     ++t;
+-                    xr_strcpy(value_raw, sizeof(value_raw), t);
++						xr_strcpy(value_raw, value_raw.GetSize(), t);
+                     bInsideSTR = _parse(str2, value_raw);
+@@ -339,9 +632,10 @@
+                         {
+-                            xr_strcat(value_raw, sizeof(value_raw), "\r\n");
+-                            string4096 str_add_raw;
+-                            F->r_string(str_add_raw, sizeof(str_add_raw));
++								xr_strcat(value_raw, value_raw.GetSize(), "\r\n");
++								MezzStringBuffer str_add_raw;
++								F->r_string(str_add_raw, str_add_raw.GetSize());
+                             R_ASSERT2(
+-                                xr_strlen(value_raw) + xr_strlen(str_add_raw) < sizeof(value_raw),
++									xr_strlen(value_raw) + xr_strlen(str_add_raw) < value_raw.GetSize(),
+                                 make_string(
+-                                    "Incorrect inifile format: section[%s], variable[%s]. Odd number of quotes (\") found, but should be even.",
++										"Incorrect inifile format: section[%s], variable[%s]. Odd number of quotes (\") found, but should be even."
++										,
+                                     Current->Name.c_str(),
+@@ -350,3 +644,3 @@
+                             );
+-                            xr_strcat(value_raw, sizeof(value_raw), str_add_raw);
++								xr_strcat(value_raw, value_raw.GetSize(), str_add_raw);
+                             bInsideSTR = _parse(str2, value_raw);
+@@ -355,3 +649,3 @@
+                                 if (is_empty_line_now(F))
+-                                    xr_strcat(value_raw, sizeof(value_raw), "\r\n");
++										xr_strcat(value_raw, value_raw.GetSize(), "\r\n");
+                             }
+@@ -368,10 +662,83 @@
+                 I.first = (name[0] ? name : NULL);
+-                I.second = (str2[0] ? str2 : NULL);
+-                //#ifdef DEBUG
+-                // I.comment = m_flags.test(eReadOnly)?0:comment;
+-                //#endif
++					I.second = bIsDelete ? DLTX_DELETE.c_str() : (str2[0] ? str2.GetBuffer() : NULL);
++
++					if (*I.first || *I.second)
++					{
++						insert_item(Current, I);
++					}
++				}
++
++				continue;
++			}
++		}
++
++		StashCurrentSection();
++
++		// Create empty sections that were marked with @[ and weren't defined normally
++		if (!bOverridesOnly) {
++			for (auto& SecName : sectionsMarkedForCreate) {
++				auto SectIt = OutputData->find(SecName);
++				if (SectIt == OutputData->end()) {
++					// Msg("section %s does not exist but was marked as @[, creating", SecName.c_str());
++					Current = xr_new<Sect>();
++					Current->Name = SecName.c_str();
++					OutputData->emplace(std::pair<std::string, Sect>(std::string(Current->Name.c_str()), *Current));
++					OverrideToFilename[std::string(Current->Name.c_str())][currentFileName] = true;
++					SectionToFilename[std::string(Current->Name.c_str())] = currentFileName;
++					Current = NULL;
++				}
++			}
++		}
++	};
++
++	std::unordered_map<std::string, std::vector<std::string>> BaseParentDataMap;
++	std::unordered_map<std::string, Sect> BaseData;
++
++	std::unordered_map<std::string, std::vector<std::string>> OverrideParentDataMap;
++	std::unordered_map<std::string, Sect> OverrideData;
++
++	std::unordered_map<std::string, Sect> FinalData;
++
++	std::unordered_set<std::string> FinalizedSections;
++
++	enum InsertType
++	{
++		Override,
++		Base,
++		Parent
++	};
++
++	std::function<void(std::string, std::vector<std::string>*)> EvaluateSection = [&](std::string SectionName, std::vector<std::string>* PreviousEvaluations)
++	{
++		if (FinalizedSections.find(SectionName) != FinalizedSections.end())
++		{
++			return;
++		}
++
++		PreviousEvaluations->insert(PreviousEvaluations->end(), SectionName);
+ 
+-                if (m_flags.test(eReadOnly))
++		std::vector<std::string>* BaseParents = &BaseParentDataMap.find(SectionName)->second;
++		std::vector<std::string>* OverrideParents = &OverrideParentDataMap.find(SectionName)->second;
++
++		BOOL bDeleteSectionIfEmpty = FALSE;
++
++		MergeParentSet(BaseParents, OverrideParents, false);
++
++		std::pair<std::string, Sect> CurrentSecPair = std::pair<std::string, Sect>(SectionName, Sect());
++		Sect* CurrentSect = &CurrentSecPair.second;
++		CurrentSect->Name = SectionName.c_str();
++
++		auto IsStringDLTXDelete = [&](shared_str str)
++		{
++			const char* RawString = str.c_str();
++
++			return RawString && std::string(RawString) == DLTX_DELETE;
++		};
++
++		auto InsertItemWithDelete = [&](Item CurrentItem, InsertType Type)
+                 {
+-                    if (*I.first) insert_item(Current, I);
++			if (IsStringDLTXDelete(CurrentItem.first))
++			{
++				//Delete section
++				bDeleteSectionIfEmpty = TRUE;
+                 }
+@@ -379,20 +746,231 @@
+                 {
+-                    if (
+-                        *I.first
+-                        || *I.second
+-                        //#ifdef DEBUG
+-                        // || *I.comment
+-                        //#endif
+-                    )
+-                        insert_item(Current, I);
++				//Insert item if variable isn't already set
++				CInifile::SectIt_ sect_it = std::lower_bound(CurrentSect->Data.begin(), CurrentSect->Data.end(), *CurrentItem.first, item_pred);
++				if (sect_it != CurrentSect->Data.end() && sect_it->first.equal(CurrentItem.first))
++				{
++					bool bShouldInsert = [&]()
++					{
++						switch (Type)
++						{
++						case InsertType::Override:		return true;
++						case InsertType::Base:			return false;
++						case InsertType::Parent:		return IsStringDLTXDelete(sect_it->second);
++						}
++					}();
++
++					if (bShouldInsert)
++					{
++						sect_it->second = CurrentItem.second;
++					}
+                 }
++				else
++				{
++					CurrentSect->Data.insert(sect_it, CurrentItem);
++				}
++			}
++		};
++
++		//Insert variables of own data
++		auto InsertData = [&](std::unordered_map<std::string, Sect>* Data, BOOL bIsBase)
++		{
++			auto It = Data->find(SectionName);
++
++			if (It != Data->end())
++			{
++				Sect* DataSection = &It->second;
++				for (Item CurrentItem : DataSection->Data)
++				{
++					InsertItemWithDelete(CurrentItem, bIsBase ? Base : Override);
+             }
++
++				if (!bIsBase)
++				{
++					Data->erase(It);
+         }
+     }
+-    if (Current)
++		};
++
++		InsertData(&OverrideData, false);
++		InsertData(&BaseData, true);
++
++		//Insert variables from parents
++		for (auto It = BaseParents->rbegin(); It != BaseParents->rend(); ++It)
+     {
+-        RootIt I = std::lower_bound(DATA.begin(), DATA.end(), *Current->Name, sect_pred);
+-        if ((I != DATA.end()) && ((*I)->Name == Current->Name))
+-            Debug.fatal(DEBUG_INFO, "Duplicate section '%s' found.", *Current->Name);
+-        DATA.insert(I, Current);
++			std::string ParentSectionName = *(It.base() - 1);
++
++			for (auto It = PreviousEvaluations->begin(); It != PreviousEvaluations->end(); ++It)
++			{
++				if (ParentSectionName == *It)
++				{
++					Debug.fatal(DEBUG_INFO, "Section '%s' has cyclical dependencies. Ensure that sections with parents don't inherit in a loop. Check this file and its DLTX mods: %s, mod file %s", ParentSectionName.c_str(), m_file_name, currentFileName);
++				}
++			}
++
++			EvaluateSection(ParentSectionName, PreviousEvaluations);
++
++			auto ParentIt = FinalData.find(ParentSectionName);
++
++			if (ParentIt == FinalData.end())
++			{
++				Debug.fatal(DEBUG_INFO, "Section '%s' inherits from non-existent section '%s'. Check this file and its DLTX mods: %s, mod file %s", SectionName.c_str(), ParentSectionName.c_str(), m_file_name, currentFileName);
++			}
++
++			Sect* ParentSec = &ParentIt->second;
++
++			for (Item CurrentItem : ParentSec->Data)
++			{
++				InsertItemWithDelete(CurrentItem, Parent);
++			}
++		}
++
++		//Delete entries that are still marked DLTX_DELETE
++		for (auto It = CurrentSect->Data.rbegin(); It != CurrentSect->Data.rend(); ++It)
++		{
++			if (IsStringDLTXDelete(It->second))
++			{
++				CurrentSect->Data.erase(It.base() - 1);
++			}
++		}
++
++		// If there is data to modify parameters lists
++		if (OverrideModifyListData.find(std::string(CurrentSect->Name.c_str())) != OverrideModifyListData.end()) {
++			for (auto It = OverrideModifyListData[std::string(CurrentSect->Name.c_str())].begin(); It != OverrideModifyListData[std::string(CurrentSect->Name.c_str())].end(); ++It) {
++				CInifile::Item &I = *It;
++
++				// If section exists with item list, split list and perform operation
++				char dltx_listmode = I.first[0];
++				I.first = I.first.c_str() + 1;
++
++				CInifile::SectIt_ sect_it = std::lower_bound(CurrentSect->Data.begin(), CurrentSect->Data.end(), *I.first, item_pred);
++				if (sect_it != CurrentSect->Data.end() && sect_it->first.equal(I.first)) {
++
++					//Msg("%s has dltx_listmode %s", I.first.c_str(), std::string(1, dltx_listmode).c_str());
++
++					if (dltx_listmode && sect_it->second != NULL) {
++						// Split list 
++						auto split_list = [](const std::string items, const std::string delimiter = ",") {
++							std::string i = items;
++							std::vector<std::string> vec;
++							size_t pos = 0;
++							std::string token;
++							while ((pos = i.find(delimiter)) != std::string::npos) {
++								token = i.substr(0, pos);
++								vec.push_back(token);
++								i.erase(0, pos + delimiter.length());
++							}
++							vec.push_back(i);
++
++							auto trim = [](std::string &s, const char* t = " \t\n\r\f\v") {
++								s.erase(s.find_last_not_of(t) + 1);
++								s.erase(0, s.find_first_not_of(t));
++							};
++							for (auto &item : vec) {
++								trim(item);
++							}
++							return vec;
++						};
++						std::vector<std::string> sect_it_items_vec = split_list(sect_it->second.c_str());
++						std::vector<std::string> I_items_vec = split_list(I.second.c_str());
++
++						// Add or remove to the list
++						auto find_and_store_index = [](const std::vector<std::string> &items_vec, const std::string item, int &vec_index) {
++							auto it = std::find(items_vec.begin(), items_vec.end(), item);
++							if (it != items_vec.end()) {
++								vec_index = it - items_vec.begin();
++								return true;
++							}
++							else {
++								vec_index = -1;
++								return false;
++							}
++						};
++						int vec_index = -1;
++						for (const auto &item : I_items_vec) {
++							if (dltx_listmode == '>') {
++								sect_it_items_vec.push_back(item);
++							}
++							else if (dltx_listmode == '<') {
++								while (find_and_store_index(sect_it_items_vec, item, vec_index)) {
++									sect_it_items_vec.erase(sect_it_items_vec.begin() + vec_index);
++								}
++							}
++						}
++
++						// Store result back
++						auto join_list = [](const std::vector<std::string> &items_vec, const std::string delimiter = ",") {
++							std::string ret;
++							for (const auto &i : items_vec) {
++								if (!ret.empty()) {
++									ret += delimiter;
++								}
++								ret += i;
++							}
++							return ret;
++						};
++
++						/*std::string c(1, dltx_listmode);
++						Msg("%s has dltx_listmode %s, %s items", I.first.c_str(), c.c_str(), dltx_listmode == '>' ? "adding" : "removing");
++						Msg("old %s", sect_it->second.c_str());
++						Msg("new %s", join_list(sect_it_items_vec).c_str());*/
++
++						sect_it->second = join_list(sect_it_items_vec, ",").c_str();
++					}
++				}
++			}
++		}
++		
++
++		//Pop from stack
++		auto LastElement = PreviousEvaluations->end();
++		LastElement--;
++
++		PreviousEvaluations->erase(LastElement);
++
++		//Finalize
++		if (!bDeleteSectionIfEmpty || CurrentSecPair.second.Data.size())
++		{
++			FinalData.emplace(CurrentSecPair);
++		}
++
++		FinalizedSections.insert(SectionName);
++	};
++
++	//Read contents of root file
++	LTXLoad(F, path, &OverrideData, &OverrideParentDataMap, true, true);
++	F->seek(0);
++	LTXLoad(F, path, &BaseData, &BaseParentDataMap, false, true);
++
++	//Merge base and override data together
++	std::vector<std::string> PreviousEvaluations = std::vector<std::string>();
++
++	for (std::pair<std::string, Sect> SectPair : BaseData)
++	{
++		EvaluateSection(SectPair.first, &PreviousEvaluations);
++	}
++
++	//Insert all finalized sections into final container
++	for (std::pair<std::string, Sect> SectPair : FinalData)
++	{
++		Sect* NewSect = xr_new<Sect>();
++		*NewSect = SectPair.second;
++
++		RootIt I = std::lower_bound(DATA.begin(), DATA.end(), SectPair.first.c_str(), sect_pred);
++		DATA.insert(I, NewSect);
++	}
++
++	// Clean modifiers of parameters' lists
++	OverrideModifyListData.clear();
++
++	//throw errors if there are overrides that never got used
++	if (OverrideData.size())
++	{
++		//Debug.fatal(DEBUG_INFO, "Attemped to override section '%s', which doesn't exist. Ensure that a base section with the same name is loaded first. Check this file and its DLTX mods: %s", OverrideData.begin()->first.c_str(), m_file_name);
++		for (auto i = OverrideData.begin(); i != OverrideData.end(); i++) {
++			auto override_filenames = OverrideToFilename.find(i->first);
++			if (override_filenames != OverrideToFilename.end()) {
++				for (auto &override_filename : override_filenames->second) {
++					Msg("!!!DLTX ERROR Attemped to override section '%s', which doesn't exist. Ensure that a base section with the same name is loaded first. Check this file and its DLTX mods: %s, mod file %s", i->first.c_str(), m_file_name, override_filename.first.c_str());
++				}
++			}
++		}
+     }
+@@ -500,2 +1078,6 @@
+ {
++	R_ASSERT(S && strlen(S),
++	         "Empty section (null\\'') passed into CInifile::r_section(). See info above ^, check your configs and 'call stack'.")
++	; //--#SM+#--
++
+     char section[256];
+@@ -526,2 +1107,7 @@
+ {
++	if (!S || !L || !strlen(S) || !strlen(L)) //--#SM+#-- [fix for one of "xrDebug - Invalid handler" error log]
++	{
++		Msg("!![ERROR] CInifile::r_string: S = [%s], L = [%s]", S, L);
++	}
++
+     Sect const& I = r_section(S);
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrCore/xr_trims.cpp xray-monolith/src/xrCore/xr_trims.cpp
+--- coc-1.4-xray-64/src/xrCore/xr_trims.cpp	2023-10-20 20:54:50.444327200 +0100
++++ xray-monolith/src/xrCore/xr_trims.cpp	2023-10-20 20:54:32.467035400 +0100
+@@ -9,3 +9,4 @@
+     {
+-        for (LPSTR t = str; *p; t++, p++) *t = *p;
++		LPSTR t = str;
++		for (; *p; t++, p++) *t = *p;
+         *t = 0;
+@@ -42,3 +43,3 @@
+ 
+-LPCSTR _CopyVal(LPCSTR src, LPSTR dst, char separator)
++LPCSTR _CopyVal(LPCSTR src, LPSTR dst, u32 const dst_size, char separator)
+ {
+@@ -48,3 +49,3 @@
+     n = (p > 0) ? (p - src) : xr_strlen(src);
+-    strncpy(dst, src, n);
++	strncpy(dst, src, _min(dst_size, (u32)n));
+     dst[n] = 0;
+@@ -76,3 +77,3 @@
+     ptr = _SetPos(src, index, separator);
+-    if (ptr) _CopyVal(ptr, dst, separator);
++	if (ptr) _CopyVal(ptr, dst, dst_size, separator);
+     else xr_strcpy(dst, dst_size, def);
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrCore/xr_trims.h xray-monolith/src/xrCore/xr_trims.h
+--- coc-1.4-xray-64/src/xrCore/xr_trims.h	2023-10-20 20:54:50.444327200 +0100
++++ xray-monolith/src/xrCore/xr_trims.h	2023-10-20 20:54:32.468036300 +0100
+@@ -31,3 +32,3 @@
+ XRCORE_API LPCSTR _SetPos(LPCSTR src, u32 pos, char separator = ',');
+-XRCORE_API LPCSTR _CopyVal(LPCSTR src, LPSTR dst, char separator = ',');
++XRCORE_API LPCSTR _CopyVal(LPCSTR src, LPSTR dst, u32 const dst_size, char separator = ',');
+ XRCORE_API LPSTR _Trim(LPSTR str);
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrCore/xrCore.cpp xray-monolith/src/xrCore/xrCore.cpp
+--- coc-1.4-xray-64/src/xrCore/xrCore.cpp	2023-10-20 20:54:50.431326700 +0100
++++ xray-monolith/src/xrCore/xrCore.cpp	2023-10-20 20:54:32.457035600 +0100
+@@ -15,5 +15,9 @@
+ 
++#include<fstream>
++#include <iostream>
++#include <string>
++
+ XRCORE_API xrCore Core;
+-XRCORE_API u32 build_id;
+-XRCORE_API LPCSTR build_date;
++extern XRCORE_API u32 build_id;
++extern XRCORE_API LPCSTR build_date;
+ 
+@@ -30,2 +34,4 @@
+ 
++extern int get_modded_exes_version();
++
+ void xrCore::_initialize(LPCSTR _ApplicationName, LogCallback cb, BOOL init_fs, LPCSTR fs_fname)
+@@ -92,2 +99,6 @@
+ 
++		time_t _time = time(NULL);
++		tm* time = localtime(&_time);
++		april1 = time ? (time->tm_mday == 1 && time->tm_mon == 3) : false;
++
+         xr_FS = xr_new<CLocatorAPI>();
+@@ -96,2 +107,33 @@
+         //. R_ASSERT (co_res==S_OK);
++
++		//Load cmd line from file if it exists
++		std::ifstream cmdlineTxt;
++		char path_A[MAX_PATH];
++		strcpy(path_A, Core.ApplicationPath);
++		strcat(path_A, "\\..\\commandline.txt");
++		cmdlineTxt.open(path_A);
++		
++		if (!cmdlineTxt)
++		{
++			cmdlineTxt.close();
++			strcpy(path_A, Core.WorkingPath);
++			strcat(path_A, "\\commandline.txt");
++			cmdlineTxt.open(path_A);
++		}
++
++		if (cmdlineTxt)
++		{
++			Msg("Found commandline file!");
++			std::string line;
++			char temp[2048];
++			sprintf(temp, Params);
++			strcat(temp, " ");
++			while (std::getline(cmdlineTxt, line))
++			{
++				strcat(temp, line.c_str());
++				strcat(temp, " ");
++			}
++			Params = xr_strdup(temp);
++		}
++		cmdlineTxt.close();
+     }
+@@ -118,2 +160,5 @@
+         Msg("'%s' build %d, %s\n", "xrCore", build_id, build_date);
++
++		// demonized: Print modded exes version
++		Msg("Modded exes version %d\n", get_modded_exes_version());
+         EFS._initialize();
+@@ -162,3 +207,4 @@
+ #else
+-BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD ul_reason_for_call, LPVOID lpvReserved)
++//BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD ul_reason_for_call, LPVOID lpvReserved)
++BOOL DllMainXrCore(HANDLE hinstDLL, DWORD ul_reason_for_call, LPVOID lpvReserved)
+ #endif
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrCore/xrCore.h xray-monolith/src/xrCore/xrCore.h
+--- coc-1.4-xray-64/src/xrCore/xrCore.h	2023-10-20 20:54:50.432327400 +0100
++++ xray-monolith/src/xrCore/xrCore.h	2023-10-20 20:54:32.457035600 +0100
+@@ -83,3 +83,3 @@
+ #include <string.h>
+-#include <typeinfo.h>
++#include <typeinfo>
+ #include <thread>
+@@ -120,2 +120,4 @@
+ 
++#define UNUSED(...) (void)(__VA_ARGS__)
++
+ #ifndef DEBUG
+@@ -203,11 +205,13 @@
+ // Our headers
+-#ifdef XRCORE_STATIC
+-# define XRCORE_API
+-#else
++//#ifdef XRCORE_STATIC
++//# define XRCORE_API
++//#else
+ # ifdef XRCORE_EXPORTS
+-# define XRCORE_API __declspec(dllexport)
++# define XRCORE_API
++//__declspec(dllexport)
+ # else
+-# define XRCORE_API __declspec(dllimport)
+-# endif
++# define XRCORE_API
++//__declspec(dllimport)
+ #endif
++//#endif
+ 
+@@ -311,2 +333,3 @@
+     DWORD dwFrame;
++	bool april1;
+ 
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrCore/xrCore.vcxproj xray-monolith/src/xrCore/xrCore.vcxproj
+--- coc-1.4-xray-64/src/xrCore/xrCore.vcxproj	2023-10-20 20:54:50.432327400 +0100
++++ xray-monolith/src/xrCore/xrCore.vcxproj	2023-10-20 20:54:32.458036500 +0100
+@@ -1,40 +1,8 @@
+-﻿<?xml version="1.0" encoding="utf-8"?>
+-<Project DefaultTargets="Build" ToolsVersion="12.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
++<?xml version="1.0" encoding="utf-8"?>
++<Project DefaultTargets="Build" ToolsVersion="14.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+   <ItemGroup Label="ProjectConfigurations">
+-    <ProjectConfiguration Include="Debug_NEW|Win32">
+-      <Configuration>Debug_NEW</Configuration>
+-      <Platform>Win32</Platform>
+-    </ProjectConfiguration>
+-    <ProjectConfiguration Include="Debug_NEW|x64">
+-      <Configuration>Debug_NEW</Configuration>
+-      <Platform>x64</Platform>
+-    </ProjectConfiguration>
+-    <ProjectConfiguration Include="Debug|Win32">
+-      <Configuration>Debug</Configuration>
+-      <Platform>Win32</Platform>
+-    </ProjectConfiguration>
+-    <ProjectConfiguration Include="Debug|x64">
+-      <Configuration>Debug</Configuration>
+-      <Platform>x64</Platform>
+-    </ProjectConfiguration>
+-    <ProjectConfiguration Include="Mixed|Win32">
+-      <Configuration>Mixed</Configuration>
+-      <Platform>Win32</Platform>
+-    </ProjectConfiguration>
+-    <ProjectConfiguration Include="Mixed|x64">
+-      <Configuration>Mixed</Configuration>
+-      <Platform>x64</Platform>
+-    </ProjectConfiguration>
+-    <ProjectConfiguration Include="Release_LuaJit_one|Win32">
+-      <Configuration>Release_LuaJit_one</Configuration>
+-      <Platform>Win32</Platform>
+-    </ProjectConfiguration>
+-    <ProjectConfiguration Include="Release_LuaJit_one|x64">
+-      <Configuration>Release_LuaJit_one</Configuration>
++    <ProjectConfiguration Include="Release-AVX|x64">
++      <Configuration>Release-AVX</Configuration>
+       <Platform>x64</Platform>
+     </ProjectConfiguration>
+-    <ProjectConfiguration Include="Release|Win32">
+-      <Configuration>Release</Configuration>
+-      <Platform>Win32</Platform>
+-    </ProjectConfiguration>
+     <ProjectConfiguration Include="Release|x64">
+@@ -43,2 +11,6 @@
+     </ProjectConfiguration>
++    <ProjectConfiguration Include="VerifiedDX11|x64">
++      <Configuration>VerifiedDX11</Configuration>
++      <Platform>x64</Platform>
++    </ProjectConfiguration>
+   </ItemGroup>
+@@ -48,59 +20,22 @@
+     <Keyword>Win32Proj</Keyword>
++    <WindowsTargetPlatformVersion>8.1</WindowsTargetPlatformVersion>
+   </PropertyGroup>
+   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Mixed|Win32'" Label="Configuration">
+-    <ConfigurationType>DynamicLibrary</ConfigurationType>
+-    <PlatformToolset>v120</PlatformToolset>
+-    <CharacterSet>MultiByte</CharacterSet>
+-  </PropertyGroup>
+-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Mixed|x64'" Label="Configuration">
+-    <ConfigurationType>DynamicLibrary</ConfigurationType>
+-    <PlatformToolset>v120</PlatformToolset>
+-    <CharacterSet>MultiByte</CharacterSet>
+-  </PropertyGroup>
+-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+-    <ConfigurationType>DynamicLibrary</ConfigurationType>
+-    <PlatformToolset>v120</PlatformToolset>
+-    <CharacterSet>MultiByte</CharacterSet>
+-    <WholeProgramOptimization>true</WholeProgramOptimization>
+-  </PropertyGroup>
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+-    <ConfigurationType>DynamicLibrary</ConfigurationType>
+-    <PlatformToolset>v120</PlatformToolset>
+-    <CharacterSet>MultiByte</CharacterSet>
+-    <WholeProgramOptimization>true</WholeProgramOptimization>
+-  </PropertyGroup>
+-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|Win32'" Label="Configuration">
+-    <ConfigurationType>DynamicLibrary</ConfigurationType>
+-    <PlatformToolset>v120</PlatformToolset>
+-    <CharacterSet>MultiByte</CharacterSet>
+-    <WholeProgramOptimization>true</WholeProgramOptimization>
+-  </PropertyGroup>
+-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|x64'" Label="Configuration">
+-    <ConfigurationType>DynamicLibrary</ConfigurationType>
+-    <PlatformToolset>v120</PlatformToolset>
++    <ConfigurationType>StaticLibrary</ConfigurationType>
++    <PlatformToolset>v140</PlatformToolset>
+     <CharacterSet>MultiByte</CharacterSet>
+-    <WholeProgramOptimization>true</WholeProgramOptimization>
+-  </PropertyGroup>
+-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|Win32'" Label="Configuration">
+-    <ConfigurationType>DynamicLibrary</ConfigurationType>
+-    <PlatformToolset>v120</PlatformToolset>
+-    <CharacterSet>MultiByte</CharacterSet>
+-    <WholeProgramOptimization>true</WholeProgramOptimization>
+-  </PropertyGroup>
+-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|x64'" Label="Configuration">
+-    <ConfigurationType>DynamicLibrary</ConfigurationType>
+-    <PlatformToolset>v120</PlatformToolset>
+-    <CharacterSet>MultiByte</CharacterSet>
+-    <WholeProgramOptimization>true</WholeProgramOptimization>
++    <WholeProgramOptimization>false</WholeProgramOptimization>
+   </PropertyGroup>
+-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+-    <ConfigurationType>DynamicLibrary</ConfigurationType>
+-    <PlatformToolset>v120</PlatformToolset>
++  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='VerifiedDX11|x64'" Label="Configuration">
++    <ConfigurationType>StaticLibrary</ConfigurationType>
++    <PlatformToolset>v140</PlatformToolset>
+     <CharacterSet>MultiByte</CharacterSet>
++    <WholeProgramOptimization>false</WholeProgramOptimization>
+   </PropertyGroup>
+-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+-    <ConfigurationType>DynamicLibrary</ConfigurationType>
+-    <PlatformToolset>v120</PlatformToolset>
++  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release-AVX|x64'" Label="Configuration">
++    <ConfigurationType>StaticLibrary</ConfigurationType>
++    <PlatformToolset>v140</PlatformToolset>
+     <CharacterSet>MultiByte</CharacterSet>
++    <WholeProgramOptimization>false</WholeProgramOptimization>
+   </PropertyGroup>
+@@ -109,17 +44,2 @@
+   </ImportGroup>
+-  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Mixed|Win32'" Label="PropertySheets">
+-    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+-    <Import Project="$(VCTargetsPath)Microsoft.CPP.UpgradeFromVC71.props" />
+-    <Import Project="$(SolutionDir)Common.props" />
+-  </ImportGroup>
+-  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Mixed|x64'" Label="PropertySheets">
+-    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+-    <Import Project="$(VCTargetsPath)Microsoft.CPP.UpgradeFromVC71.props" />
+-    <Import Project="$(SolutionDir)Common.props" />
+-  </ImportGroup>
+-  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="PropertySheets">
+-    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+-    <Import Project="$(VCTargetsPath)Microsoft.CPP.UpgradeFromVC71.props" />
+-    <Import Project="$(SolutionDir)Common.props" />
+-  </ImportGroup>
+   <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="PropertySheets">
+@@ -129,8 +49,3 @@
+   </ImportGroup>
+-  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|Win32'" Label="PropertySheets">
+-    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+-    <Import Project="$(VCTargetsPath)Microsoft.CPP.UpgradeFromVC71.props" />
+-    <Import Project="$(SolutionDir)Common.props" />
+-  </ImportGroup>
+-  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|x64'" Label="PropertySheets">
++  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='VerifiedDX11|x64'" Label="PropertySheets">
+     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+@@ -139,18 +54,3 @@
+   </ImportGroup>
+-  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|Win32'" Label="PropertySheets">
+-    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+-    <Import Project="$(VCTargetsPath)Microsoft.CPP.UpgradeFromVC71.props" />
+-    <Import Project="$(SolutionDir)Common.props" />
+-  </ImportGroup>
+-  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|x64'" Label="PropertySheets">
+-    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+-    <Import Project="$(VCTargetsPath)Microsoft.CPP.UpgradeFromVC71.props" />
+-    <Import Project="$(SolutionDir)Common.props" />
+-  </ImportGroup>
+-  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="PropertySheets">
+-    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+-    <Import Project="$(VCTargetsPath)Microsoft.CPP.UpgradeFromVC71.props" />
+-    <Import Project="$(SolutionDir)Common.props" />
+-  </ImportGroup>
+-  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="PropertySheets">
++  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release-AVX|x64'" Label="PropertySheets">
+     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+@@ -163,149 +63,17 @@
+   </PropertyGroup>
+-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+-    <OutDir>$(xrGameDir)bin_dbg\</OutDir>
+-    <IntDir>$(xrIntDir)$(ProjectName)\</IntDir>
+-    <LinkIncremental>true</LinkIncremental>
+-  </PropertyGroup>
+-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+-    <LinkIncremental>true</LinkIncremental>
+-  </PropertyGroup>
+-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+-    <OutDir>$(xrGameDir)bin_rel\</OutDir>
+-    <IntDir>$(xrIntDir)$(ProjectName)\</IntDir>
+-    <LinkIncremental>false</LinkIncremental>
+-  </PropertyGroup>
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+     <LinkIncremental>false</LinkIncremental>
+-  </PropertyGroup>
+-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|Win32'">
+-    <OutDir>$(xrGameDir)bin_dbg\</OutDir>
++    <OutDir>$(xrGameDir)bin_dbg\$(Platform)\$(Configuration)\</OutDir>
+     <IntDir>$(xrIntDir)$(ProjectName)\</IntDir>
+-    <LinkIncremental>false</LinkIncremental>
+   </PropertyGroup>
+-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|x64'">
++  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='VerifiedDX11|x64'">
+     <LinkIncremental>false</LinkIncremental>
+-  </PropertyGroup>
+-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|Win32'">
+-    <OutDir>$(xrGameDir)bin_rel\</OutDir>
++    <OutDir>$(xrGameDir)bin_dbg\$(Platform)\$(Configuration)\</OutDir>
+     <IntDir>$(xrIntDir)$(ProjectName)\</IntDir>
+-    <LinkIncremental>false</LinkIncremental>
+   </PropertyGroup>
+-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|x64'">
++  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release-AVX|x64'">
+     <LinkIncremental>false</LinkIncremental>
+-  </PropertyGroup>
+-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Mixed|Win32'">
+-    <OutDir>$(xrBinDir)</OutDir>
++    <OutDir>$(xrGameDir)bin_dbg\$(Platform)\$(Configuration)\</OutDir>
+     <IntDir>$(xrIntDir)$(ProjectName)\</IntDir>
+-    <LinkIncremental>false</LinkIncremental>
+   </PropertyGroup>
+-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Mixed|x64'">
+-    <LinkIncremental>false</LinkIncremental>
+-  </PropertyGroup>
+-  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+-    <ClCompile>
+-      <Optimization>Disabled</Optimization>
+-      <AdditionalIncludeDirectories>.;$(DXSDK_DIR)Include;$(XRAY_16X_LIBS);$(xrSdkDir)include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+-      <PreprocessorDefinitions>USE_LUAJIT_ONE;WIN32;DEBUG;_WINDOWS;_USRDLL;XRCORE_EXPORTS;_SECURE_SCL=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+-      <StringPooling>false</StringPooling>
+-      <MinimalRebuild>true</MinimalRebuild>
+-      <ExceptionHandling>Sync</ExceptionHandling>
+-      <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
+-      <SmallerTypeCheck>false</SmallerTypeCheck>
+-      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+-      <FunctionLevelLinking>true</FunctionLevelLinking>
+-      <FloatingPointModel>Fast</FloatingPointModel>
+-      <ForceConformanceInForLoopScope>false</ForceConformanceInForLoopScope>
+-      <RuntimeTypeInfo>true</RuntimeTypeInfo>
+-      <PrecompiledHeader>Use</PrecompiledHeader>
+-      <BrowseInformation />
+-      <WarningLevel>Level4</WarningLevel>
+-      <SuppressStartupBanner>true</SuppressStartupBanner>
+-      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+-    </ClCompile>
+-    <Link>
+-      <SuppressStartupBanner>true</SuppressStartupBanner>
+-      <AdditionalLibraryDirectories>$(xrSdkDir)libraries;$(DXSDK_DIR)Lib\x86;$(XRAY_16X_LIBS)BugTrap\Bin;$(xrLibDir);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+-      <GenerateDebugInformation>true</GenerateDebugInformation>
+-      <MapExports>false</MapExports>
+-      <SubSystem>Windows</SubSystem>
+-      <LargeAddressAware>true</LargeAddressAware>
+-      <RandomizedBaseAddress>false</RandomizedBaseAddress>
+-      <DataExecutionPrevention />
+-      <ImportLibrary>$(xrLibDir)$(TargetName).lib</ImportLibrary>
+-      <TargetMachine>MachineX86</TargetMachine>
+-    </Link>
+-  </ItemDefinitionGroup>
+-  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+-    <ClCompile>
+-      <Optimization>Disabled</Optimization>
+-      <AdditionalIncludeDirectories>.;$(DXSDK_DIR)Include;$(XRAY_16X_LIBS);$(xrSdkDir)include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+-      <PreprocessorDefinitions>USE_LUAJIT_ONE;WIN32;DEBUG;_WINDOWS;_USRDLL;XRCORE_EXPORTS;_SECURE_SCL=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+-      <StringPooling>false</StringPooling>
+-      <ExceptionHandling>Sync</ExceptionHandling>
+-      <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
+-      <SmallerTypeCheck>false</SmallerTypeCheck>
+-      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+-      <FunctionLevelLinking>true</FunctionLevelLinking>
+-      <FloatingPointModel>Fast</FloatingPointModel>
+-      <ForceConformanceInForLoopScope>false</ForceConformanceInForLoopScope>
+-      <RuntimeTypeInfo>true</RuntimeTypeInfo>
+-      <PrecompiledHeader>Use</PrecompiledHeader>
+-      <BrowseInformation>
+-      </BrowseInformation>
+-      <WarningLevel>Level4</WarningLevel>
+-      <SuppressStartupBanner>true</SuppressStartupBanner>
+-      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+-    </ClCompile>
+-    <Link>
+-      <SuppressStartupBanner>true</SuppressStartupBanner>
+-      <AdditionalLibraryDirectories>$(xrSdkDir)libraries;$(DXSDK_DIR)Lib\x86;$(XRAY_16X_LIBS)BugTrap\Bin;$(xrLibDir);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+-      <GenerateDebugInformation>true</GenerateDebugInformation>
+-      <MapExports>false</MapExports>
+-      <SubSystem>Windows</SubSystem>
+-      <LargeAddressAware>true</LargeAddressAware>
+-      <RandomizedBaseAddress>false</RandomizedBaseAddress>
+-      <DataExecutionPrevention>
+-      </DataExecutionPrevention>
+-      <ImportLibrary>$(xrLibDir)$(TargetName).lib</ImportLibrary>
+-    </Link>
+-  </ItemDefinitionGroup>
+-  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+-    <ClCompile>
+-      <Optimization>MaxSpeed</Optimization>
+-      <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
+-      <IntrinsicFunctions>true</IntrinsicFunctions>
+-      <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
+-      <OmitFramePointers>true</OmitFramePointers>
+-      <EnableFiberSafeOptimizations>true</EnableFiberSafeOptimizations>
+-      <WholeProgramOptimization>true</WholeProgramOptimization>
+-      <AdditionalIncludeDirectories>.;$(DXSDK_DIR)Include;$(XRAY_16X_LIBS);$(xrSdkDir)include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+-      <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;_USRDLL;XRCORE_EXPORTS;_SECURE_SCL=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+-      <StringPooling>true</StringPooling>
+-      <ExceptionHandling />
+-      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+-      <BufferSecurityCheck>false</BufferSecurityCheck>
+-      <FunctionLevelLinking>true</FunctionLevelLinking>
+-      <EnableEnhancedInstructionSet>StreamingSIMDExtensions2</EnableEnhancedInstructionSet>
+-      <FloatingPointModel>Precise</FloatingPointModel>
+-      <ForceConformanceInForLoopScope>false</ForceConformanceInForLoopScope>
+-      <RuntimeTypeInfo>true</RuntimeTypeInfo>
+-      <PrecompiledHeader>Use</PrecompiledHeader>
+-      <BrowseInformation />
+-      <WarningLevel>Level4</WarningLevel>
+-      <DebugInformationFormat>None</DebugInformationFormat>
+-      <UndefinePreprocessorDefinitions>USE_LUAJIT_ONE</UndefinePreprocessorDefinitions>
+-    </ClCompile>
+-    <Link>
+-      <AdditionalLibraryDirectories>$(xrSdkDir)libraries;$(DXSDK_DIR)Lib\x86;$(XRAY_16X_LIBS)BugTrap\Bin;$(xrLibDir);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+-      <SubSystem>NotSet</SubSystem>
+-      <LargeAddressAware>true</LargeAddressAware>
+-      <OptimizeReferences>true</OptimizeReferences>
+-      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+-      <LinkTimeCodeGeneration>UseLinkTimeCodeGeneration</LinkTimeCodeGeneration>
+-      <RandomizedBaseAddress>false</RandomizedBaseAddress>
+-      <DataExecutionPrevention />
+-      <ImportLibrary>$(xrLibDir)$(TargetName).lib</ImportLibrary>
+-      <TargetMachine>NotSet</TargetMachine>
+-    </Link>
+-  </ItemDefinitionGroup>
+   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+@@ -318,5 +86,5 @@
+       <EnableFiberSafeOptimizations>true</EnableFiberSafeOptimizations>
+-      <WholeProgramOptimization>true</WholeProgramOptimization>
++      <WholeProgramOptimization>false</WholeProgramOptimization>
+       <AdditionalIncludeDirectories>.;$(DXSDK_DIR)Include;$(XRAY_16X_LIBS);$(xrSdkDir)include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+-      <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;_USRDLL;XRCORE_EXPORTS;_SECURE_SCL=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
++      <PreprocessorDefinitions>PURE_ALLOC;WIN32;NDEBUG;_WINDOWS;_USRDLL;XRCORE_EXPORTS;_SECURE_SCL=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+       <StringPooling>true</StringPooling>
+@@ -327,3 +95,3 @@
+       <FunctionLevelLinking>true</FunctionLevelLinking>
+-      <EnableEnhancedInstructionSet>AdvancedVectorExtensions</EnableEnhancedInstructionSet>
++      <EnableEnhancedInstructionSet>NotSet</EnableEnhancedInstructionSet>
+       <FloatingPointModel>Precise</FloatingPointModel>
+@@ -335,43 +103,3 @@
+       <WarningLevel>Level4</WarningLevel>
+-      <DebugInformationFormat>None</DebugInformationFormat>
+-      <UndefinePreprocessorDefinitions>USE_LUAJIT_ONE</UndefinePreprocessorDefinitions>
+-    </ClCompile>
+-    <Link>
+-      <AdditionalLibraryDirectories>$(xrSdkDir)libraries;$(DXSDK_DIR)Lib\x86;$(XRAY_16X_LIBS)BugTrap\Bin;$(xrLibDir);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+-      <SubSystem>NotSet</SubSystem>
+-      <LargeAddressAware>true</LargeAddressAware>
+-      <OptimizeReferences>true</OptimizeReferences>
+-      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+-      <LinkTimeCodeGeneration>UseLinkTimeCodeGeneration</LinkTimeCodeGeneration>
+-      <RandomizedBaseAddress>false</RandomizedBaseAddress>
+-      <DataExecutionPrevention>
+-      </DataExecutionPrevention>
+-      <ImportLibrary>$(xrLibDir)$(TargetName).lib</ImportLibrary>
+-    </Link>
+-  </ItemDefinitionGroup>
+-  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|Win32'">
+-    <ClCompile>
+-      <Optimization>Disabled</Optimization>
+-      <InlineFunctionExpansion>Default</InlineFunctionExpansion>
+-      <IntrinsicFunctions>true</IntrinsicFunctions>
+-      <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
+-      <OmitFramePointers>true</OmitFramePointers>
+-      <EnableFiberSafeOptimizations>true</EnableFiberSafeOptimizations>
+-      <WholeProgramOptimization>false</WholeProgramOptimization>
+-      <AdditionalIncludeDirectories>.;$(DXSDK_DIR)Include;$(XRAY_16X_LIBS);$(xrSdkDir)include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+-      <PreprocessorDefinitions>WIN32;DEBUG;_WINDOWS;_USRDLL;XRCORE_EXPORTS;_SECURE_SCL=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+-      <StringPooling>true</StringPooling>
+-      <ExceptionHandling>Sync</ExceptionHandling>
+-      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+-      <BufferSecurityCheck>false</BufferSecurityCheck>
+-      <FunctionLevelLinking>true</FunctionLevelLinking>
+-      <EnableEnhancedInstructionSet>StreamingSIMDExtensions2</EnableEnhancedInstructionSet>
+-      <FloatingPointModel>Fast</FloatingPointModel>
+-      <ForceConformanceInForLoopScope>false</ForceConformanceInForLoopScope>
+-      <RuntimeTypeInfo>true</RuntimeTypeInfo>
+-      <PrecompiledHeader>Use</PrecompiledHeader>
+-      <BrowseInformation>
+-      </BrowseInformation>
+-      <WarningLevel>Level4</WarningLevel>
+-      <DebugInformationFormat>EditAndContinue</DebugInformationFormat>
++      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+       <UndefinePreprocessorDefinitions>USE_LUAJIT_ONE</UndefinePreprocessorDefinitions>
+@@ -380,3 +108,2 @@
+       <AdditionalLibraryDirectories>$(xrSdkDir)libraries;$(DXSDK_DIR)Lib\x86;$(XRAY_16X_LIBS)BugTrap\Bin;$(xrLibDir);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+-      <GenerateDebugInformation>true</GenerateDebugInformation>
+       <SubSystem>NotSet</SubSystem>
+@@ -390,23 +117,23 @@
+       <ImportLibrary>$(xrLibDir)$(TargetName).lib</ImportLibrary>
+-      <TargetMachine>NotSet</TargetMachine>
++      <GenerateDebugInformation>true</GenerateDebugInformation>
+     </Link>
+   </ItemDefinitionGroup>
+-  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|x64'">
++  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='VerifiedDX11|x64'">
+     <ClCompile>
+       <Optimization>Disabled</Optimization>
+-      <InlineFunctionExpansion>Default</InlineFunctionExpansion>
+-      <IntrinsicFunctions>true</IntrinsicFunctions>
+-      <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
+-      <OmitFramePointers>true</OmitFramePointers>
+-      <EnableFiberSafeOptimizations>true</EnableFiberSafeOptimizations>
++      <InlineFunctionExpansion>Disabled</InlineFunctionExpansion>
++      <IntrinsicFunctions>false</IntrinsicFunctions>
++      <FavorSizeOrSpeed>Neither</FavorSizeOrSpeed>
++      <OmitFramePointers>false</OmitFramePointers>
++      <EnableFiberSafeOptimizations>false</EnableFiberSafeOptimizations>
+       <WholeProgramOptimization>false</WholeProgramOptimization>
+       <AdditionalIncludeDirectories>.;$(DXSDK_DIR)Include;$(XRAY_16X_LIBS);$(xrSdkDir)include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+-      <PreprocessorDefinitions>WIN32;DEBUG;_WINDOWS;_USRDLL;XRCORE_EXPORTS;_SECURE_SCL=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+-      <StringPooling>true</StringPooling>
+-      <ExceptionHandling>Sync</ExceptionHandling>
++      <PreprocessorDefinitions>USE_VERIFY_IN_RELEASE;PURE_ALLOC;WIN32;NDEBUG;_WINDOWS;_USRDLL;XRCORE_EXPORTS;_SECURE_SCL=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
++      <ExceptionHandling>
++      </ExceptionHandling>
+       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+-      <BufferSecurityCheck>false</BufferSecurityCheck>
++      <BufferSecurityCheck>true</BufferSecurityCheck>
+       <FunctionLevelLinking>true</FunctionLevelLinking>
+-      <EnableEnhancedInstructionSet>StreamingSIMDExtensions2</EnableEnhancedInstructionSet>
+-      <FloatingPointModel>Fast</FloatingPointModel>
++      <EnableEnhancedInstructionSet>NotSet</EnableEnhancedInstructionSet>
++      <FloatingPointModel>Precise</FloatingPointModel>
+       <ForceConformanceInForLoopScope>false</ForceConformanceInForLoopScope>
+@@ -419,2 +146,4 @@
+       <UndefinePreprocessorDefinitions>USE_LUAJIT_ONE</UndefinePreprocessorDefinitions>
++      <MinimalRebuild>true</MinimalRebuild>
++      <RemoveUnreferencedCodeData>false</RemoveUnreferencedCodeData>
+     </ClCompile>
+@@ -422,3 +151,2 @@
+       <AdditionalLibraryDirectories>$(xrSdkDir)libraries;$(DXSDK_DIR)Lib\x86;$(XRAY_16X_LIBS)BugTrap\Bin;$(xrLibDir);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+-      <GenerateDebugInformation>true</GenerateDebugInformation>
+       <SubSystem>NotSet</SubSystem>
+@@ -432,47 +160,6 @@
+       <ImportLibrary>$(xrLibDir)$(TargetName).lib</ImportLibrary>
+-    </Link>
+-  </ItemDefinitionGroup>
+-  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|Win32'">
+-    <ClCompile>
+-      <Optimization>MaxSpeed</Optimization>
+-      <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
+-      <IntrinsicFunctions>true</IntrinsicFunctions>
+-      <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
+-      <OmitFramePointers>true</OmitFramePointers>
+-      <EnableFiberSafeOptimizations>true</EnableFiberSafeOptimizations>
+-      <WholeProgramOptimization>true</WholeProgramOptimization>
+-      <AdditionalIncludeDirectories>.;$(DXSDK_DIR)Include;$(XRAY_16X_LIBS);$(xrSdkDir)include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+-      <PreprocessorDefinitions>USE_LUAJIT_ONE;WIN32;NDEBUG;_WINDOWS;_USRDLL;XRCORE_EXPORTS;_SECURE_SCL=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+-      <StringPooling>true</StringPooling>
+-      <ExceptionHandling>
+-      </ExceptionHandling>
+-      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+-      <BufferSecurityCheck>false</BufferSecurityCheck>
+-      <FunctionLevelLinking>false</FunctionLevelLinking>
+-      <EnableEnhancedInstructionSet>StreamingSIMDExtensions2</EnableEnhancedInstructionSet>
+-      <FloatingPointModel>Fast</FloatingPointModel>
+-      <ForceConformanceInForLoopScope>false</ForceConformanceInForLoopScope>
+-      <RuntimeTypeInfo>true</RuntimeTypeInfo>
+-      <PrecompiledHeader>Use</PrecompiledHeader>
+-      <BrowseInformation>
+-      </BrowseInformation>
+-      <WarningLevel>Level4</WarningLevel>
+-      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+-    </ClCompile>
+-    <Link>
+-      <AdditionalLibraryDirectories>$(xrSdkDir)libraries;$(DXSDK_DIR)Lib\x86;$(XRAY_16X_LIBS)BugTrap\Bin;$(xrLibDir);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+       <GenerateDebugInformation>true</GenerateDebugInformation>
+-      <SubSystem>NotSet</SubSystem>
+-      <LargeAddressAware>true</LargeAddressAware>
+-      <OptimizeReferences>true</OptimizeReferences>
+-      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+-      <LinkTimeCodeGeneration>UseLinkTimeCodeGeneration</LinkTimeCodeGeneration>
+-      <RandomizedBaseAddress>false</RandomizedBaseAddress>
+-      <DataExecutionPrevention>
+-      </DataExecutionPrevention>
+-      <ImportLibrary>$(xrLibDir)$(TargetName).lib</ImportLibrary>
+-      <TargetMachine>NotSet</TargetMachine>
+     </Link>
+   </ItemDefinitionGroup>
+-  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|x64'">
++  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release-AVX|x64'">
+     <ClCompile>
+@@ -484,5 +171,5 @@
+       <EnableFiberSafeOptimizations>true</EnableFiberSafeOptimizations>
+-      <WholeProgramOptimization>true</WholeProgramOptimization>
++      <WholeProgramOptimization>false</WholeProgramOptimization>
+       <AdditionalIncludeDirectories>.;$(DXSDK_DIR)Include;$(XRAY_16X_LIBS);$(xrSdkDir)include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+-      <PreprocessorDefinitions>USE_LUAJIT_ONE;WIN32;NDEBUG;_WINDOWS;_USRDLL;XRCORE_EXPORTS;_SECURE_SCL=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
++      <PreprocessorDefinitions>PURE_ALLOC;WIN32;NDEBUG;_WINDOWS;_USRDLL;XRCORE_EXPORTS;_SECURE_SCL=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+       <StringPooling>true</StringPooling>
+@@ -492,5 +179,5 @@
+       <BufferSecurityCheck>false</BufferSecurityCheck>
+-      <FunctionLevelLinking>false</FunctionLevelLinking>
+-      <EnableEnhancedInstructionSet>StreamingSIMDExtensions2</EnableEnhancedInstructionSet>
+-      <FloatingPointModel>Fast</FloatingPointModel>
++      <FunctionLevelLinking>true</FunctionLevelLinking>
++      <EnableEnhancedInstructionSet>AdvancedVectorExtensions</EnableEnhancedInstructionSet>
++      <FloatingPointModel>Precise</FloatingPointModel>
+       <ForceConformanceInForLoopScope>false</ForceConformanceInForLoopScope>
+@@ -502,2 +189,3 @@
+       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
++      <UndefinePreprocessorDefinitions>USE_LUAJIT_ONE</UndefinePreprocessorDefinitions>
+     </ClCompile>
+@@ -505,3 +193,2 @@
+       <AdditionalLibraryDirectories>$(xrSdkDir)libraries;$(DXSDK_DIR)Lib\x86;$(XRAY_16X_LIBS)BugTrap\Bin;$(xrLibDir);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+-      <GenerateDebugInformation>true</GenerateDebugInformation>
+       <SubSystem>NotSet</SubSystem>
+@@ -510,3 +197,3 @@
+       <EnableCOMDATFolding>true</EnableCOMDATFolding>
+-      <LinkTimeCodeGeneration>UseLinkTimeCodeGeneration</LinkTimeCodeGeneration>
++      <LinkTimeCodeGeneration>Default</LinkTimeCodeGeneration>
+       <RandomizedBaseAddress>false</RandomizedBaseAddress>
+@@ -515,69 +202,3 @@
+       <ImportLibrary>$(xrLibDir)$(TargetName).lib</ImportLibrary>
+-    </Link>
+-  </ItemDefinitionGroup>
+-  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Mixed|Win32'">
+-    <ClCompile>
+-      <Optimization>Full</Optimization>
+-      <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
+-      <IntrinsicFunctions>true</IntrinsicFunctions>
+-      <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
+-      <OmitFramePointers>false</OmitFramePointers>
+-      <EnableFiberSafeOptimizations>true</EnableFiberSafeOptimizations>
+-      <AdditionalIncludeDirectories>.;$(DXSDK_DIR)Include;$(XRAY_16X_LIBS);$(xrSdkDir)include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+-      <PreprocessorDefinitions>MIXED;WIN32;DEBUG;_WINDOWS;_USRDLL;XRCORE_EXPORTS;_SECURE_SCL=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+-      <StringPooling>true</StringPooling>
+-      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+-      <BufferSecurityCheck>true</BufferSecurityCheck>
+-      <FunctionLevelLinking>false</FunctionLevelLinking>
+-      <FloatingPointModel>Fast</FloatingPointModel>
+-      <ForceConformanceInForLoopScope>false</ForceConformanceInForLoopScope>
+-      <RuntimeTypeInfo>true</RuntimeTypeInfo>
+-      <PrecompiledHeader>Use</PrecompiledHeader>
+-      <BrowseInformation />
+-      <WarningLevel>Level4</WarningLevel>
+-      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+-    </ClCompile>
+-    <Link>
+-      <AdditionalLibraryDirectories>$(xrSdkDir)libraries;$(DXSDK_DIR)Lib\x86;$(XRAY_16X_LIBS)BugTrap\Bin;$(xrLibDir);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+       <GenerateDebugInformation>true</GenerateDebugInformation>
+-      <SubSystem>Windows</SubSystem>
+-      <LargeAddressAware>true</LargeAddressAware>
+-      <RandomizedBaseAddress>false</RandomizedBaseAddress>
+-      <DataExecutionPrevention />
+-      <ImportLibrary>$(xrLibDir)$(TargetName).lib</ImportLibrary>
+-      <TargetMachine>NotSet</TargetMachine>
+-    </Link>
+-  </ItemDefinitionGroup>
+-  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Mixed|x64'">
+-    <ClCompile>
+-      <Optimization>Full</Optimization>
+-      <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
+-      <IntrinsicFunctions>true</IntrinsicFunctions>
+-      <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
+-      <OmitFramePointers>false</OmitFramePointers>
+-      <EnableFiberSafeOptimizations>true</EnableFiberSafeOptimizations>
+-      <AdditionalIncludeDirectories>.;$(DXSDK_DIR)Include;$(XRAY_16X_LIBS);$(xrSdkDir)include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+-      <PreprocessorDefinitions>MIXED;WIN32;DEBUG;_WINDOWS;_USRDLL;XRCORE_EXPORTS;_SECURE_SCL=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+-      <StringPooling>true</StringPooling>
+-      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+-      <BufferSecurityCheck>true</BufferSecurityCheck>
+-      <FunctionLevelLinking>false</FunctionLevelLinking>
+-      <FloatingPointModel>Fast</FloatingPointModel>
+-      <ForceConformanceInForLoopScope>false</ForceConformanceInForLoopScope>
+-      <RuntimeTypeInfo>true</RuntimeTypeInfo>
+-      <PrecompiledHeader>Use</PrecompiledHeader>
+-      <BrowseInformation>
+-      </BrowseInformation>
+-      <WarningLevel>Level4</WarningLevel>
+-      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+-    </ClCompile>
+-    <Link>
+-      <AdditionalLibraryDirectories>$(xrSdkDir)libraries;$(DXSDK_DIR)Lib\x86;$(XRAY_16X_LIBS)BugTrap\Bin;$(xrLibDir);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+-      <GenerateDebugInformation>true</GenerateDebugInformation>
+-      <SubSystem>Windows</SubSystem>
+-      <LargeAddressAware>true</LargeAddressAware>
+-      <RandomizedBaseAddress>false</RandomizedBaseAddress>
+-      <DataExecutionPrevention>
+-      </DataExecutionPrevention>
+-      <ImportLibrary>$(xrLibDir)$(TargetName).lib</ImportLibrary>
+     </Link>
+@@ -586,296 +207,102 @@
+     <ClCompile Include="blackbox\BlackBoxUI.cpp">
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+-      </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+-      </PrecompiledHeader>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">TurnOffAllWarnings</WarningLevel>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">TurnOffAllWarnings</WarningLevel>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Mixed|Win32'">
+-      </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Mixed|x64'">
+-      </PrecompiledHeader>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Mixed|Win32'">TurnOffAllWarnings</WarningLevel>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Mixed|x64'">TurnOffAllWarnings</WarningLevel>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+-      </PrecompiledHeader>
+       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+       </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|Win32'">
++      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='VerifiedDX11|x64'">
+       </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|x64'">
++      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release-AVX|x64'">
+       </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|Win32'">
+-      </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|x64'">
+-      </PrecompiledHeader>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">TurnOffAllWarnings</WarningLevel>
+       <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Release|x64'">TurnOffAllWarnings</WarningLevel>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|Win32'">TurnOffAllWarnings</WarningLevel>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|x64'">TurnOffAllWarnings</WarningLevel>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|Win32'">TurnOffAllWarnings</WarningLevel>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|x64'">TurnOffAllWarnings</WarningLevel>
++      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='VerifiedDX11|x64'">TurnOffAllWarnings</WarningLevel>
++      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Release-AVX|x64'">TurnOffAllWarnings</WarningLevel>
+     </ClCompile>
+     <ClCompile Include="blackbox\BSUFunctions.cpp">
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+-      </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+-      </PrecompiledHeader>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">TurnOffAllWarnings</WarningLevel>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">TurnOffAllWarnings</WarningLevel>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Mixed|Win32'">
+-      </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Mixed|x64'">
+-      </PrecompiledHeader>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Mixed|Win32'">TurnOffAllWarnings</WarningLevel>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Mixed|x64'">TurnOffAllWarnings</WarningLevel>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+-      </PrecompiledHeader>
+       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+       </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|Win32'">
+-      </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|x64'">
+-      </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|Win32'">
++      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='VerifiedDX11|x64'">
+       </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|x64'">
++      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release-AVX|x64'">
+       </PrecompiledHeader>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">TurnOffAllWarnings</WarningLevel>
+       <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Release|x64'">TurnOffAllWarnings</WarningLevel>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|Win32'">TurnOffAllWarnings</WarningLevel>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|x64'">TurnOffAllWarnings</WarningLevel>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|Win32'">TurnOffAllWarnings</WarningLevel>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|x64'">TurnOffAllWarnings</WarningLevel>
++      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='VerifiedDX11|x64'">TurnOffAllWarnings</WarningLevel>
++      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Release-AVX|x64'">TurnOffAllWarnings</WarningLevel>
+     </ClCompile>
+     <ClCompile Include="blackbox\CrashHandler.cpp">
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+-      </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+-      </PrecompiledHeader>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">TurnOffAllWarnings</WarningLevel>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">TurnOffAllWarnings</WarningLevel>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Mixed|Win32'">
+-      </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Mixed|x64'">
+-      </PrecompiledHeader>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Mixed|Win32'">TurnOffAllWarnings</WarningLevel>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Mixed|x64'">TurnOffAllWarnings</WarningLevel>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+-      </PrecompiledHeader>
+       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+       </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|Win32'">
+-      </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|x64'">
++      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='VerifiedDX11|x64'">
+       </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|Win32'">
++      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release-AVX|x64'">
+       </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|x64'">
+-      </PrecompiledHeader>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">TurnOffAllWarnings</WarningLevel>
+       <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Release|x64'">TurnOffAllWarnings</WarningLevel>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|Win32'">TurnOffAllWarnings</WarningLevel>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|x64'">TurnOffAllWarnings</WarningLevel>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|Win32'">TurnOffAllWarnings</WarningLevel>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|x64'">TurnOffAllWarnings</WarningLevel>
++      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='VerifiedDX11|x64'">TurnOffAllWarnings</WarningLevel>
++      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Release-AVX|x64'">TurnOffAllWarnings</WarningLevel>
+     </ClCompile>
+     <ClCompile Include="blackbox\DiagAssert.cpp">
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+-      </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+-      </PrecompiledHeader>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">TurnOffAllWarnings</WarningLevel>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">TurnOffAllWarnings</WarningLevel>
+-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Mixed|Win32'">true</ExcludedFromBuild>
+-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Mixed|x64'">true</ExcludedFromBuild>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Mixed|Win32'">
+-      </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Mixed|x64'">
+-      </PrecompiledHeader>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Mixed|Win32'">TurnOffAllWarnings</WarningLevel>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Mixed|x64'">TurnOffAllWarnings</WarningLevel>
+-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|Win32'">true</ExcludedFromBuild>
+-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|x64'">true</ExcludedFromBuild>
+-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|Win32'">true</ExcludedFromBuild>
+-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|x64'">true</ExcludedFromBuild>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+-      </PrecompiledHeader>
++      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='VerifiedDX11|x64'">true</ExcludedFromBuild>
++      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release-AVX|x64'">true</ExcludedFromBuild>
+       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+       </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|Win32'">
++      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='VerifiedDX11|x64'">
+       </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|x64'">
++      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release-AVX|x64'">
+       </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|Win32'">
+-      </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|x64'">
+-      </PrecompiledHeader>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">TurnOffAllWarnings</WarningLevel>
+       <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Release|x64'">TurnOffAllWarnings</WarningLevel>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|Win32'">TurnOffAllWarnings</WarningLevel>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|x64'">TurnOffAllWarnings</WarningLevel>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|Win32'">TurnOffAllWarnings</WarningLevel>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|x64'">TurnOffAllWarnings</WarningLevel>
++      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='VerifiedDX11|x64'">TurnOffAllWarnings</WarningLevel>
++      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Release-AVX|x64'">TurnOffAllWarnings</WarningLevel>
+     </ClCompile>
+     <ClCompile Include="blackbox\GetLoadedModules.cpp">
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+-      </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+-      </PrecompiledHeader>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">TurnOffAllWarnings</WarningLevel>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">TurnOffAllWarnings</WarningLevel>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Mixed|Win32'">
+-      </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Mixed|x64'">
+-      </PrecompiledHeader>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Mixed|Win32'">TurnOffAllWarnings</WarningLevel>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Mixed|x64'">TurnOffAllWarnings</WarningLevel>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+-      </PrecompiledHeader>
+       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+       </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|Win32'">
+-      </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|x64'">
+-      </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|Win32'">
++      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='VerifiedDX11|x64'">
+       </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|x64'">
++      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release-AVX|x64'">
+       </PrecompiledHeader>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">TurnOffAllWarnings</WarningLevel>
+       <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Release|x64'">TurnOffAllWarnings</WarningLevel>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|Win32'">TurnOffAllWarnings</WarningLevel>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|x64'">TurnOffAllWarnings</WarningLevel>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|Win32'">TurnOffAllWarnings</WarningLevel>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|x64'">TurnOffAllWarnings</WarningLevel>
++      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='VerifiedDX11|x64'">TurnOffAllWarnings</WarningLevel>
++      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Release-AVX|x64'">TurnOffAllWarnings</WarningLevel>
+     </ClCompile>
+     <ClCompile Include="blackbox\IsNT.cpp">
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+-      </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+-      </PrecompiledHeader>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">TurnOffAllWarnings</WarningLevel>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">TurnOffAllWarnings</WarningLevel>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Mixed|Win32'">
+-      </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Mixed|x64'">
+-      </PrecompiledHeader>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Mixed|Win32'">TurnOffAllWarnings</WarningLevel>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Mixed|x64'">TurnOffAllWarnings</WarningLevel>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+-      </PrecompiledHeader>
+       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+       </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|Win32'">
+-      </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|x64'">
++      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='VerifiedDX11|x64'">
+       </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|Win32'">
++      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release-AVX|x64'">
+       </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|x64'">
+-      </PrecompiledHeader>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">TurnOffAllWarnings</WarningLevel>
+       <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Release|x64'">TurnOffAllWarnings</WarningLevel>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|Win32'">TurnOffAllWarnings</WarningLevel>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|x64'">TurnOffAllWarnings</WarningLevel>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|Win32'">TurnOffAllWarnings</WarningLevel>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|x64'">TurnOffAllWarnings</WarningLevel>
++      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='VerifiedDX11|x64'">TurnOffAllWarnings</WarningLevel>
++      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Release-AVX|x64'">TurnOffAllWarnings</WarningLevel>
+     </ClCompile>
+     <ClCompile Include="blackbox\NT4ProcessInfo.cpp">
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+-      </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+-      </PrecompiledHeader>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">TurnOffAllWarnings</WarningLevel>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">TurnOffAllWarnings</WarningLevel>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Mixed|Win32'">
+-      </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Mixed|x64'">
+-      </PrecompiledHeader>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Mixed|Win32'">TurnOffAllWarnings</WarningLevel>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Mixed|x64'">TurnOffAllWarnings</WarningLevel>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+-      </PrecompiledHeader>
+       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+       </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|Win32'">
++      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='VerifiedDX11|x64'">
+       </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|x64'">
++      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release-AVX|x64'">
+       </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|Win32'">
+-      </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|x64'">
+-      </PrecompiledHeader>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">TurnOffAllWarnings</WarningLevel>
+       <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Release|x64'">TurnOffAllWarnings</WarningLevel>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|Win32'">TurnOffAllWarnings</WarningLevel>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|x64'">TurnOffAllWarnings</WarningLevel>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|Win32'">TurnOffAllWarnings</WarningLevel>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|x64'">TurnOffAllWarnings</WarningLevel>
++      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='VerifiedDX11|x64'">TurnOffAllWarnings</WarningLevel>
++      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Release-AVX|x64'">TurnOffAllWarnings</WarningLevel>
+     </ClCompile>
+     <ClCompile Include="blackbox\stdafx_.cpp">
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+-      </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+-      </PrecompiledHeader>
+-      <ObjectFileName Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">$(IntDir)%(Filename)1.obj</ObjectFileName>
+-      <ObjectFileName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(IntDir)%(Filename)1.obj</ObjectFileName>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Mixed|Win32'">
+-      </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Mixed|x64'">
+-      </PrecompiledHeader>
+-      <ObjectFileName Condition="'$(Configuration)|$(Platform)'=='Mixed|Win32'">$(IntDir)%(Filename)1.obj</ObjectFileName>
+-      <ObjectFileName Condition="'$(Configuration)|$(Platform)'=='Mixed|x64'">$(IntDir)%(Filename)1.obj</ObjectFileName>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+-      </PrecompiledHeader>
+       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+       </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|Win32'">
+-      </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|x64'">
+-      </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|Win32'">
++      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='VerifiedDX11|x64'">
+       </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|x64'">
++      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release-AVX|x64'">
+       </PrecompiledHeader>
+-      <ObjectFileName Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">$(IntDir)%(Filename)1.obj</ObjectFileName>
+       <ObjectFileName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(IntDir)%(Filename)1.obj</ObjectFileName>
+-      <ObjectFileName Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|Win32'">$(IntDir)%(Filename)1.obj</ObjectFileName>
+-      <ObjectFileName Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|x64'">$(IntDir)%(Filename)1.obj</ObjectFileName>
+-      <ObjectFileName Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|Win32'">$(IntDir)%(Filename)1.obj</ObjectFileName>
+-      <ObjectFileName Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|x64'">$(IntDir)%(Filename)1.obj</ObjectFileName>
++      <ObjectFileName Condition="'$(Configuration)|$(Platform)'=='VerifiedDX11|x64'">$(IntDir)%(Filename)1.obj</ObjectFileName>
++      <ObjectFileName Condition="'$(Configuration)|$(Platform)'=='Release-AVX|x64'">$(IntDir)%(Filename)1.obj</ObjectFileName>
+     </ClCompile>
+     <ClCompile Include="blackbox\TLHELPProcessInfo.cpp">
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+-      </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+-      </PrecompiledHeader>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">TurnOffAllWarnings</WarningLevel>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">TurnOffAllWarnings</WarningLevel>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Mixed|Win32'">
+-      </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Mixed|x64'">
+-      </PrecompiledHeader>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Mixed|Win32'">TurnOffAllWarnings</WarningLevel>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Mixed|x64'">TurnOffAllWarnings</WarningLevel>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+-      </PrecompiledHeader>
+       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+       </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|Win32'">
+-      </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|x64'">
++      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='VerifiedDX11|x64'">
+       </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|Win32'">
++      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release-AVX|x64'">
+       </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|x64'">
+-      </PrecompiledHeader>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">TurnOffAllWarnings</WarningLevel>
+       <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Release|x64'">TurnOffAllWarnings</WarningLevel>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|Win32'">TurnOffAllWarnings</WarningLevel>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|x64'">TurnOffAllWarnings</WarningLevel>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|Win32'">TurnOffAllWarnings</WarningLevel>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|x64'">TurnOffAllWarnings</WarningLevel>
++      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='VerifiedDX11|x64'">TurnOffAllWarnings</WarningLevel>
++      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Release-AVX|x64'">TurnOffAllWarnings</WarningLevel>
+     </ClCompile>
+@@ -884,3 +311,2 @@
+     <ClCompile Include="crc32.cpp" />
+-    <ClCompile Include="doug_lea_allocator.cpp" />
+     <ClCompile Include="dump_string.cpp" />
+@@ -895,13 +321,7 @@
+     <ClCompile Include="LocatorAPI_Notifications.cpp">
+-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
+-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Mixed|Win32'">true</ExcludedFromBuild>
+-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Mixed|x64'">true</ExcludedFromBuild>
+-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|Win32'">true</ExcludedFromBuild>
+-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|x64'">true</ExcludedFromBuild>
+-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|Win32'">true</ExcludedFromBuild>
+-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|x64'">true</ExcludedFromBuild>
++      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='VerifiedDX11|x64'">true</ExcludedFromBuild>
++      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release-AVX|x64'">true</ExcludedFromBuild>
+     </ClCompile>
++    <ClCompile Include="Lock.cpp" />
+     <ClCompile Include="log.cpp" />
+@@ -912,33 +332,13 @@
+     <ClCompile Include="memory_usage.cpp" />
++    <ClCompile Include="mezz_stringbuffer.cpp" />
+     <ClCompile Include="Model.cpp">
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+-      </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+-      </PrecompiledHeader>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">TurnOffAllWarnings</WarningLevel>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">TurnOffAllWarnings</WarningLevel>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Mixed|Win32'">
+-      </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Mixed|x64'">
+-      </PrecompiledHeader>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Mixed|Win32'">TurnOffAllWarnings</WarningLevel>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Mixed|x64'">TurnOffAllWarnings</WarningLevel>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+-      </PrecompiledHeader>
+       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+       </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|Win32'">
++      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='VerifiedDX11|x64'">
+       </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|x64'">
++      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release-AVX|x64'">
+       </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|Win32'">
+-      </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|x64'">
+-      </PrecompiledHeader>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">TurnOffAllWarnings</WarningLevel>
+       <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Release|x64'">TurnOffAllWarnings</WarningLevel>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|Win32'">TurnOffAllWarnings</WarningLevel>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|x64'">TurnOffAllWarnings</WarningLevel>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|Win32'">TurnOffAllWarnings</WarningLevel>
+-      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|x64'">TurnOffAllWarnings</WarningLevel>
++      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='VerifiedDX11|x64'">TurnOffAllWarnings</WarningLevel>
++      <WarningLevel Condition="'$(Configuration)|$(Platform)'=='Release-AVX|x64'">TurnOffAllWarnings</WarningLevel>
+     </ClCompile>
+@@ -947,56 +347,2 @@
+     <ClCompile Include="ppmd_compressor.cpp" />
+-    <ClCompile Include="ptmalloc3\malloc.c">
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+-      </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+-      </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Mixed|Win32'">
+-      </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Mixed|x64'">
+-      </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+-      </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+-      </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|Win32'">
+-      </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|x64'">
+-      </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|Win32'">
+-      </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|x64'">
+-      </PrecompiledHeader>
+-      <DisableSpecificWarnings Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">4702</DisableSpecificWarnings>
+-      <DisableSpecificWarnings Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">4702</DisableSpecificWarnings>
+-      <DisableSpecificWarnings Condition="'$(Configuration)|$(Platform)'=='Mixed|Win32'">4702</DisableSpecificWarnings>
+-      <DisableSpecificWarnings Condition="'$(Configuration)|$(Platform)'=='Mixed|x64'">4702</DisableSpecificWarnings>
+-      <DisableSpecificWarnings Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">4702</DisableSpecificWarnings>
+-      <DisableSpecificWarnings Condition="'$(Configuration)|$(Platform)'=='Release|x64'">4702</DisableSpecificWarnings>
+-      <DisableSpecificWarnings Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|Win32'">4702</DisableSpecificWarnings>
+-      <DisableSpecificWarnings Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|x64'">4702</DisableSpecificWarnings>
+-      <DisableSpecificWarnings Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|Win32'">4702</DisableSpecificWarnings>
+-      <DisableSpecificWarnings Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|x64'">4702</DisableSpecificWarnings>
+-    </ClCompile>
+-    <ClCompile Include="ptmalloc3\sysdeps\win32\win32.c">
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+-      </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+-      </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Mixed|Win32'">
+-      </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Mixed|x64'">
+-      </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+-      </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+-      </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|Win32'">
+-      </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|x64'">
+-      </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|Win32'">
+-      </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|x64'">
+-      </PrecompiledHeader>
+-    </ClCompile>
+     <ClCompile Include="rt_compressor.cpp" />
+@@ -1009,15 +355,7 @@
+     <ClCompile Include="rt_lzo_init.cpp" />
++    <ClCompile Include="ScopeLock.cpp" />
+     <ClCompile Include="stdafx.cpp">
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Mixed|Win32'">Create</PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Mixed|x64'">Create</PrecompiledHeader>
+-      <ShowIncludes Condition="'$(Configuration)|$(Platform)'=='Mixed|Win32'">false</ShowIncludes>
+-      <ShowIncludes Condition="'$(Configuration)|$(Platform)'=='Mixed|x64'">false</ShowIncludes>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Create</PrecompiledHeader>
+       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|Win32'">Create</PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|x64'">Create</PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|Win32'">Create</PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|x64'">Create</PrecompiledHeader>
++      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='VerifiedDX11|x64'">Create</PrecompiledHeader>
++      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release-AVX|x64'">Create</PrecompiledHeader>
+     </ClCompile>
+@@ -1027,12 +365,5 @@
+     <ClCompile Include="xrDebug.cpp">
+-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
+-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Mixed|Win32'">true</ExcludedFromBuild>
+-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Mixed|x64'">true</ExcludedFromBuild>
+-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|Win32'">true</ExcludedFromBuild>
+-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|x64'">true</ExcludedFromBuild>
+-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|Win32'">true</ExcludedFromBuild>
+-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|x64'">true</ExcludedFromBuild>
++      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='VerifiedDX11|x64'">true</ExcludedFromBuild>
++      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release-AVX|x64'">true</ExcludedFromBuild>
+     </ClCompile>
+@@ -1044,30 +375,15 @@
+     <ClCompile Include="xrMemory_pso_Copy.cpp">
+-      <AssemblerOutput Condition="'$(Configuration)|$(Platform)'=='Mixed|Win32'">AssemblyAndSourceCode</AssemblerOutput>
+-      <AssemblerOutput Condition="'$(Configuration)|$(Platform)'=='Mixed|x64'">AssemblyAndSourceCode</AssemblerOutput>
+-      <AssemblerOutput Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">AssemblyAndSourceCode</AssemblerOutput>
+       <AssemblerOutput Condition="'$(Configuration)|$(Platform)'=='Release|x64'">AssemblyAndSourceCode</AssemblerOutput>
+-      <AssemblerOutput Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|Win32'">AssemblyAndSourceCode</AssemblerOutput>
+-      <AssemblerOutput Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|x64'">AssemblyAndSourceCode</AssemblerOutput>
+-      <AssemblerOutput Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|Win32'">AssemblyAndSourceCode</AssemblerOutput>
+-      <AssemblerOutput Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|x64'">AssemblyAndSourceCode</AssemblerOutput>
++      <AssemblerOutput Condition="'$(Configuration)|$(Platform)'=='VerifiedDX11|x64'">AssemblyAndSourceCode</AssemblerOutput>
++      <AssemblerOutput Condition="'$(Configuration)|$(Platform)'=='Release-AVX|x64'">AssemblyAndSourceCode</AssemblerOutput>
+     </ClCompile>
+     <ClCompile Include="xrMemory_pso_Fill.cpp">
+-      <AssemblerOutput Condition="'$(Configuration)|$(Platform)'=='Mixed|Win32'">AssemblyAndSourceCode</AssemblerOutput>
+-      <AssemblerOutput Condition="'$(Configuration)|$(Platform)'=='Mixed|x64'">AssemblyAndSourceCode</AssemblerOutput>
+-      <AssemblerOutput Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">AssemblyAndSourceCode</AssemblerOutput>
+       <AssemblerOutput Condition="'$(Configuration)|$(Platform)'=='Release|x64'">AssemblyAndSourceCode</AssemblerOutput>
+-      <AssemblerOutput Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|Win32'">AssemblyAndSourceCode</AssemblerOutput>
+-      <AssemblerOutput Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|x64'">AssemblyAndSourceCode</AssemblerOutput>
+-      <AssemblerOutput Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|Win32'">AssemblyAndSourceCode</AssemblerOutput>
+-      <AssemblerOutput Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|x64'">AssemblyAndSourceCode</AssemblerOutput>
++      <AssemblerOutput Condition="'$(Configuration)|$(Platform)'=='VerifiedDX11|x64'">AssemblyAndSourceCode</AssemblerOutput>
++      <AssemblerOutput Condition="'$(Configuration)|$(Platform)'=='Release-AVX|x64'">AssemblyAndSourceCode</AssemblerOutput>
+     </ClCompile>
+     <ClCompile Include="xrMemory_pso_Fill32.cpp">
+-      <AssemblerOutput Condition="'$(Configuration)|$(Platform)'=='Mixed|Win32'">AssemblyAndSourceCode</AssemblerOutput>
+-      <AssemblerOutput Condition="'$(Configuration)|$(Platform)'=='Mixed|x64'">AssemblyAndSourceCode</AssemblerOutput>
+-      <AssemblerOutput Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">AssemblyAndSourceCode</AssemblerOutput>
+       <AssemblerOutput Condition="'$(Configuration)|$(Platform)'=='Release|x64'">AssemblyAndSourceCode</AssemblerOutput>
+-      <AssemblerOutput Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|Win32'">AssemblyAndSourceCode</AssemblerOutput>
+-      <AssemblerOutput Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|x64'">AssemblyAndSourceCode</AssemblerOutput>
+-      <AssemblerOutput Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|Win32'">AssemblyAndSourceCode</AssemblerOutput>
+-      <AssemblerOutput Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|x64'">AssemblyAndSourceCode</AssemblerOutput>
++      <AssemblerOutput Condition="'$(Configuration)|$(Platform)'=='VerifiedDX11|x64'">AssemblyAndSourceCode</AssemblerOutput>
++      <AssemblerOutput Condition="'$(Configuration)|$(Platform)'=='Release-AVX|x64'">AssemblyAndSourceCode</AssemblerOutput>
+     </ClCompile>
+@@ -1098,2 +414,4 @@
+     <ClInclude Include="buffer_vector_inline.h" />
++    <ClInclude Include="ChooseTypes.H" />
++    <ClInclude Include="client_id.h" />
+     <ClInclude Include="clsid.h" />
+@@ -1103,3 +421,2 @@
+     <ClInclude Include="cpuid.h" />
+-    <ClInclude Include="doug_lea_allocator.h" />
+     <ClInclude Include="dump_string.h" />
+@@ -1120,13 +437,7 @@
+     <CustomBuild Include="LocatorAPI_Notifications.h">
+-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
+-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Mixed|Win32'">true</ExcludedFromBuild>
+-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Mixed|x64'">true</ExcludedFromBuild>
+-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|Win32'">true</ExcludedFromBuild>
+-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|x64'">true</ExcludedFromBuild>
+-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|Win32'">true</ExcludedFromBuild>
+-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|x64'">true</ExcludedFromBuild>
++      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='VerifiedDX11|x64'">true</ExcludedFromBuild>
++      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release-AVX|x64'">true</ExcludedFromBuild>
+     </CustomBuild>
++    <ClInclude Include="Lock.hpp" />
+     <ClInclude Include="log.h" />
+@@ -1134,4 +445,4 @@
+     <ClInclude Include="lzo_compressor.h" />
+-    <ClInclude Include="memory_allocator_options.h" />
+     <ClInclude Include="memory_monitor.h" />
++    <ClInclude Include="mezz_stringbuffer.h" />
+     <ClInclude Include="net_utils.h" />
+@@ -1141,3 +452,2 @@
+     <ClInclude Include="ppmd_compressor.h" />
+-    <ClInclude Include="ptmalloc3\malloc-2.8.3.h" />
+     <ClInclude Include="resource.h" />
+@@ -1153,2 +463,3 @@
+     <ClInclude Include="rt_miniacc.h" />
++    <ClInclude Include="ScopeLock.hpp" />
+     <ClInclude Include="stdafx.h" />
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrCore/xrCore.vcxproj.filters xray-monolith/src/xrCore/xrCore.vcxproj.filters
+--- coc-1.4-xray-64/src/xrCore/xrCore.vcxproj.filters	2023-10-20 20:54:50.433338100 +0100
++++ xray-monolith/src/xrCore/xrCore.vcxproj.filters	2023-10-20 20:54:32.458036500 +0100
+@@ -33,11 +33,2 @@
+     </Filter>
+-    <Filter Include="Memory manager\dlmalloc">
+-      <UniqueIdentifier>{4705fd61-ddd0-41fa-bc61-dd6c3614dba5}</UniqueIdentifier>
+-    </Filter>
+-    <Filter Include="Memory manager\dlmalloc\allocator">
+-      <UniqueIdentifier>{246cd5dd-abec-4430-8eba-4018828784a7}</UniqueIdentifier>
+-    </Filter>
+-    <Filter Include="Memory manager\dlmalloc\wrapper">
+-      <UniqueIdentifier>{5f3b8536-3170-4e5e-90f1-222d3a4a144a}</UniqueIdentifier>
+-    </Filter>
+     <Filter Include="Debug core">
+@@ -87,2 +78,5 @@
+     </Filter>
++    <Filter Include="Threading">
++      <UniqueIdentifier>{174aeeed-7a9a-4510-853f-081b4ce9cbc9}</UniqueIdentifier>
++    </Filter>
+   </ItemGroup>
+@@ -194,11 +188,2 @@
+     </ClCompile>
+-    <ClCompile Include="ptmalloc3\malloc.c">
+-      <Filter>Memory manager\dlmalloc\allocator</Filter>
+-    </ClCompile>
+-    <ClCompile Include="ptmalloc3\sysdeps\win32\win32.c">
+-      <Filter>Memory manager\dlmalloc\allocator</Filter>
+-    </ClCompile>
+-    <ClCompile Include="doug_lea_allocator.cpp">
+-      <Filter>Memory manager\dlmalloc\wrapper</Filter>
+-    </ClCompile>
+     <ClCompile Include="xrDebug.cpp">
+@@ -291,2 +276,9 @@
+     <ClCompile Include="xrSyncronize.cpp" />
++    <ClCompile Include="Lock.cpp">
++      <Filter>Threading</Filter>
++    </ClCompile>
++    <ClCompile Include="ScopeLock.cpp">
++      <Filter>Threading</Filter>
++    </ClCompile>
++    <ClCompile Include="mezz_stringbuffer.cpp" />
+   </ItemGroup>
+@@ -479,11 +471,2 @@
+     </ClInclude>
+-    <ClInclude Include="ptmalloc3\malloc-2.8.3.h">
+-      <Filter>Memory manager\dlmalloc\allocator</Filter>
+-    </ClInclude>
+-    <ClInclude Include="doug_lea_allocator.h">
+-      <Filter>Memory manager\dlmalloc\wrapper</Filter>
+-    </ClInclude>
+-    <ClInclude Include="memory_allocator_options.h">
+-      <Filter>Memory manager\dlmalloc\wrapper</Filter>
+-    </ClInclude>
+     <ClInclude Include="xrDebug.h">
+@@ -601,2 +584,11 @@
+     <ClInclude Include="..\build_config_defines.h" />
++    <ClInclude Include="client_id.h" />
++    <ClInclude Include="ChooseTypes.H" />
++    <ClInclude Include="Lock.hpp">
++      <Filter>Threading</Filter>
++    </ClInclude>
++    <ClInclude Include="ScopeLock.hpp">
++      <Filter>Threading</Filter>
++    </ClInclude>
++    <ClInclude Include="mezz_stringbuffer.h" />
+   </ItemGroup>
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrCore/xrDebug_macros.h xray-monolith/src/xrCore/xrDebug_macros.h
+--- coc-1.4-xray-64/src/xrCore/xrDebug_macros.h	2023-10-20 20:54:50.436338100 +0100
++++ xray-monolith/src/xrCore/xrDebug_macros.h	2023-10-20 20:54:32.460035500 +0100
+@@ -63,2 +63,8 @@
+ # endif
++#ifdef USE_VERIFY_IN_RELEASE
++# define VERIFY(expr) do {if (!(expr)) ::Debug.soft_fail(#expr,DEBUG_INFO);} while(0)
++# define VERIFY2(expr,e2) do {if (!(expr)) ::Debug.soft_fail(#expr,e2,DEBUG_INFO);} while(0)
++# define VERIFY3(expr,e2,e3) do {if (!(expr)) ::Debug.soft_fail(#expr,e2,e3,DEBUG_INFO);} while(0)
++# define VERIFY4(expr,e2,e3,e4)do {if (!(expr)) ::Debug.soft_fail(#expr,e2,e3,e4,DEBUG_INFO);} while(0)
++#else // USE_VERIFY_IN_RELEASE
+ # define VERIFY(expr) do {} while (0)
+@@ -67,2 +73,3 @@
+ # define VERIFY4(expr, e2, e3, e4)do {} while (0)
++#endif // USE_VERIFY_IN_RELEASE
+ # define CHK_DX(a) a
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrCore/xrDebugNew.cpp xray-monolith/src/xrCore/xrDebugNew.cpp
+--- coc-1.4-xray-64/src/xrCore/xrDebugNew.cpp	2023-10-20 20:54:50.436338100 +0100
++++ xray-monolith/src/xrCore/xrDebugNew.cpp	2023-10-20 20:54:32.460035500 +0100
+@@ -69,2 +69,16 @@
+ 
++namespace crash_saving
++{
++    void (*save_impl)() = nullptr;
++	BOOL enabled = TRUE;
++
++    void save()
++    {
++        if (enabled && save_impl != nullptr)
++        {
++            (*save_impl)();
++        }
++    }
++}
++
+ //extern void BuildStackTrace();
+@@ -190,4 +219,8 @@
+ //AVO: simplified function
+-void xrDebug::backend(const char* expression, const char* description, const char* argument0, const char* argument1, const char* file, int line, const char* function, bool& ignore_always)
++void xrDebug::backend(const char* expression, const char* description, const char* argument0, const char* argument1,
++                      const char* file, int line, const char* function, bool& ignore_always)
+ {
++    // we save first
++    crash_saving::save();
++    
+     static xrCriticalSection CS
+@@ -216,3 +251,3 @@
+     MessageBox(
+-        GetTopWindow(NULL),
++		NULL,
+         assertion_info,
+@@ -373,2 +414,4 @@
+ 
++bool ignore_verify = true;
++
+ //AVO: print, dont crash
+@@ -376,2 +419,3 @@
+ {
++	if (!ignore_verify)
+     Msg("! VERIFY_FAILED: %s[%d] {%s}  %s", file, line, function, e1);
+@@ -378,4 +422,6 @@
+ }
++
+ void xrDebug::soft_fail(LPCSTR e1, const std::string &e2, LPCSTR file, int line, LPCSTR function)
+ {
++	if (!ignore_verify)
+     Msg("! VERIFY_FAILED: %s[%d] {%s}  %s %s", file, line, function, e1, e2.c_str());
+@@ -382,4 +428,6 @@
+ }
++
+ void xrDebug::soft_fail(LPCSTR e1, LPCSTR e2, LPCSTR file, int line, LPCSTR function)
+ {
++	if (!ignore_verify)
+     Msg("! VERIFY_FAILED: %s[%d] {%s}  %s %s", file, line, function, e1, e2);
+@@ -386,4 +434,6 @@
+ }
++
+ void xrDebug::soft_fail(LPCSTR e1, LPCSTR e2, LPCSTR e3, LPCSTR file, int line, LPCSTR function)
+ {
++	if (!ignore_verify)
+     Msg("! VERIFY_FAILED: %s[%d] {%s}  %s %s %s", file, line, function, e1, e2, e3);
+@@ -390,4 +440,6 @@
+ }
++
+ void xrDebug::soft_fail(LPCSTR e1, LPCSTR e2, LPCSTR e3, LPCSTR e4, LPCSTR file, int line, LPCSTR function)
+ {
++	if (!ignore_verify)
+     Msg("! VERIFY_FAILED: %s[%d] {%s}  %s %s %s %s", file, line, function, e1, e2, e3, e4);
+@@ -394,4 +446,6 @@
+ }
++
+ void xrDebug::soft_fail(LPCSTR e1, LPCSTR e2, LPCSTR e3, LPCSTR e4, LPCSTR e5, LPCSTR file, int line, LPCSTR function)
+ {
++	if (!ignore_verify)
+     Msg("! VERIFY_FAILED: %s[%d] {%s}  %s %s %s %s %s", file, line, function, e1, e2, e3, e4, e5);
+@@ -419,2 +474,4 @@
+ {
++	Msg("* [x-ray]: OOM requesting %lld bytes", size);
++
+     if (g_full_memory_stats_callback)
+@@ -752,4 +809,2 @@
+ 
+-    FlushLog();
+-
+     if (pExceptionInfo->ExceptionRecord)
+@@ -760,2 +815,8 @@
+ 
++	FlushLog();
++
++# ifdef USE_OWN_MINI_DUMP
++	save_mini_dump(pExceptionInfo);
++# endif // USE_OWN_MINI_DUMP
++
+     ShowCursor(true);
+@@ -886,3 +948,3 @@
+ _CRTIMP int __cdecl _set_new_mode(int);
+-_CRTIMP _PNH __cdecl _set_new_handler(_PNH);
++//_CRTIMP _PNH __cdecl _set_new_handler(_PNH);
+ 
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrCore/xrMemory.cpp xray-monolith/src/xrCore/xrMemory.cpp
+--- coc-1.4-xray-64/src/xrCore/xrMemory.cpp	2023-10-20 20:54:50.437326400 +0100
++++ xray-monolith/src/xrCore/xrMemory.cpp	2023-10-20 20:54:32.461035400 +0100
+@@ -83,2 +83,3 @@
+ #ifndef M_BORLAND
++#ifndef PURE_ALLOC
+     if (!strstr(Core.Params, "-pure_alloc"))
+@@ -94,2 +95,3 @@
+     }
++#endif // PURE_ALLOC
+ #endif // M_BORLAND
+@@ -145,2 +147,3 @@
+ {
++#ifdef DEBUG_MEMORY_MANAGER
+     RegFlushKey(HKEY_CLASSES_ROOT);
+@@ -154,2 +157,3 @@
+         SetProcessWorkingSetSize(GetCurrentProcess(), size_t(-1), size_t(-1));
++#endif
+ }
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrCore/xrMemory.h xray-monolith/src/xrCore/xrMemory.h
+--- coc-1.4-xray-64/src/xrCore/xrMemory.h	2023-10-20 20:54:50.437326400 +0100
++++ xray-monolith/src/xrCore/xrMemory.h	2023-10-20 20:54:32.461035400 +0100
+@@ -99,3 +100,3 @@
+ #ifdef DEBUG_MEMORY_NAME
+-#include "typeinfo.h"
++#include "typeinfo"
+ 
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrCore/xrMemory_subst_msvc.cpp xray-monolith/src/xrCore/xrMemory_subst_msvc.cpp
+--- coc-1.4-xray-64/src/xrCore/xrMemory_subst_msvc.cpp	2023-10-20 20:54:50.441326800 +0100
++++ xray-monolith/src/xrCore/xrMemory_subst_msvc.cpp	2023-10-20 20:54:32.465035300 +0100
+@@ -33,5 +38,8 @@
+ #ifdef PURE_ALLOC
+-bool g_use_pure_alloc = false;
++const bool g_use_pure_alloc = true;
+ #endif // PURE_ALLOC
+ 
++#define PURE_MEMORY_FILL_ZERO
++#define PURE_MEMORY_ALIGNMENT 1 << 4
++
+ void* xrMemory::mem_alloc(size_t size
+@@ -45,18 +53,11 @@
+ #ifdef PURE_ALLOC
+-    static bool g_use_pure_alloc_initialized = false;
+-    if (!g_use_pure_alloc_initialized)
+-    {
+-        g_use_pure_alloc_initialized = true;
+-        g_use_pure_alloc =
+-# ifdef XRCORE_STATIC
+-            true
+-# else // XRCORE_STATIC
+-            !!strstr(GetCommandLine(), "-pure_alloc")
+-# endif // XRCORE_STATIC
+-            ;
+-    }
+-
+     if (g_use_pure_alloc)
+     {
+-        void* result = malloc(size);
++		//void* result = malloc(size);
++		void* result = _aligned_malloc(size, PURE_MEMORY_ALIGNMENT);
++#ifdef PURE_MEMORY_FILL_ZERO
++		if (result)
++			memset(result, 0, size);
++#endif // PURE_MEMORY_FILL_ZERO
++
+ #ifdef USE_MEMORY_MONITOR
+@@ -142,3 +143,4 @@
+     {
+-        free(P);
++		//free(P);
++		_aligned_free(P);
+         return;
+@@ -183,2 +185,12 @@
+     stat_calls++;
++
++	if (0 == P)
++	{
++		return mem_alloc(size
++# ifdef DEBUG_MEMORY_NAME
++			, _name
++# endif // DEBUG_MEMORY_NAME
++		);
++	}
++
+ #ifdef PURE_ALLOC
+@@ -186,3 +198,14 @@
+     {
+-        void* result = realloc(P, size);
++#ifdef PURE_MEMORY_FILL_ZERO
++		size_t old_size = P ? _aligned_msize(P, PURE_MEMORY_ALIGNMENT, 0) : 0;
++#endif // PURE_MEMORY_FILL_ZERO
++
++		//void* result = realloc(P, size);
++		void* result = _aligned_realloc(P, size, PURE_MEMORY_ALIGNMENT);
++
++#ifdef PURE_MEMORY_FILL_ZERO
++		if (result && size > old_size)
++			memset((u8*)result + old_size, 0, size - old_size);
++#endif // PURE_MEMORY_FILL_ZERO
++
+ # ifdef USE_MEMORY_MONITOR
+@@ -194,10 +217,2 @@
+ #endif // PURE_ALLOC
+-    if (0 == P)
+-    {
+-        return mem_alloc(size
+-# ifdef DEBUG_MEMORY_NAME
+-                         , _name
+-# endif // DEBUG_MEMORY_NAME
+-                        );
+-    }
+ 
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrCore/xrSyncronize.h xray-monolith/src/xrCore/xrSyncronize.h
+--- coc-1.4-xray-64/src/xrCore/xrSyncronize.h	2023-10-20 20:54:50.442326400 +0100
++++ xray-monolith/src/xrCore/xrSyncronize.h	2023-10-20 20:54:32.466035800 +0100
+@@ -51,2 +53,4 @@
+     BOOL TryEnter();
++
++	bool IsValid() { return pmutex != nullptr; }
+ };
+

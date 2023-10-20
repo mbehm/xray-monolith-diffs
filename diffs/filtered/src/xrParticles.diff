@@ -1,0 +1,920 @@
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrParticles/particle_actions_collection.cpp xray-monolith/src/xrParticles/particle_actions_collection.cpp
+--- coc-1.4-xray-64/src/xrParticles/particle_actions_collection.cpp	2023-10-20 20:54:52.041329600 +0100
++++ xray-monolith/src/xrParticles/particle_actions_collection.cpp	2023-10-20 20:54:33.448036500 +0100
+@@ -6,2 +6,5 @@
+ 
++#include <tbb/parallel_for.h>
++#include <tbb/blocked_range.h>
++
+ using namespace PAPI;
+@@ -1453,2 +1506,4 @@
+ 
++#define STEP_DEFAULT 0.033F
++
+ // Change color of all particles toward the specified color
+@@ -1456,4 +1511,6 @@
+ {
+-	float scaleFac = scale * dt;
+-    Fcolor c_p,c_t; 
++
++	float COEFF = STEP_DEFAULT / dt;
++	float scaleFac = scale * STEP_DEFAULT;
++	Fcolor c_p, c_t, c_n;
+ 	
+@@ -1464,5 +1521,11 @@
+ 
+-        c_p.set	(m.color);
+-        c_t.set	(c_p.r+(color.x-c_p.r)*scaleFac, c_p.g+(color.y-c_p.g)*scaleFac, c_p.b+(color.z-c_p.b)*scaleFac, c_p.a+(alpha-c_p.a)*scaleFac);
+-        m.color = c_t.get();
++		c_p.set(m.colorR, m.colorG, m.colorB, m.colorA);
++		c_t.set(color.x, color.y, color.z, alpha);
++		c_n.lerp(c_p, c_t, scaleFac);
++		c_n.set(c_n.get());
++
++		m.colorR -= (m.colorR - c_n.r) / COEFF;
++		m.colorG -= (m.colorG - c_n.g) / COEFF;
++		m.colorB -= (m.colorB - c_n.b) / COEFF;
++		m.colorA -= (m.colorA - c_n.a) / COEFF;
+ 	}
+@@ -1665,5 +1735,5 @@
+ 
+-struct TES_PARAMS {
+-	u32 p_from;
+-	u32 p_to;
++struct TES_PARAMS
++{
++	u32 p_count;
+ 	ParticleEffect* effect;
+@@ -1677,2 +1747,4 @@
+ 
++extern float ps_particle_update_coeff;
++
+ 
+@@ -1680,10 +1752,2 @@
+ {
+-	#ifdef _GPA_ENABLED	
+-		TAL_SCOPED_TASK_NAMED( "PATurbulenceExecuteStream()" );
+-
+-		TAL_ID rtID = TAL_MakeID( 1 , Core.dwFrame , 0);	
+-		TAL_AddRelationThis(TAL_RELATION_IS_CHILD_OF, rtID);
+-	#endif // _GPA_ENABLED
+-
+-
+ 	pVector pV;
+@@ -1695,4 +1759,3 @@
+ 
+-	u32 p_from = pParams->p_from;
+-	u32 p_to = pParams->p_to;
++	u32 count = pParams->p_count;
+ 	ParticleEffect* effect = pParams->effect;
+@@ -1705,3 +1768,5 @@
+ 
+-    for(u32 i = p_from; i < p_to; i++)
++	tbb::parallel_for(tbb::blocked_range<u32>(0, count), [&](const tbb::blocked_range<u32>& range)
++	{
++		for (u32 i = range.begin(); i != range.end(); ++i)
+     {
+@@ -1754,3 +1819,3 @@
+ 	}
+-
++	});
+ }
+@@ -1776,35 +1842,12 @@
+ 
+-	u32 nWorkers = ttapi_GetWorkersCount();
+-
+-	if ( p_cnt < nWorkers * 20 )
+-		nWorkers = 1;
+-
+-	TES_PARAMS* tesParams = (TES_PARAMS*) _alloca( sizeof(TES_PARAMS) * nWorkers );
+-
+-	// Give ~1% more for the last worker
+-	// to minimize wait in final spin
+-	u32 nSlice = p_cnt / 128; 
+-
+-	u32 nStep = ( ( p_cnt - nSlice ) / nWorkers );
+-	//u32 nStep = ( p_cnt / nWorkers );
+-
+-	//Msg( "Trb: %u" , nStep );
+-
+-	for ( u32 i = 0 ; i < nWorkers ; ++i ) {
+-		tesParams[i].p_from = i * nStep;
+-		tesParams[i].p_to = ( i == ( nWorkers - 1 ) ) ? p_cnt : ( tesParams[i].p_from + nStep );
+-
+-		tesParams[i].effect = effect;
+-		tesParams[i].offset = offset;
+-		tesParams[i].age = age;
+-		tesParams[i].epsilon = epsilon;
+-		tesParams[i].frequency = frequency;
+-		tesParams[i].octaves = octaves;
+-		tesParams[i].magnitude = magnitude;
+-
+-		ttapi_AddWorker( PATurbulenceExecuteStream , (LPVOID) &tesParams[i] );
+-	}
+-
+-	ttapi_RunAllWorkers();
+-
++	TES_PARAMS tesParams;
++	tesParams.p_count = p_cnt;
++	tesParams.effect = effect;
++	tesParams.offset = offset;
++	tesParams.age = age;
++	tesParams.epsilon = epsilon;
++	tesParams.frequency = frequency;
++	tesParams.octaves = octaves;
++	tesParams.magnitude = magnitude*ps_particle_update_coeff;
++	PATurbulenceExecuteStream(&tesParams);
+ }
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrParticles/particle_effect.h xray-monolith/src/xrParticles/particle_effect.h
+--- coc-1.4-xray-64/src/xrParticles/particle_effect.h	2023-10-20 20:54:52.043326500 +0100
++++ xray-monolith/src/xrParticles/particle_effect.h	2023-10-20 20:54:33.450037100 +0100
+@@ -94,3 +100,7 @@
+ 				P.vel 		= vel;
+-				P.color 	= color;
++				float f = float(1.0) / float(255.0);
++				P.colorA = f * ((color >> 24) & 0xff);
++				P.colorR = f * ((color >> 16) & 0xff);
++				P.colorG = f * ((color >> 8) & 0xff);
++				P.colorB = f * ((color >> 0) & 0xff);
+ 				P.age 		= age;
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrParticles/particle_manager.cpp xray-monolith/src/xrParticles/particle_manager.cpp
+--- coc-1.4-xray-64/src/xrParticles/particle_manager.cpp	2023-10-20 20:54:52.043326500 +0100
++++ xray-monolith/src/xrParticles/particle_manager.cpp	2023-10-20 20:54:33.450037100 +0100
+@@ -98,3 +106,5 @@
+ 		VERIFY((*it));
+-		switch((*it)->type){
++		if ((*it))
++			switch ((*it)->type)
++			{
+ 		case PASourceID: 	static_cast<PASource*>(*it)->m_Flags.set(PASource::flSilent,FALSE); break;
+@@ -116,4 +126,7 @@
+     // Step through all the actions in the action list.
+-    for(PAVecIt it=pa->begin(); it!=pa->end(); it++){
+-        switch((*it)->type){
++	for (PAVecIt it = pa->begin(); it != pa->end(); it++)
++	{
++		if ((*it))
++			switch ((*it)->type)
++			{
+         case PASourceID: static_cast<PASource*>(*it)->m_Flags.set(PASource::flSilent,TRUE);		break;
+@@ -145,2 +159,3 @@
+ 		VERIFY((*it));
++		if ((*it))
+     	(*it)->Execute	(pe, dt, kill_old_time);
+@@ -162,6 +179,11 @@
+ 
+-	Fmatrix mT;			mT.translate(full.c);
++	Fmatrix mT;
++	mT.translate(full.c);
+ 
+ 	// Step through all the actions in the action list.
+-	for(PAVecIt it=pa->begin(); it!=pa->end(); it++){
++	for (PAVecIt it = pa->begin(); it != pa->end(); it++)
++	{
++		if (!(*it))
++			continue;
++
+ 		BOOL r 			= (*it)->m_Flags.is(ParticleAction::ALLOW_ROTATE);
+@@ -260,4 +320,8 @@
+         u32 cnt					= R.r_u32();
+-        for (u32 k=0; k<cnt; k++){
+-            ParticleAction* act	= CreateAction	((PActionEnum)R.r_u32());
++		for (u32 k = 0; k < cnt; k++)
++		{
++			u32 type = R.r_u32();
++			if (type == (u32)-1)
++				continue;
++			ParticleAction* act = CreateAction((PActionEnum)type);
+             act->Load			(R);
+@@ -276,3 +341,11 @@
+     for (PAVecIt it=pa->begin(); it!=pa->end(); it++)
++	{
++		if (!(*it)) {
++			W.w_u32((u32)-1);
++			continue;
++		}
++
++		W.w_u32((*it)->type);
+         (*it)->Save			(W);
++	}
+ 	pa->unlock();
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrParticles/psystem.h xray-monolith/src/xrParticles/psystem.h
+--- coc-1.4-xray-64/src/xrParticles/psystem.h	2023-10-20 20:54:52.044326500 +0100
++++ xray-monolith/src/xrParticles/psystem.h	2023-10-20 20:54:33.451035400 +0100
+@@ -5,5 +5,7 @@
+ #ifdef XR_PARTICLES_EXPORTS
+-	#define PARTICLES_API __declspec(dllexport)
++#define PARTICLES_API
++//__declspec(dllexport)
+ #else
+-	#define PARTICLES_API __declspec(dllimport)
++	#define PARTICLES_API
++//__declspec(dllimport)
+ 	#ifdef _EDITOR
+@@ -63,3 +125,6 @@
+ 		pVector		size;   // 12
+-		u32			color;	// 4
++		float colorR; // 4
++		float colorG; // 4
++		float colorB; // 4
++		float colorA; // 4
+ 		float		age;	// 4       
+@@ -67,3 +132,3 @@
+ 		Flags16		flags;	// 2
+-	};                  	// = 64
++	}; // = 76
+ 
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrParticles/xrParticles.vcxproj xray-monolith/src/xrParticles/xrParticles.vcxproj
+--- coc-1.4-xray-64/src/xrParticles/xrParticles.vcxproj	2023-10-20 20:54:52.045327600 +0100
++++ xray-monolith/src/xrParticles/xrParticles.vcxproj	2023-10-20 20:54:33.453035200 +0100
+@@ -1,40 +1,8 @@
+-﻿<?xml version="1.0" encoding="utf-8"?>
+-<Project DefaultTargets="Build" ToolsVersion="12.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
++<?xml version="1.0" encoding="utf-8"?>
++<Project DefaultTargets="Build" ToolsVersion="14.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+   <ItemGroup Label="ProjectConfigurations">
+-    <ProjectConfiguration Include="Debug_NEW|Win32">
+-      <Configuration>Debug_NEW</Configuration>
+-      <Platform>Win32</Platform>
+-    </ProjectConfiguration>
+-    <ProjectConfiguration Include="Debug_NEW|x64">
+-      <Configuration>Debug_NEW</Configuration>
+-      <Platform>x64</Platform>
+-    </ProjectConfiguration>
+-    <ProjectConfiguration Include="Debug|Win32">
+-      <Configuration>Debug</Configuration>
+-      <Platform>Win32</Platform>
+-    </ProjectConfiguration>
+-    <ProjectConfiguration Include="Debug|x64">
+-      <Configuration>Debug</Configuration>
+-      <Platform>x64</Platform>
+-    </ProjectConfiguration>
+-    <ProjectConfiguration Include="Mixed|Win32">
+-      <Configuration>Mixed</Configuration>
+-      <Platform>Win32</Platform>
+-    </ProjectConfiguration>
+-    <ProjectConfiguration Include="Mixed|x64">
+-      <Configuration>Mixed</Configuration>
+-      <Platform>x64</Platform>
+-    </ProjectConfiguration>
+-    <ProjectConfiguration Include="Release_LuaJit_one|Win32">
+-      <Configuration>Release_LuaJit_one</Configuration>
+-      <Platform>Win32</Platform>
+-    </ProjectConfiguration>
+-    <ProjectConfiguration Include="Release_LuaJit_one|x64">
+-      <Configuration>Release_LuaJit_one</Configuration>
++    <ProjectConfiguration Include="Release-AVX|x64">
++      <Configuration>Release-AVX</Configuration>
+       <Platform>x64</Platform>
+     </ProjectConfiguration>
+-    <ProjectConfiguration Include="Release|Win32">
+-      <Configuration>Release</Configuration>
+-      <Platform>Win32</Platform>
+-    </ProjectConfiguration>
+     <ProjectConfiguration Include="Release|x64">
+@@ -43,2 +11,6 @@
+     </ProjectConfiguration>
++    <ProjectConfiguration Include="VerifiedDX11|x64">
++      <Configuration>VerifiedDX11</Configuration>
++      <Platform>x64</Platform>
++    </ProjectConfiguration>
+   </ItemGroup>
+@@ -47,65 +19,25 @@
+     <RootNamespace>xrParticles</RootNamespace>
++    <WindowsTargetPlatformVersion>8.1</WindowsTargetPlatformVersion>
+   </PropertyGroup>
+   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+-    <ConfigurationType>DynamicLibrary</ConfigurationType>
+-    <PlatformToolset>v120</PlatformToolset>
+-    <UseOfMfc>false</UseOfMfc>
+-  </PropertyGroup>
+-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+-    <ConfigurationType>DynamicLibrary</ConfigurationType>
+-    <PlatformToolset>v120</PlatformToolset>
+-    <UseOfMfc>false</UseOfMfc>
+-  </PropertyGroup>
+-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Mixed|Win32'" Label="Configuration">
+-    <ConfigurationType>DynamicLibrary</ConfigurationType>
+-    <PlatformToolset>v120</PlatformToolset>
+-    <UseOfMfc>false</UseOfMfc>
+-  </PropertyGroup>
+-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Mixed|x64'" Label="Configuration">
+-    <ConfigurationType>DynamicLibrary</ConfigurationType>
+-    <PlatformToolset>v120</PlatformToolset>
+-    <UseOfMfc>false</UseOfMfc>
+-  </PropertyGroup>
+-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+-    <ConfigurationType>DynamicLibrary</ConfigurationType>
+-    <PlatformToolset>v120</PlatformToolset>
+-    <UseOfMfc>false</UseOfMfc>
+-    <CharacterSet>MultiByte</CharacterSet>
+-    <WholeProgramOptimization>true</WholeProgramOptimization>
+-  </PropertyGroup>
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+-    <ConfigurationType>DynamicLibrary</ConfigurationType>
+-    <PlatformToolset>v120</PlatformToolset>
+-    <UseOfMfc>false</UseOfMfc>
+-    <CharacterSet>MultiByte</CharacterSet>
+-    <WholeProgramOptimization>true</WholeProgramOptimization>
+-  </PropertyGroup>
+-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|Win32'" Label="Configuration">
+-    <ConfigurationType>DynamicLibrary</ConfigurationType>
+-    <PlatformToolset>v120</PlatformToolset>
++    <ConfigurationType>StaticLibrary</ConfigurationType>
++    <PlatformToolset>v140</PlatformToolset>
+     <UseOfMfc>false</UseOfMfc>
+     <CharacterSet>MultiByte</CharacterSet>
+-    <WholeProgramOptimization>true</WholeProgramOptimization>
++    <WholeProgramOptimization>false</WholeProgramOptimization>
+   </PropertyGroup>
+-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|x64'" Label="Configuration">
+-    <ConfigurationType>DynamicLibrary</ConfigurationType>
+-    <PlatformToolset>v120</PlatformToolset>
++  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='VerifiedDX11|x64'" Label="Configuration">
++    <ConfigurationType>StaticLibrary</ConfigurationType>
++    <PlatformToolset>v140</PlatformToolset>
+     <UseOfMfc>false</UseOfMfc>
+     <CharacterSet>MultiByte</CharacterSet>
+-    <WholeProgramOptimization>true</WholeProgramOptimization>
++    <WholeProgramOptimization>false</WholeProgramOptimization>
+   </PropertyGroup>
+-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|Win32'" Label="Configuration">
+-    <ConfigurationType>DynamicLibrary</ConfigurationType>
+-    <PlatformToolset>v120</PlatformToolset>
++  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release-AVX|x64'" Label="Configuration">
++    <ConfigurationType>StaticLibrary</ConfigurationType>
++    <PlatformToolset>v140</PlatformToolset>
+     <UseOfMfc>false</UseOfMfc>
+     <CharacterSet>MultiByte</CharacterSet>
+-    <WholeProgramOptimization>true</WholeProgramOptimization>
+-  </PropertyGroup>
+-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|x64'" Label="Configuration">
+-    <ConfigurationType>DynamicLibrary</ConfigurationType>
+-    <PlatformToolset>v120</PlatformToolset>
+-    <UseOfMfc>false</UseOfMfc>
+-    <CharacterSet>MultiByte</CharacterSet>
+-    <WholeProgramOptimization>true</WholeProgramOptimization>
++    <WholeProgramOptimization>false</WholeProgramOptimization>
+   </PropertyGroup>
+@@ -114,27 +46,2 @@
+   </ImportGroup>
+-  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="PropertySheets">
+-    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+-    <Import Project="$(VCTargetsPath)Microsoft.CPP.UpgradeFromVC71.props" />
+-    <Import Project="$(SolutionDir)Common.props" />
+-  </ImportGroup>
+-  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="PropertySheets">
+-    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+-    <Import Project="$(VCTargetsPath)Microsoft.CPP.UpgradeFromVC71.props" />
+-    <Import Project="$(SolutionDir)Common.props" />
+-  </ImportGroup>
+-  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Mixed|Win32'" Label="PropertySheets">
+-    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+-    <Import Project="$(VCTargetsPath)Microsoft.CPP.UpgradeFromVC71.props" />
+-    <Import Project="$(SolutionDir)Common.props" />
+-  </ImportGroup>
+-  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Mixed|x64'" Label="PropertySheets">
+-    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+-    <Import Project="$(VCTargetsPath)Microsoft.CPP.UpgradeFromVC71.props" />
+-    <Import Project="$(SolutionDir)Common.props" />
+-  </ImportGroup>
+-  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="PropertySheets">
+-    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+-    <Import Project="$(VCTargetsPath)Microsoft.CPP.UpgradeFromVC71.props" />
+-    <Import Project="$(SolutionDir)Common.props" />
+-  </ImportGroup>
+   <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="PropertySheets">
+@@ -144,13 +51,3 @@
+   </ImportGroup>
+-  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|Win32'" Label="PropertySheets">
+-    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+-    <Import Project="$(VCTargetsPath)Microsoft.CPP.UpgradeFromVC71.props" />
+-    <Import Project="$(SolutionDir)Common.props" />
+-  </ImportGroup>
+-  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|x64'" Label="PropertySheets">
+-    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+-    <Import Project="$(VCTargetsPath)Microsoft.CPP.UpgradeFromVC71.props" />
+-    <Import Project="$(SolutionDir)Common.props" />
+-  </ImportGroup>
+-  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|Win32'" Label="PropertySheets">
++  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='VerifiedDX11|x64'" Label="PropertySheets">
+     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+@@ -159,3 +56,3 @@
+   </ImportGroup>
+-  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|x64'" Label="PropertySheets">
++  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release-AVX|x64'" Label="PropertySheets">
+     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+@@ -168,93 +65,17 @@
+   </PropertyGroup>
+-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+-    <OutDir>$(xrGameDir)bin_rel\</OutDir>
+-    <IntDir>$(xrIntDir)$(ProjectName)\</IntDir>
+-    <LinkIncremental>false</LinkIncremental>
+-  </PropertyGroup>
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+     <LinkIncremental>false</LinkIncremental>
+-  </PropertyGroup>
+-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|Win32'">
+-    <OutDir>$(xrGameDir)bin_dbg\</OutDir>
+-    <IntDir>$(xrIntDir)$(ProjectName)\</IntDir>
+-    <LinkIncremental>false</LinkIncremental>
+-  </PropertyGroup>
+-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|x64'">
+-    <LinkIncremental>false</LinkIncremental>
+-  </PropertyGroup>
+-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|Win32'">
+-    <OutDir>$(xrGameDir)bin_rel\</OutDir>
++    <OutDir>$(xrGameDir)bin_dbg\$(Platform)\$(Configuration)\</OutDir>
+     <IntDir>$(xrIntDir)$(ProjectName)\</IntDir>
+-    <LinkIncremental>false</LinkIncremental>
+   </PropertyGroup>
+-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|x64'">
++  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='VerifiedDX11|x64'">
+     <LinkIncremental>false</LinkIncremental>
+-  </PropertyGroup>
+-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Mixed|Win32'">
+-    <OutDir>$(xrBinDir)</OutDir>
++    <OutDir>$(xrGameDir)bin_dbg\$(Platform)\$(Configuration)\</OutDir>
+     <IntDir>$(xrIntDir)$(ProjectName)\</IntDir>
+-    <LinkIncremental>false</LinkIncremental>
+   </PropertyGroup>
+-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Mixed|x64'">
++  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release-AVX|x64'">
+     <LinkIncremental>false</LinkIncremental>
+-  </PropertyGroup>
+-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+-    <OutDir>$(xrGameDir)bin_dbg\</OutDir>
++    <OutDir>$(xrGameDir)bin_dbg\$(Platform)\$(Configuration)\</OutDir>
+     <IntDir>$(xrIntDir)$(ProjectName)\</IntDir>
+-    <LinkIncremental>true</LinkIncremental>
+-  </PropertyGroup>
+-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+-    <LinkIncremental>true</LinkIncremental>
+   </PropertyGroup>
+-  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+-    <Midl>
+-      <PreprocessorDefinitions>NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+-      <MkTypLibCompatible>true</MkTypLibCompatible>
+-      <SuppressStartupBanner>true</SuppressStartupBanner>
+-      <TargetEnvironment>Win32</TargetEnvironment>
+-      <TypeLibraryName>$(OutDir)$(TargetName).tlb</TypeLibraryName>
+-    </Midl>
+-    <ClCompile>
+-      <Optimization>MaxSpeed</Optimization>
+-      <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
+-      <IntrinsicFunctions>true</IntrinsicFunctions>
+-      <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
+-      <OmitFramePointers>true</OmitFramePointers>
+-      <EnableFiberSafeOptimizations>true</EnableFiberSafeOptimizations>
+-      <WholeProgramOptimization>true</WholeProgramOptimization>
+-      <AdditionalIncludeDirectories>$(xrSdkDir)include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+-      <PreprocessorDefinitions>NDEBUG;WIN32;_WINDOWS;XR_PARTICLES_EXPORTS;_SECURE_SCL=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+-      <StringPooling>true</StringPooling>
+-      <ExceptionHandling />
+-      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+-      <BufferSecurityCheck>false</BufferSecurityCheck>
+-      <FunctionLevelLinking>true</FunctionLevelLinking>
+-      <EnableEnhancedInstructionSet>StreamingSIMDExtensions2</EnableEnhancedInstructionSet>
+-      <FloatingPointModel>Precise</FloatingPointModel>
+-      <ForceConformanceInForLoopScope>false</ForceConformanceInForLoopScope>
+-      <RuntimeTypeInfo>true</RuntimeTypeInfo>
+-      <PrecompiledHeader>Use</PrecompiledHeader>
+-      <WarningLevel>Level4</WarningLevel>
+-      <SuppressStartupBanner>true</SuppressStartupBanner>
+-      <DebugInformationFormat>None</DebugInformationFormat>
+-      <CompileAs>CompileAsCpp</CompileAs>
+-      <UndefinePreprocessorDefinitions>USE_LUAJIT_ONE</UndefinePreprocessorDefinitions>
+-    </ClCompile>
+-    <ResourceCompile>
+-      <PreprocessorDefinitions>NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+-      <Culture>0x0409</Culture>
+-    </ResourceCompile>
+-    <Link>
+-      <AdditionalOptions>/MACHINE:I386 %(AdditionalOptions)</AdditionalOptions>
+-      <SuppressStartupBanner>true</SuppressStartupBanner>
+-      <AdditionalLibraryDirectories>$(xrSdkDir)libraries;$(xrLibDir);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+-      <SubSystem>NotSet</SubSystem>
+-      <LargeAddressAware>true</LargeAddressAware>
+-      <OptimizeReferences>true</OptimizeReferences>
+-      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+-      <LinkTimeCodeGeneration>UseLinkTimeCodeGeneration</LinkTimeCodeGeneration>
+-      <RandomizedBaseAddress>false</RandomizedBaseAddress>
+-      <ImportLibrary>$(xrLibDir)$(TargetName).lib</ImportLibrary>
+-    </Link>
+-  </ItemDefinitionGroup>
+   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+@@ -273,3 +94,3 @@
+       <EnableFiberSafeOptimizations>true</EnableFiberSafeOptimizations>
+-      <WholeProgramOptimization>true</WholeProgramOptimization>
++      <WholeProgramOptimization>false</WholeProgramOptimization>
+       <AdditionalIncludeDirectories>$(xrSdkDir)include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+@@ -282,3 +103,3 @@
+       <FunctionLevelLinking>true</FunctionLevelLinking>
+-      <EnableEnhancedInstructionSet>AdvancedVectorExtensions</EnableEnhancedInstructionSet>
++      <EnableEnhancedInstructionSet>NotSet</EnableEnhancedInstructionSet>
+       <FloatingPointModel>Precise</FloatingPointModel>
+@@ -289,53 +110,2 @@
+       <SuppressStartupBanner>true</SuppressStartupBanner>
+-      <DebugInformationFormat>None</DebugInformationFormat>
+-      <CompileAs>CompileAsCpp</CompileAs>
+-      <UndefinePreprocessorDefinitions>USE_LUAJIT_ONE</UndefinePreprocessorDefinitions>
+-    </ClCompile>
+-    <ResourceCompile>
+-      <PreprocessorDefinitions>NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+-      <Culture>0x0409</Culture>
+-    </ResourceCompile>
+-    <Link>
+-      <AdditionalOptions>/MACHINE:X64 %(AdditionalOptions)</AdditionalOptions>
+-      <SuppressStartupBanner>true</SuppressStartupBanner>
+-      <AdditionalLibraryDirectories>$(xrSdkDir)libraries;$(xrLibDir);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+-      <SubSystem>NotSet</SubSystem>
+-      <LargeAddressAware>true</LargeAddressAware>
+-      <OptimizeReferences>true</OptimizeReferences>
+-      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+-      <LinkTimeCodeGeneration>UseLinkTimeCodeGeneration</LinkTimeCodeGeneration>
+-      <RandomizedBaseAddress>false</RandomizedBaseAddress>
+-      <ImportLibrary>$(xrLibDir)$(TargetName).lib</ImportLibrary>
+-    </Link>
+-  </ItemDefinitionGroup>
+-  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|Win32'">
+-    <Midl>
+-      <PreprocessorDefinitions>NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+-      <MkTypLibCompatible>true</MkTypLibCompatible>
+-      <SuppressStartupBanner>true</SuppressStartupBanner>
+-      <TargetEnvironment>Win32</TargetEnvironment>
+-      <TypeLibraryName>$(OutDir)$(TargetName).tlb</TypeLibraryName>
+-    </Midl>
+-    <ClCompile>
+-      <Optimization>MaxSpeed</Optimization>
+-      <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
+-      <IntrinsicFunctions>true</IntrinsicFunctions>
+-      <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
+-      <OmitFramePointers>true</OmitFramePointers>
+-      <EnableFiberSafeOptimizations>true</EnableFiberSafeOptimizations>
+-      <WholeProgramOptimization>true</WholeProgramOptimization>
+-      <AdditionalIncludeDirectories>$(xrSdkDir)include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+-      <PreprocessorDefinitions>DEBUG;WIN32;_WINDOWS;XR_PARTICLES_EXPORTS;_SECURE_SCL=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+-      <StringPooling>true</StringPooling>
+-      <ExceptionHandling>Sync</ExceptionHandling>
+-      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+-      <BufferSecurityCheck>false</BufferSecurityCheck>
+-      <FunctionLevelLinking>false</FunctionLevelLinking>
+-      <EnableEnhancedInstructionSet>StreamingSIMDExtensions2</EnableEnhancedInstructionSet>
+-      <FloatingPointModel>Fast</FloatingPointModel>
+-      <ForceConformanceInForLoopScope>false</ForceConformanceInForLoopScope>
+-      <RuntimeTypeInfo>true</RuntimeTypeInfo>
+-      <PrecompiledHeader>Use</PrecompiledHeader>
+-      <WarningLevel>Level4</WarningLevel>
+-      <SuppressStartupBanner>true</SuppressStartupBanner>
+       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+@@ -349,6 +119,5 @@
+     <Link>
+-      <AdditionalOptions>/MACHINE:I386 %(AdditionalOptions)</AdditionalOptions>
++      <AdditionalOptions>/MACHINE:X64 %(AdditionalOptions)</AdditionalOptions>
+       <SuppressStartupBanner>true</SuppressStartupBanner>
+       <AdditionalLibraryDirectories>$(xrSdkDir)libraries;$(xrLibDir);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+-      <GenerateDebugInformation>true</GenerateDebugInformation>
+       <SubSystem>NotSet</SubSystem>
+@@ -357,59 +126,9 @@
+       <EnableCOMDATFolding>true</EnableCOMDATFolding>
+-      <LinkTimeCodeGeneration>UseLinkTimeCodeGeneration</LinkTimeCodeGeneration>
++      <LinkTimeCodeGeneration>Default</LinkTimeCodeGeneration>
+       <RandomizedBaseAddress>false</RandomizedBaseAddress>
+       <ImportLibrary>$(xrLibDir)$(TargetName).lib</ImportLibrary>
+-    </Link>
+-  </ItemDefinitionGroup>
+-  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|x64'">
+-    <Midl>
+-      <PreprocessorDefinitions>NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+-      <MkTypLibCompatible>true</MkTypLibCompatible>
+-      <SuppressStartupBanner>true</SuppressStartupBanner>
+-      <TypeLibraryName>$(OutDir)$(TargetName).tlb</TypeLibraryName>
+-    </Midl>
+-    <ClCompile>
+-      <Optimization>MaxSpeed</Optimization>
+-      <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
+-      <IntrinsicFunctions>true</IntrinsicFunctions>
+-      <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
+-      <OmitFramePointers>true</OmitFramePointers>
+-      <EnableFiberSafeOptimizations>true</EnableFiberSafeOptimizations>
+-      <WholeProgramOptimization>true</WholeProgramOptimization>
+-      <AdditionalIncludeDirectories>$(xrSdkDir)include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+-      <PreprocessorDefinitions>DEBUG;WIN32;_WINDOWS;XR_PARTICLES_EXPORTS;_SECURE_SCL=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+-      <StringPooling>true</StringPooling>
+-      <ExceptionHandling>Sync</ExceptionHandling>
+-      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+-      <BufferSecurityCheck>false</BufferSecurityCheck>
+-      <FunctionLevelLinking>false</FunctionLevelLinking>
+-      <EnableEnhancedInstructionSet>StreamingSIMDExtensions2</EnableEnhancedInstructionSet>
+-      <FloatingPointModel>Fast</FloatingPointModel>
+-      <ForceConformanceInForLoopScope>false</ForceConformanceInForLoopScope>
+-      <RuntimeTypeInfo>true</RuntimeTypeInfo>
+-      <PrecompiledHeader>Use</PrecompiledHeader>
+-      <WarningLevel>Level4</WarningLevel>
+-      <SuppressStartupBanner>true</SuppressStartupBanner>
+-      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+-      <CompileAs>CompileAsCpp</CompileAs>
+-      <UndefinePreprocessorDefinitions>USE_LUAJIT_ONE</UndefinePreprocessorDefinitions>
+-    </ClCompile>
+-    <ResourceCompile>
+-      <PreprocessorDefinitions>NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+-      <Culture>0x0409</Culture>
+-    </ResourceCompile>
+-    <Link>
+-      <AdditionalOptions>/MACHINE:I386 %(AdditionalOptions)</AdditionalOptions>
+-      <SuppressStartupBanner>true</SuppressStartupBanner>
+-      <AdditionalLibraryDirectories>$(xrSdkDir)libraries;$(xrLibDir);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+       <GenerateDebugInformation>true</GenerateDebugInformation>
+-      <SubSystem>NotSet</SubSystem>
+-      <LargeAddressAware>true</LargeAddressAware>
+-      <OptimizeReferences>true</OptimizeReferences>
+-      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+-      <LinkTimeCodeGeneration>UseLinkTimeCodeGeneration</LinkTimeCodeGeneration>
+-      <RandomizedBaseAddress>false</RandomizedBaseAddress>
+-      <ImportLibrary>$(xrLibDir)$(TargetName).lib</ImportLibrary>
+     </Link>
+   </ItemDefinitionGroup>
+-  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|Win32'">
++  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='VerifiedDX11|x64'">
+     <Midl>
+@@ -418,3 +137,2 @@
+       <SuppressStartupBanner>true</SuppressStartupBanner>
+-      <TargetEnvironment>Win32</TargetEnvironment>
+       <TypeLibraryName>$(OutDir)$(TargetName).tlb</TypeLibraryName>
+@@ -422,12 +140,11 @@
+     <ClCompile>
+-      <Optimization>MaxSpeed</Optimization>
+-      <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
+-      <IntrinsicFunctions>true</IntrinsicFunctions>
+-      <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
+-      <OmitFramePointers>true</OmitFramePointers>
+-      <EnableFiberSafeOptimizations>true</EnableFiberSafeOptimizations>
+-      <WholeProgramOptimization>true</WholeProgramOptimization>
++      <Optimization>Disabled</Optimization>
++      <InlineFunctionExpansion>Disabled</InlineFunctionExpansion>
++      <IntrinsicFunctions>false</IntrinsicFunctions>
++      <FavorSizeOrSpeed>Neither</FavorSizeOrSpeed>
++      <OmitFramePointers>false</OmitFramePointers>
++      <EnableFiberSafeOptimizations>false</EnableFiberSafeOptimizations>
++      <WholeProgramOptimization>false</WholeProgramOptimization>
+       <AdditionalIncludeDirectories>$(xrSdkDir)include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+-      <PreprocessorDefinitions>USE_LUAJIT_ONE;NDEBUG;WIN32;_WINDOWS;XR_PARTICLES_EXPORTS;_SECURE_SCL=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+-      <StringPooling>true</StringPooling>
++      <PreprocessorDefinitions>USE_VERIFY_IN_RELEASE;NDEBUG;WIN32;_WINDOWS;XR_PARTICLES_EXPORTS;_SECURE_SCL=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+       <ExceptionHandling>
+@@ -435,6 +152,6 @@
+       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+-      <BufferSecurityCheck>false</BufferSecurityCheck>
+-      <FunctionLevelLinking>false</FunctionLevelLinking>
+-      <EnableEnhancedInstructionSet>StreamingSIMDExtensions2</EnableEnhancedInstructionSet>
+-      <FloatingPointModel>Fast</FloatingPointModel>
++      <BufferSecurityCheck>true</BufferSecurityCheck>
++      <FunctionLevelLinking>true</FunctionLevelLinking>
++      <EnableEnhancedInstructionSet>NotSet</EnableEnhancedInstructionSet>
++      <FloatingPointModel>Precise</FloatingPointModel>
+       <ForceConformanceInForLoopScope>false</ForceConformanceInForLoopScope>
+@@ -446,2 +163,5 @@
+       <CompileAs>CompileAsCpp</CompileAs>
++      <UndefinePreprocessorDefinitions>USE_LUAJIT_ONE</UndefinePreprocessorDefinitions>
++      <MinimalRebuild>true</MinimalRebuild>
++      <RemoveUnreferencedCodeData>false</RemoveUnreferencedCodeData>
+     </ClCompile>
+@@ -452,6 +172,5 @@
+     <Link>
+-      <AdditionalOptions>/ignore:4099</AdditionalOptions>
++      <AdditionalOptions>/MACHINE:X64 %(AdditionalOptions)</AdditionalOptions>
+       <SuppressStartupBanner>true</SuppressStartupBanner>
+       <AdditionalLibraryDirectories>$(xrSdkDir)libraries;$(xrLibDir);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+-      <GenerateDebugInformation>true</GenerateDebugInformation>
+       <SubSystem>NotSet</SubSystem>
+@@ -460,8 +179,9 @@
+       <EnableCOMDATFolding>true</EnableCOMDATFolding>
+-      <LinkTimeCodeGeneration>UseLinkTimeCodeGeneration</LinkTimeCodeGeneration>
++      <LinkTimeCodeGeneration>Default</LinkTimeCodeGeneration>
+       <RandomizedBaseAddress>false</RandomizedBaseAddress>
+       <ImportLibrary>$(xrLibDir)$(TargetName).lib</ImportLibrary>
++      <GenerateDebugInformation>true</GenerateDebugInformation>
+     </Link>
+   </ItemDefinitionGroup>
+-  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|x64'">
++  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release-AVX|x64'">
+     <Midl>
+@@ -479,5 +199,5 @@
+       <EnableFiberSafeOptimizations>true</EnableFiberSafeOptimizations>
+-      <WholeProgramOptimization>true</WholeProgramOptimization>
++      <WholeProgramOptimization>false</WholeProgramOptimization>
+       <AdditionalIncludeDirectories>$(xrSdkDir)include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+-      <PreprocessorDefinitions>USE_LUAJIT_ONE;NDEBUG;WIN32;_WINDOWS;XR_PARTICLES_EXPORTS;_SECURE_SCL=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
++      <PreprocessorDefinitions>NDEBUG;WIN32;_WINDOWS;XR_PARTICLES_EXPORTS;_SECURE_SCL=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+       <StringPooling>true</StringPooling>
+@@ -487,5 +207,5 @@
+       <BufferSecurityCheck>false</BufferSecurityCheck>
+-      <FunctionLevelLinking>false</FunctionLevelLinking>
+-      <EnableEnhancedInstructionSet>StreamingSIMDExtensions2</EnableEnhancedInstructionSet>
+-      <FloatingPointModel>Fast</FloatingPointModel>
++      <FunctionLevelLinking>true</FunctionLevelLinking>
++      <EnableEnhancedInstructionSet>AdvancedVectorExtensions</EnableEnhancedInstructionSet>
++      <FloatingPointModel>Precise</FloatingPointModel>
+       <ForceConformanceInForLoopScope>false</ForceConformanceInForLoopScope>
+@@ -497,2 +217,3 @@
+       <CompileAs>CompileAsCpp</CompileAs>
++      <UndefinePreprocessorDefinitions>USE_LUAJIT_ONE</UndefinePreprocessorDefinitions>
+     </ClCompile>
+@@ -503,6 +224,5 @@
+     <Link>
+-      <AdditionalOptions>/ignore:4099</AdditionalOptions>
++      <AdditionalOptions>/MACHINE:X64 %(AdditionalOptions)</AdditionalOptions>
+       <SuppressStartupBanner>true</SuppressStartupBanner>
+       <AdditionalLibraryDirectories>$(xrSdkDir)libraries;$(xrLibDir);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+-      <GenerateDebugInformation>true</GenerateDebugInformation>
+       <SubSystem>NotSet</SubSystem>
+@@ -511,172 +231,6 @@
+       <EnableCOMDATFolding>true</EnableCOMDATFolding>
+-      <LinkTimeCodeGeneration>UseLinkTimeCodeGeneration</LinkTimeCodeGeneration>
++      <LinkTimeCodeGeneration>Default</LinkTimeCodeGeneration>
+       <RandomizedBaseAddress>false</RandomizedBaseAddress>
+       <ImportLibrary>$(xrLibDir)$(TargetName).lib</ImportLibrary>
+-    </Link>
+-  </ItemDefinitionGroup>
+-  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Mixed|Win32'">
+-    <Midl>
+-      <MkTypLibCompatible>true</MkTypLibCompatible>
+-      <SuppressStartupBanner>true</SuppressStartupBanner>
+-      <TargetEnvironment>Win32</TargetEnvironment>
+-      <TypeLibraryName>$(OutDir)$(TargetName).tlb</TypeLibraryName>
+-    </Midl>
+-    <ClCompile>
+-      <Optimization>Full</Optimization>
+-      <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
+-      <IntrinsicFunctions>true</IntrinsicFunctions>
+-      <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
+-      <OmitFramePointers>false</OmitFramePointers>
+-      <EnableFiberSafeOptimizations>true</EnableFiberSafeOptimizations>
+-      <AdditionalIncludeDirectories>$(xrSdkDir)include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+-      <PreprocessorDefinitions>MIXED;WIN32;DEBUG;_WINDOWS;XR_PARTICLES_EXPORTS;_SECURE_SCL=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+-      <StringPooling>true</StringPooling>
+-      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+-      <BufferSecurityCheck>true</BufferSecurityCheck>
+-      <FunctionLevelLinking>false</FunctionLevelLinking>
+-      <FloatingPointModel>Fast</FloatingPointModel>
+-      <ForceConformanceInForLoopScope>false</ForceConformanceInForLoopScope>
+-      <RuntimeTypeInfo>true</RuntimeTypeInfo>
+-      <PrecompiledHeader>Use</PrecompiledHeader>
+-      <WarningLevel>Level4</WarningLevel>
+-      <SuppressStartupBanner>true</SuppressStartupBanner>
+-      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+-    </ClCompile>
+-    <ResourceCompile>
+-      <Culture>0x0409</Culture>
+-    </ResourceCompile>
+-    <Link>
+-      <AdditionalOptions>/MACHINE:I386 %(AdditionalOptions)</AdditionalOptions>
+-      <SuppressStartupBanner>true</SuppressStartupBanner>
+-      <AdditionalLibraryDirectories>$(xrSdkDir)libraries;$(xrLibDir);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+       <GenerateDebugInformation>true</GenerateDebugInformation>
+-      <SubSystem>Windows</SubSystem>
+-      <LargeAddressAware>true</LargeAddressAware>
+-      <RandomizedBaseAddress>false</RandomizedBaseAddress>
+-      <ImportLibrary>$(xrLibDir)$(TargetName).lib</ImportLibrary>
+-    </Link>
+-  </ItemDefinitionGroup>
+-  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Mixed|x64'">
+-    <Midl>
+-      <MkTypLibCompatible>true</MkTypLibCompatible>
+-      <SuppressStartupBanner>true</SuppressStartupBanner>
+-      <TypeLibraryName>$(OutDir)$(TargetName).tlb</TypeLibraryName>
+-    </Midl>
+-    <ClCompile>
+-      <Optimization>Full</Optimization>
+-      <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
+-      <IntrinsicFunctions>true</IntrinsicFunctions>
+-      <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
+-      <OmitFramePointers>false</OmitFramePointers>
+-      <EnableFiberSafeOptimizations>true</EnableFiberSafeOptimizations>
+-      <AdditionalIncludeDirectories>$(xrSdkDir)include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+-      <PreprocessorDefinitions>MIXED;WIN32;DEBUG;_WINDOWS;XR_PARTICLES_EXPORTS;_SECURE_SCL=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+-      <StringPooling>true</StringPooling>
+-      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+-      <BufferSecurityCheck>true</BufferSecurityCheck>
+-      <FunctionLevelLinking>false</FunctionLevelLinking>
+-      <FloatingPointModel>Fast</FloatingPointModel>
+-      <ForceConformanceInForLoopScope>false</ForceConformanceInForLoopScope>
+-      <RuntimeTypeInfo>true</RuntimeTypeInfo>
+-      <PrecompiledHeader>Use</PrecompiledHeader>
+-      <WarningLevel>Level4</WarningLevel>
+-      <SuppressStartupBanner>true</SuppressStartupBanner>
+-      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+-    </ClCompile>
+-    <ResourceCompile>
+-      <Culture>0x0409</Culture>
+-    </ResourceCompile>
+-    <Link>
+-      <AdditionalOptions>/MACHINE:I386 %(AdditionalOptions)</AdditionalOptions>
+-      <SuppressStartupBanner>true</SuppressStartupBanner>
+-      <AdditionalLibraryDirectories>$(xrSdkDir)libraries;$(xrLibDir);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+-      <GenerateDebugInformation>true</GenerateDebugInformation>
+-      <SubSystem>Windows</SubSystem>
+-      <LargeAddressAware>true</LargeAddressAware>
+-      <RandomizedBaseAddress>false</RandomizedBaseAddress>
+-      <ImportLibrary>$(xrLibDir)$(TargetName).lib</ImportLibrary>
+-    </Link>
+-  </ItemDefinitionGroup>
+-  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+-    <Midl>
+-      <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+-      <MkTypLibCompatible>true</MkTypLibCompatible>
+-      <SuppressStartupBanner>true</SuppressStartupBanner>
+-      <TargetEnvironment>Win32</TargetEnvironment>
+-      <TypeLibraryName>$(OutDir)$(TargetName).tlb</TypeLibraryName>
+-    </Midl>
+-    <ClCompile>
+-      <Optimization>Disabled</Optimization>
+-      <EnableFiberSafeOptimizations>true</EnableFiberSafeOptimizations>
+-      <AdditionalIncludeDirectories>$(xrSdkDir)include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+-      <PreprocessorDefinitions>DEBUG;WIN32;_WINDOWS;XR_PARTICLES_EXPORTS;_SECURE_SCL=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+-      <StringPooling>false</StringPooling>
+-      <MinimalRebuild>true</MinimalRebuild>
+-      <ExceptionHandling>Sync</ExceptionHandling>
+-      <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
+-      <SmallerTypeCheck>true</SmallerTypeCheck>
+-      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+-      <FloatingPointModel>Fast</FloatingPointModel>
+-      <ForceConformanceInForLoopScope>false</ForceConformanceInForLoopScope>
+-      <RuntimeTypeInfo>true</RuntimeTypeInfo>
+-      <PrecompiledHeader>Use</PrecompiledHeader>
+-      <WarningLevel>Level4</WarningLevel>
+-      <SuppressStartupBanner>true</SuppressStartupBanner>
+-      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+-      <CompileAs>CompileAsCpp</CompileAs>
+-    </ClCompile>
+-    <ResourceCompile>
+-      <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+-      <Culture>0x0409</Culture>
+-    </ResourceCompile>
+-    <Link>
+-      <AdditionalOptions>/MACHINE:I386 %(AdditionalOptions)</AdditionalOptions>
+-      <SuppressStartupBanner>true</SuppressStartupBanner>
+-      <AdditionalLibraryDirectories>$(xrSdkDir)libraries;$(xrLibDir);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+-      <GenerateDebugInformation>true</GenerateDebugInformation>
+-      <SubSystem>Windows</SubSystem>
+-      <LargeAddressAware>true</LargeAddressAware>
+-      <RandomizedBaseAddress>false</RandomizedBaseAddress>
+-      <ImportLibrary>$(xrLibDir)$(TargetName).lib</ImportLibrary>
+-    </Link>
+-  </ItemDefinitionGroup>
+-  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+-    <Midl>
+-      <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+-      <MkTypLibCompatible>true</MkTypLibCompatible>
+-      <SuppressStartupBanner>true</SuppressStartupBanner>
+-      <TypeLibraryName>$(OutDir)$(TargetName).tlb</TypeLibraryName>
+-    </Midl>
+-    <ClCompile>
+-      <Optimization>Disabled</Optimization>
+-      <EnableFiberSafeOptimizations>true</EnableFiberSafeOptimizations>
+-      <AdditionalIncludeDirectories>$(xrSdkDir)include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+-      <PreprocessorDefinitions>DEBUG;WIN32;_WINDOWS;XR_PARTICLES_EXPORTS;_SECURE_SCL=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+-      <StringPooling>false</StringPooling>
+-      <ExceptionHandling>Sync</ExceptionHandling>
+-      <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
+-      <SmallerTypeCheck>true</SmallerTypeCheck>
+-      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+-      <FloatingPointModel>Fast</FloatingPointModel>
+-      <ForceConformanceInForLoopScope>false</ForceConformanceInForLoopScope>
+-      <RuntimeTypeInfo>true</RuntimeTypeInfo>
+-      <PrecompiledHeader>Use</PrecompiledHeader>
+-      <WarningLevel>Level4</WarningLevel>
+-      <SuppressStartupBanner>true</SuppressStartupBanner>
+-      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+-      <CompileAs>CompileAsCpp</CompileAs>
+-    </ClCompile>
+-    <ResourceCompile>
+-      <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+-      <Culture>0x0409</Culture>
+-    </ResourceCompile>
+-    <Link>
+-      <AdditionalOptions>/MACHINE:I386 %(AdditionalOptions)</AdditionalOptions>
+-      <SuppressStartupBanner>true</SuppressStartupBanner>
+-      <AdditionalLibraryDirectories>$(xrSdkDir)libraries;$(xrLibDir);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+-      <GenerateDebugInformation>true</GenerateDebugInformation>
+-      <SubSystem>Windows</SubSystem>
+-      <LargeAddressAware>true</LargeAddressAware>
+-      <RandomizedBaseAddress>false</RandomizedBaseAddress>
+-      <ImportLibrary>$(xrLibDir)$(TargetName).lib</ImportLibrary>
+     </Link>
+@@ -702,12 +256,5 @@
+     <ClCompile Include="stdafx.cpp">
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Mixed|Win32'">Create</PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Mixed|x64'">Create</PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Create</PrecompiledHeader>
+       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|Win32'">Create</PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|x64'">Create</PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|Win32'">Create</PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|x64'">Create</PrecompiledHeader>
++      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='VerifiedDX11|x64'">Create</PrecompiledHeader>
++      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release-AVX|x64'">Create</PrecompiledHeader>
+     </ClCompile>

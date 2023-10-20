@@ -1,0 +1,1474 @@
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrSound/guids.cpp xray-monolith/src/xrSound/guids.cpp
+--- coc-1.4-xray-64/src/xrSound/guids.cpp	2023-10-20 20:54:52.160326500 +0100
++++ xray-monolith/src/xrSound/guids.cpp	2023-10-20 20:54:33.567035600 +0100
+@@ -4,3 +4,2 @@
+ #include <dsound.h>
+-#include <eax/eax.h>
+ 
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrSound/Sound.h xray-monolith/src/xrSound/Sound.h
+--- coc-1.4-xray-64/src/xrSound/Sound.h	2023-10-20 20:54:52.151326200 +0100
++++ xray-monolith/src/xrSound/Sound.h	2023-10-20 20:54:33.559035500 +0100
+@@ -7,5 +7,7 @@
+ #ifdef XRSOUND_EXPORTS
+-	#define XRSOUND_API __declspec(dllexport)
++#define XRSOUND_API
++//__declspec(dllexport)
+ #else
+-	#define XRSOUND_API __declspec(dllimport)
++	#define XRSOUND_API
++//__declspec(dllimport)
+ #endif
+@@ -36,2 +38,3 @@
+ XRSOUND_API extern float			psSoundVMusic			;
++XRSOUND_API extern float psSoundVMusicFactor;
+ XRSOUND_API extern float			psSoundRolloff			;
+@@ -40,2 +43,3 @@
+ XRSOUND_API extern int				psSoundTargets			;
++XRSOUND_API extern float psSpeedOfSound;
+ XRSOUND_API extern int				psSoundCacheSizeMB		;
+@@ -166,2 +215,11 @@
+ 
++namespace soundSmoothingParams {
++	extern float power;
++	extern int steps;
++	extern float alpha;
++	extern float getAlpha();
++	extern float getTimeDeltaSmoothing();
++	extern float getSmoothedValue(float, float, float);
++};
++
+ /// definition (Sound Params)
+@@ -170,3 +228,19 @@
+ public:
++	CSound_params() :
++		set(false)
++		{
++			position.set(0.0f, 0.0f, 0.0f);
++			velocity.set(0.0f, 0.0f, 0.0f);
++			accVelocity.set(0.f, 0.f, 0.f);
++		}
++
++private:
++	bool set;
++
++public:
+ 	Fvector					position;
++	Fvector velocity;  // Cribbledirge.  Added for doppler effect.
++	Fvector curVelocity;  // Current velocity.
++	Fvector prevVelocity;  // Previous velocity.
++	Fvector accVelocity;  // Velocity accumulator (for moving average).
+ 	float					base_volume;
+@@ -177,2 +251,32 @@
+ 	float					max_ai_distance;
++
++	// Functions added by Cribbledirge for doppler effect.
++	IC virtual void update_position(const Fvector& newPosition)
++	{
++		// If the position has been set already, start getting a moving average of the velocity.
++		if (set)
++		{
++			prevVelocity.set(accVelocity);
++			curVelocity.sub(newPosition, position);
++
++			//accVelocity.set(curVelocity.mul(alpha).add(prevVelocity.mul(1.f - alpha)));
++		}
++		else
++		{
++			set = true;
++		}
++		position.set(newPosition);
++	}
++
++	IC virtual void update_velocity(const float dt)
++	{
++		float a = soundSmoothingParams::getTimeDeltaSmoothing();
++		int p = soundSmoothingParams::power;
++		accVelocity.x = soundSmoothingParams::getSmoothedValue(curVelocity.x * p / dt, accVelocity.x, a);
++		accVelocity.y = soundSmoothingParams::getSmoothedValue(curVelocity.y * p / dt, accVelocity.y, a);
++		accVelocity.z = soundSmoothingParams::getSmoothedValue(curVelocity.z * p / dt, accVelocity.z, a);
++		velocity.set(accVelocity);
++
++		//Msg("VELOC: %f", velocity.magnitude());
++	}
+ };
+@@ -278,2 +389,3 @@
+ 	virtual float					get_occlusion_to		( const Fvector& hear_pt, const Fvector& snd_pt, float dispersion=0.2f)					= 0;
++	virtual float get_occlusion(Fvector& P, float R, Fvector* occ) = 0;
+ 
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrSound/SoundRender_Core.cpp xray-monolith/src/xrSound/SoundRender_Core.cpp
+--- coc-1.4-xray-64/src/xrSound/SoundRender_Core.cpp	2023-10-20 20:54:52.152326500 +0100
++++ xray-monolith/src/xrSound/SoundRender_Core.cpp	2023-10-20 20:54:33.560036500 +0100
+@@ -7,8 +7,5 @@
+ #include "soundrender_emitter.h"
+-#pragma warning(push)
+-#pragma warning(disable:4995)
+-#include <eax/eax.h>
+-#pragma warning(pop)
+ 
+-int		psSoundTargets			= 32;
++float psSpeedOfSound = 1.f;
++int psSoundTargets = 256;
+ Flags32	psSoundFlags			= {ss_Hardware | ss_EAX};
+@@ -22,2 +19,3 @@
+ float	psSoundVMusic			= 1.f;
++float psSoundVMusicFactor = 1.f;
+ int		psSoundCacheSizeMB		= 32;
+@@ -77,2 +75,7 @@
+     bReady						= TRUE;
++
++	if (strstr(Core.Params, "-prefetch_sounds"))
++	{
++		i_create_all_sources();
++	}
+ }
+@@ -87,4 +91,5 @@
+     // remove sources
+-	for (u32 sit=0; sit<s_sources.size(); sit++)
+-    	xr_delete				(s_sources[sit]);
++	for (auto& kv : s_sources)
++		xr_delete(kv.second);
++
+     s_sources.clear				();
+@@ -461,34 +485,34 @@
+ {
+-	VERIFY(bEAX);
+-    CSoundRender_Environment* E = static_cast<CSoundRender_Environment*>(_E);
+-    EAXLISTENERPROPERTIES 		ep;
+-    ep.lRoom					= iFloor(E->Room)				;	// room effect level at low frequencies
+-    ep.lRoomHF					= iFloor(E->RoomHF)				;   // room effect high-frequency level re. low frequency level
+-    ep.flRoomRolloffFactor		= E->RoomRolloffFactor			;   // like DS3D flRolloffFactor but for room effect
+-    ep.flDecayTime				= E->DecayTime					;   // reverberation decay time at low frequencies
+-    ep.flDecayHFRatio			= E->DecayHFRatio				;   // high-frequency to low-frequency decay time ratio
+-    ep.lReflections				= iFloor(E->Reflections)		;   // early reflections level relative to room effect
+-    ep.flReflectionsDelay		= E->ReflectionsDelay			;   // initial reflection delay time
+-    ep.lReverb					= iFloor(E->Reverb)	 			;   // late reverberation level relative to room effect
+-    ep.flReverbDelay			= E->ReverbDelay				;   // late reverberation delay time relative to initial reflection
+-    ep.dwEnvironment			= EAXLISTENER_DEFAULTENVIRONMENT;  	// sets all listener properties
+-    ep.flEnvironmentSize		= E->EnvironmentSize			;  	// environment size in meters
+-    ep.flEnvironmentDiffusion	= E->EnvironmentDiffusion		; 	// environment diffusion
+-    ep.flAirAbsorptionHF		= E->AirAbsorptionHF			;	// change in level per meter at 5 kHz
+-    ep.dwFlags					= EAXLISTENER_DEFAULTFLAGS		;	// modifies the behavior of properties
+-
+-    u32 deferred				= bDeferredEAX?DSPROPERTY_EAXLISTENER_DEFERRED:0;
+-    
+-    i_eax_set(&DSPROPSETID_EAX_ListenerProperties, deferred | DSPROPERTY_EAXLISTENER_ROOM, 					&ep.lRoom,					sizeof(LONG));
+-    i_eax_set(&DSPROPSETID_EAX_ListenerProperties, deferred | DSPROPERTY_EAXLISTENER_ROOMHF, 				&ep.lRoomHF,				sizeof(LONG));
+-    i_eax_set(&DSPROPSETID_EAX_ListenerProperties, deferred | DSPROPERTY_EAXLISTENER_ROOMROLLOFFFACTOR, 	&ep.flRoomRolloffFactor,	sizeof(float));
+-    i_eax_set(&DSPROPSETID_EAX_ListenerProperties, deferred | DSPROPERTY_EAXLISTENER_DECAYTIME, 		  	&ep.flDecayTime,			sizeof(float));
+-    i_eax_set(&DSPROPSETID_EAX_ListenerProperties, deferred | DSPROPERTY_EAXLISTENER_DECAYHFRATIO,			&ep.flDecayHFRatio,			sizeof(float));
+-    i_eax_set(&DSPROPSETID_EAX_ListenerProperties, deferred | DSPROPERTY_EAXLISTENER_REFLECTIONS, 			&ep.lReflections,			sizeof(LONG));
+-    i_eax_set(&DSPROPSETID_EAX_ListenerProperties, deferred | DSPROPERTY_EAXLISTENER_REFLECTIONSDELAY,    	&ep.flReflectionsDelay,		sizeof(float));
+-    i_eax_set(&DSPROPSETID_EAX_ListenerProperties, deferred | DSPROPERTY_EAXLISTENER_REVERB, 				&ep.lReverb,				sizeof(LONG));
+-    i_eax_set(&DSPROPSETID_EAX_ListenerProperties, deferred | DSPROPERTY_EAXLISTENER_REVERBDELAY, 			&ep.flReverbDelay,			sizeof(float));
+-    i_eax_set(&DSPROPSETID_EAX_ListenerProperties, deferred | DSPROPERTY_EAXLISTENER_ENVIRONMENTDIFFUSION,	&ep.flEnvironmentDiffusion,	sizeof(float));
+-    i_eax_set(&DSPROPSETID_EAX_ListenerProperties, deferred | DSPROPERTY_EAXLISTENER_AIRABSORPTIONHF, 		&ep.flAirAbsorptionHF,		sizeof(float));
+-    i_eax_set(&DSPROPSETID_EAX_ListenerProperties, deferred | DSPROPERTY_EAXLISTENER_FLAGS, 				&ep.dwFlags,				sizeof(DWORD));
++	//VERIFY(bEAX);
++	//   CSoundRender_Environment* E = static_cast<CSoundRender_Environment*>(_E);
++	//   EAXLISTENERPROPERTIES 		ep;
++	//   ep.lRoom					= iFloor(E->Room)				;	// room effect level at low frequencies
++	//   ep.lRoomHF					= iFloor(E->RoomHF)				;   // room effect high-frequency level re. low frequency level
++	//   ep.flRoomRolloffFactor		= E->RoomRolloffFactor			;   // like DS3D flRolloffFactor but for room effect
++	//   ep.flDecayTime				= E->DecayTime					;   // reverberation decay time at low frequencies
++	//   ep.flDecayHFRatio			= E->DecayHFRatio				;   // high-frequency to low-frequency decay time ratio
++	//   ep.lReflections				= iFloor(E->Reflections)		;   // early reflections level relative to room effect
++	//   ep.flReflectionsDelay		= E->ReflectionsDelay			;   // initial reflection delay time
++	//   ep.lReverb					= iFloor(E->Reverb)	 			;   // late reverberation level relative to room effect
++	//   ep.flReverbDelay			= E->ReverbDelay				;   // late reverberation delay time relative to initial reflection
++	//   ep.dwEnvironment			= EAXLISTENER_DEFAULTENVIRONMENT;  	// sets all listener properties
++	//   ep.flEnvironmentSize		= E->EnvironmentSize			;  	// environment size in meters
++	//   ep.flEnvironmentDiffusion	= E->EnvironmentDiffusion		; 	// environment diffusion
++	//   ep.flAirAbsorptionHF		= E->AirAbsorptionHF			;	// change in level per meter at 5 kHz
++	//   ep.dwFlags					= EAXLISTENER_DEFAULTFLAGS		;	// modifies the behavior of properties
++
++	//   u32 deferred				= bDeferredEAX?DSPROPERTY_EAXLISTENER_DEFERRED:0;
++	//   
++	//   i_eax_set(&DSPROPSETID_EAX_ListenerProperties, deferred | DSPROPERTY_EAXLISTENER_ROOM, 					&ep.lRoom,					sizeof(LONG));
++	//   i_eax_set(&DSPROPSETID_EAX_ListenerProperties, deferred | DSPROPERTY_EAXLISTENER_ROOMHF, 				&ep.lRoomHF,				sizeof(LONG));
++	//   i_eax_set(&DSPROPSETID_EAX_ListenerProperties, deferred | DSPROPERTY_EAXLISTENER_ROOMROLLOFFFACTOR, 	&ep.flRoomRolloffFactor,	sizeof(float));
++	//   i_eax_set(&DSPROPSETID_EAX_ListenerProperties, deferred | DSPROPERTY_EAXLISTENER_DECAYTIME, 		  	&ep.flDecayTime,			sizeof(float));
++	//   i_eax_set(&DSPROPSETID_EAX_ListenerProperties, deferred | DSPROPERTY_EAXLISTENER_DECAYHFRATIO,			&ep.flDecayHFRatio,			sizeof(float));
++	//   i_eax_set(&DSPROPSETID_EAX_ListenerProperties, deferred | DSPROPERTY_EAXLISTENER_REFLECTIONS, 			&ep.lReflections,			sizeof(LONG));
++	//   i_eax_set(&DSPROPSETID_EAX_ListenerProperties, deferred | DSPROPERTY_EAXLISTENER_REFLECTIONSDELAY,    	&ep.flReflectionsDelay,		sizeof(float));
++	//   i_eax_set(&DSPROPSETID_EAX_ListenerProperties, deferred | DSPROPERTY_EAXLISTENER_REVERB, 				&ep.lReverb,				sizeof(LONG));
++	//   i_eax_set(&DSPROPSETID_EAX_ListenerProperties, deferred | DSPROPERTY_EAXLISTENER_REVERBDELAY, 			&ep.flReverbDelay,			sizeof(float));
++	//   i_eax_set(&DSPROPSETID_EAX_ListenerProperties, deferred | DSPROPERTY_EAXLISTENER_ENVIRONMENTDIFFUSION,	&ep.flEnvironmentDiffusion,	sizeof(float));
++	//   i_eax_set(&DSPROPSETID_EAX_ListenerProperties, deferred | DSPROPERTY_EAXLISTENER_AIRABSORPTIONHF, 		&ep.flAirAbsorptionHF,		sizeof(float));
++	//   i_eax_set(&DSPROPSETID_EAX_ListenerProperties, deferred | DSPROPERTY_EAXLISTENER_FLAGS, 				&ep.dwFlags,				sizeof(DWORD));
+ }
+@@ -497,18 +521,18 @@
+ {
+-	VERIFY(bEAX);
+-    CSoundRender_Environment* E = static_cast<CSoundRender_Environment*>(_E);
+-    EAXLISTENERPROPERTIES 		ep;
+-	i_eax_get					(&DSPROPSETID_EAX_ListenerProperties, DSPROPERTY_EAXLISTENER_ALLPARAMETERS, &ep, sizeof(EAXLISTENERPROPERTIES));
+-    E->Room						= (float)ep.lRoom					;
+-    E->RoomHF					= (float)ep.lRoomHF					;
+-    E->RoomRolloffFactor		= (float)ep.flRoomRolloffFactor		;
+-    E->DecayTime			   	= (float)ep.flDecayTime				;
+-    E->DecayHFRatio				= (float)ep.flDecayHFRatio			;
+-    E->Reflections				= (float)ep.lReflections			;
+-    E->ReflectionsDelay			= (float)ep.flReflectionsDelay		;
+-    E->Reverb					= (float)ep.lReverb					;
+-    E->ReverbDelay				= (float)ep.flReverbDelay			;
+-    E->EnvironmentSize			= (float)ep.flEnvironmentSize		;
+-    E->EnvironmentDiffusion		= (float)ep.flEnvironmentDiffusion	;
+-    E->AirAbsorptionHF			= (float)ep.flAirAbsorptionHF		;
++	//VERIFY(bEAX);
++	//   CSoundRender_Environment* E = static_cast<CSoundRender_Environment*>(_E);
++	//   EAXLISTENERPROPERTIES 		ep;
++	//i_eax_get					(&DSPROPSETID_EAX_ListenerProperties, DSPROPERTY_EAXLISTENER_ALLPARAMETERS, &ep, sizeof(EAXLISTENERPROPERTIES));
++	//   E->Room						= (float)ep.lRoom					;
++	//   E->RoomHF					= (float)ep.lRoomHF					;
++	//   E->RoomRolloffFactor		= (float)ep.flRoomRolloffFactor		;
++	//   E->DecayTime			   	= (float)ep.flDecayTime				;
++	//   E->DecayHFRatio				= (float)ep.flDecayHFRatio			;
++	//   E->Reflections				= (float)ep.lReflections			;
++	//   E->ReflectionsDelay			= (float)ep.flReflectionsDelay		;
++	//   E->Reverb					= (float)ep.lReverb					;
++	//   E->ReverbDelay				= (float)ep.flReverbDelay			;
++	//   E->EnvironmentSize			= (float)ep.flEnvironmentSize		;
++	//   E->EnvironmentDiffusion		= (float)ep.flEnvironmentDiffusion	;
++	//   E->AirAbsorptionHF			= (float)ep.flAirAbsorptionHF		;
+ }
+@@ -517,5 +541,5 @@
+ {
+-	// commit eax 
+-    if (bDeferredEAX)
+-    	i_eax_set(&DSPROPSETID_EAX_ListenerProperties, DSPROPERTY_EAXLISTENER_COMMITDEFERREDSETTINGS,NULL,0);
++	//// commit eax 
++	//   if (bDeferredEAX)
++	//   	i_eax_set(&DSPROPSETID_EAX_ListenerProperties, DSPROPERTY_EAXLISTENER_COMMITDEFERREDSETTINGS,NULL,0);
+ }
+@@ -561,4 +587,5 @@
+     	s_emitters[eit]->stop(FALSE);
+-	for (u32 sit=0; sit<s_sources.size(); sit++){
+-    	CSoundRender_Source* s = s_sources[sit];
++	for (const auto& kv : s_sources)
++	{
++		CSoundRender_Source* s = kv.second;
+     	s->unload		();
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrSound/SoundRender_Core.h xray-monolith/src/xrSound/SoundRender_Core.h
+--- coc-1.4-xray-64/src/xrSound/SoundRender_Core.h	2023-10-20 20:54:52.152326500 +0100
++++ xray-monolith/src/xrSound/SoundRender_Core.h	2023-10-20 20:54:33.560036500 +0100
+@@ -44,3 +44,3 @@
+ 	// Containers
+-	xr_vector<CSoundRender_Source*>		s_sources;
++	xr_unordered_map<xr_string, CSoundRender_Source*> s_sources;
+ 	xr_vector<CSoundRender_Emitter*>	s_emitters;
+@@ -120,5 +121,6 @@
+ 	virtual void						object_relcase			( CObject* obj );
++	void i_create_all_sources();
+ 
+ 	virtual float						get_occlusion_to		( const Fvector& hear_pt, const Fvector& snd_pt, float dispersion=0.2f );
+-	float								get_occlusion			( Fvector& P, float R, Fvector* occ );
++	float get_occlusion(Fvector& P, float R, Fvector* occ) override;
+ 	CSoundRender_Environment*			get_environment			( const Fvector& P );
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrSound/SoundRender_Core_SourceManager.cpp xray-monolith/src/xrSound/SoundRender_Core_SourceManager.cpp
+--- coc-1.4-xray-64/src/xrSound/SoundRender_Core_SourceManager.cpp	2023-10-20 20:54:52.154326500 +0100
++++ xray-monolith/src/xrSound/SoundRender_Core_SourceManager.cpp	2023-10-20 20:54:33.562036700 +0100
+@@ -5,2 +5,4 @@
+ #include "SoundRender_Source.h"
++#include "../xrCore/ScopeLock.hpp"
++#include <tbb/parallel_for_each.h>
+ 
+@@ -13,4 +15,6 @@
+ 	if (strext(id))		*strext(id) = 0;
+-	for (u32 it=0; it<s_sources.size(); it++)		{
+-		if (0==xr_strcmp(*s_sources[it]->fname,id))	return s_sources[it];
++	auto it = s_sources.find(id);
++	if (it != s_sources.end())
++	{
++		return it->second;
+ 	}
+@@ -20,3 +24,3 @@
+ 	S->load					(id);
+-	s_sources.push_back		(S);
++	s_sources.insert({id, S});
+ 	return S;
+@@ -28 +32,41 @@
+ }
++
++void CSoundRender_Core::i_create_all_sources()
++{
++	CTimer T;
++	T.Start();
++
++	FS_FileSet flist;
++	FS.file_list(flist, "$game_sounds$", FS_ListFiles, "*.ogg");
++	const size_t sizeBefore = s_sources.size();
++
++	Lock lock;
++	const auto processFile = [&](const FS_File& file)
++	{
++		string256 id;
++		xr_strcpy(id, file.name.c_str());
++
++		xr_strlwr(id);
++		if (strext(id))
++			*strext(id) = 0;
++
++		{
++			ScopeLock scope(&lock);
++			const auto it = s_sources.find(id);
++			if (it != s_sources.end())
++				return;
++			UNUSED(scope);
++		}
++
++		CSoundRender_Source* S = new CSoundRender_Source();
++		S->load(id);
++
++		lock.Enter();
++		s_sources.insert({ id, S });
++		lock.Leave();
++	};
++
++	tbb::parallel_for_each(flist, processFile);
++
++	Msg("Finished creating %d sound sources. Duration: %d ms", s_sources.size() - sizeBefore, T.GetElapsed_ms());
++}
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrSound/SoundRender_CoreA.cpp xray-monolith/src/xrSound/SoundRender_CoreA.cpp
+--- coc-1.4-xray-64/src/xrSound/SoundRender_CoreA.cpp	2023-10-20 20:54:52.153326400 +0100
++++ xray-monolith/src/xrSound/SoundRender_CoreA.cpp	2023-10-20 20:54:33.561035200 +0100
+@@ -6,2 +6,23 @@
+ 
++#include "../xrEngine/pure.h"
++#include "../xrEngine/XR_IOConsole.h"
++
++namespace soundSmoothingParams {
++	float power = 1.8;
++	int steps = 15;
++	float alpha = getAlpha();
++	IC float getAlpha() {
++		return 2.0f / (steps + 1);
++	}
++	IC float getTimeDeltaSmoothing() {
++		return alpha;
++		//return min(1.0f, alpha * (Device.fTimeDelta / steps));
++	}
++	IC float getSmoothedValue(float target, float current, float smoothing = getTimeDeltaSmoothing()) {
++		return current + smoothing * (target - current);
++	}
++};
++
++extern CConsole* Console;
++
+ CSoundRender_CoreA*	SoundRenderA= 0; 
+@@ -13,4 +34,4 @@
+ 	pContext					= 0;
+-    eaxSet						= 0;
+-    eaxGet						= 0;
++	//eaxSet						= 0;
++	//eaxGet						= 0;
+ }
+@@ -23,4 +44,4 @@
+ {
+-	if (AL_NO_ERROR!=eaxGet(guid, prop, 0, val, sz)) return FALSE;
+-	if (AL_NO_ERROR!=eaxSet(guid, (bDeferred?DSPROPERTY_EAXLISTENER_DEFERRED:0) | prop, 0, val, sz)) return FALSE;
++	//if (AL_NO_ERROR!=eaxGet(guid, prop, 0, val, sz)) return FALSE;
++	//if (AL_NO_ERROR!=eaxSet(guid, (bDeferred?DSPROPERTY_EAXLISTENER_DEFERRED:0) | prop, 0, val, sz)) return FALSE;
+     return TRUE;
+@@ -30,15 +51,15 @@
+ {
+-    EAXLISTENERPROPERTIES 		ep;
+-    if (!EAXQuerySupport(bDeferred, &DSPROPSETID_EAX_ListenerProperties, DSPROPERTY_EAXLISTENER_ROOM, 				&ep.lRoom,					sizeof(LONG))) 	return FALSE;
+-    if (!EAXQuerySupport(bDeferred, &DSPROPSETID_EAX_ListenerProperties, DSPROPERTY_EAXLISTENER_ROOMHF, 		  	&ep.lRoomHF,				sizeof(LONG))) 	return FALSE;
+-    if (!EAXQuerySupport(bDeferred, &DSPROPSETID_EAX_ListenerProperties, DSPROPERTY_EAXLISTENER_ROOMROLLOFFFACTOR, 	&ep.flRoomRolloffFactor,	sizeof(float))) return FALSE;
+-    if (!EAXQuerySupport(bDeferred, &DSPROPSETID_EAX_ListenerProperties, DSPROPERTY_EAXLISTENER_DECAYTIME, 		  	&ep.flDecayTime,			sizeof(float))) return FALSE;
+-    if (!EAXQuerySupport(bDeferred, &DSPROPSETID_EAX_ListenerProperties, DSPROPERTY_EAXLISTENER_DECAYHFRATIO,		&ep.flDecayHFRatio,			sizeof(float))) return FALSE;
+-    if (!EAXQuerySupport(bDeferred, &DSPROPSETID_EAX_ListenerProperties, DSPROPERTY_EAXLISTENER_REFLECTIONS, 		&ep.lReflections,			sizeof(LONG))) 	return FALSE;
+-    if (!EAXQuerySupport(bDeferred, &DSPROPSETID_EAX_ListenerProperties, DSPROPERTY_EAXLISTENER_REFLECTIONSDELAY,   &ep.flReflectionsDelay,		sizeof(float))) return FALSE;
+-    if (!EAXQuerySupport(bDeferred, &DSPROPSETID_EAX_ListenerProperties, DSPROPERTY_EAXLISTENER_REVERB, 		  	&ep.lReverb,				sizeof(LONG))) 	return FALSE;
+-    if (!EAXQuerySupport(bDeferred, &DSPROPSETID_EAX_ListenerProperties, DSPROPERTY_EAXLISTENER_REVERBDELAY, 		&ep.flReverbDelay,			sizeof(float))) return FALSE;
+-    if (!EAXQuerySupport(bDeferred, &DSPROPSETID_EAX_ListenerProperties, DSPROPERTY_EAXLISTENER_ENVIRONMENTDIFFUSION,&ep.flEnvironmentDiffusion,sizeof(float))) return FALSE;
+-    if (!EAXQuerySupport(bDeferred, &DSPROPSETID_EAX_ListenerProperties, DSPROPERTY_EAXLISTENER_AIRABSORPTIONHF, 	&ep.flAirAbsorptionHF,		sizeof(float))) return FALSE;
+-    if (!EAXQuerySupport(bDeferred, &DSPROPSETID_EAX_ListenerProperties, DSPROPERTY_EAXLISTENER_FLAGS, 				&ep.dwFlags,				sizeof(DWORD))) return FALSE;
++	//EAXLISTENERPROPERTIES 		ep;
++	//if (!EAXQuerySupport(bDeferred, &DSPROPSETID_EAX_ListenerProperties, DSPROPERTY_EAXLISTENER_ROOM, 				&ep.lRoom,					sizeof(LONG))) 	return FALSE;
++	//if (!EAXQuerySupport(bDeferred, &DSPROPSETID_EAX_ListenerProperties, DSPROPERTY_EAXLISTENER_ROOMHF, 		  	&ep.lRoomHF,				sizeof(LONG))) 	return FALSE;
++	//if (!EAXQuerySupport(bDeferred, &DSPROPSETID_EAX_ListenerProperties, DSPROPERTY_EAXLISTENER_ROOMROLLOFFFACTOR, 	&ep.flRoomRolloffFactor,	sizeof(float))) return FALSE;
++	//if (!EAXQuerySupport(bDeferred, &DSPROPSETID_EAX_ListenerProperties, DSPROPERTY_EAXLISTENER_DECAYTIME, 		  	&ep.flDecayTime,			sizeof(float))) return FALSE;
++	//if (!EAXQuerySupport(bDeferred, &DSPROPSETID_EAX_ListenerProperties, DSPROPERTY_EAXLISTENER_DECAYHFRATIO,		&ep.flDecayHFRatio,			sizeof(float))) return FALSE;
++	//if (!EAXQuerySupport(bDeferred, &DSPROPSETID_EAX_ListenerProperties, DSPROPERTY_EAXLISTENER_REFLECTIONS, 		&ep.lReflections,			sizeof(LONG))) 	return FALSE;
++	//if (!EAXQuerySupport(bDeferred, &DSPROPSETID_EAX_ListenerProperties, DSPROPERTY_EAXLISTENER_REFLECTIONSDELAY,   &ep.flReflectionsDelay,		sizeof(float))) return FALSE;
++	//if (!EAXQuerySupport(bDeferred, &DSPROPSETID_EAX_ListenerProperties, DSPROPERTY_EAXLISTENER_REVERB, 		  	&ep.lReverb,				sizeof(LONG))) 	return FALSE;
++	//if (!EAXQuerySupport(bDeferred, &DSPROPSETID_EAX_ListenerProperties, DSPROPERTY_EAXLISTENER_REVERBDELAY, 		&ep.flReverbDelay,			sizeof(float))) return FALSE;
++	//if (!EAXQuerySupport(bDeferred, &DSPROPSETID_EAX_ListenerProperties, DSPROPERTY_EAXLISTENER_ENVIRONMENTDIFFUSION,&ep.flEnvironmentDiffusion,sizeof(float))) return FALSE;
++	//if (!EAXQuerySupport(bDeferred, &DSPROPSETID_EAX_ListenerProperties, DSPROPERTY_EAXLISTENER_AIRABSORPTIONHF, 	&ep.flAirAbsorptionHF,		sizeof(float))) return FALSE;
++	//if (!EAXQuerySupport(bDeferred, &DSPROPSETID_EAX_ListenerProperties, DSPROPERTY_EAXLISTENER_FLAGS, 				&ep.dwFlags,				sizeof(DWORD))) return FALSE;
+ 	return TRUE;
+@@ -131,6 +154,7 @@
+ 
+-    eaxSet 				        = (EAXSet)alGetProcAddress	((const ALchar*)"EAXSet");
+-    if (eaxSet==NULL) bEAX 		= false;
+-    eaxGet 				        = (EAXGet)alGetProcAddress	((const ALchar*)"EAXGet");
+-    if (eaxGet==NULL) bEAX 		= false;
++	//eaxSet 				        = (EAXSet)alGetProcAddress	((const ALchar*)"EAXSet");
++	//if (eaxSet==NULL) bEAX 		= false;
++	//eaxGet 				        = (EAXGet)alGetProcAddress	((const ALchar*)"EAXGet");
++	//if (eaxGet==NULL) bEAX 		= false;
++	bEAX = false;
+ 
+@@ -142,2 +166,10 @@
+ 
++	// Init listener struct
++	Listener.position.set(0.0f, 0.0f, 0.0f);
++	Listener.prevVelocity.set(0.0f, 0.0f, 0.0f);
++	Listener.curVelocity.set(0.0f, 0.0f, 0.0f);
++	Listener.accVelocity.set(0.0f, 0.0f, 0.0f);
++	Listener.orientation[0].set(0.0f, 0.0f, 0.0f);
++	Listener.orientation[1].set(0.0f, 0.0f, 0.0f);
++
+     inherited::_initialize		(stage);
+@@ -154,5 +186,9 @@
+ 				s_targets.push_back	(T);
+-			}else
++			}
++			else
+ 			{
++				char command[256] = {0};
+         		Log					("! SOUND: OpenAL: Max targets - ",tit);
++				sprintf(command, "snd_targets %d", tit);
++				Console->Execute(command);
+ 				T->_destroy			();
+@@ -193,3 +232,3 @@
+ {
+-	eaxSet	     			 	(guid, prop, 0, val, sz);
++	//eaxSet	     			 	(guid, prop, 0, val, sz);
+ }
+@@ -195,5 +234,6 @@
+ }
++
+ void	CSoundRender_CoreA::i_eax_get			(const GUID* guid, u32 prop, void* val, u32 sz)
+ {
+-	eaxGet	    		  	    (guid, prop, 0, val, sz);
++	//eaxGet	    		  	    (guid, prop, 0, val, sz);
+ }
+@@ -204,3 +244,16 @@
+ 
+-	if (!Listener.position.similar(P)){
++	Listener.curVelocity.sub(P, Listener.position);
++
++	float a = soundSmoothingParams::getTimeDeltaSmoothing();
++	int p = soundSmoothingParams::power;
++	Listener.accVelocity.x = soundSmoothingParams::getSmoothedValue(Listener.curVelocity.x * p / dt, Listener.accVelocity.x, a);
++	Listener.accVelocity.y = soundSmoothingParams::getSmoothedValue(Listener.curVelocity.y * p / dt, Listener.accVelocity.y, a);
++	Listener.accVelocity.z = soundSmoothingParams::getSmoothedValue(Listener.curVelocity.z * p / dt, Listener.accVelocity.z, a);
++	
++	Listener.prevVelocity.set(Listener.accVelocity);
++
++	// Msg("listener sound update delta %.3f, velocity %.3f, %.3f, %.3f, power %.1f, alpha %.3f", dt, Listener.prevVelocity.x, Listener.prevVelocity.y, Listener.prevVelocity.z, soundSmoothingParams::power, soundSmoothingParams::alpha);
++
++	if (!Listener.position.similar(P))
++	{
+ 		Listener.position.set	(P);
+@@ -212,3 +265,3 @@
+ 	A_CHK						(alListener3f	(AL_POSITION,Listener.position.x,Listener.position.y,-Listener.position.z));
+-	A_CHK						(alListener3f	(AL_VELOCITY,0.f,0.f,0.f));
++	A_CHK(alListener3f (AL_VELOCITY, Listener.prevVelocity.x, Listener.prevVelocity.y, -Listener.prevVelocity.z));
+ 	A_CHK						(alListenerfv	(AL_ORIENTATION,&Listener.orientation[0].x));
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrSound/SoundRender_CoreA.h xray-monolith/src/xrSound/SoundRender_CoreA.h
+--- coc-1.4-xray-64/src/xrSound/SoundRender_CoreA.h	2023-10-20 20:54:52.153326400 +0100
++++ xray-monolith/src/xrSound/SoundRender_CoreA.h	2023-10-20 20:54:33.561035200 +0100
+@@ -6,3 +6,2 @@
+ #include "OpenALDeviceList.h"
+-#include <eax/eax.h>
+ 
+@@ -20,4 +19,4 @@
+ 	typedef CSoundRender_Core inherited;
+-	EAXSet					eaxSet;					// EAXSet function, retrieved if EAX Extension is supported
+-	EAXGet					eaxGet;					// EAXGet function, retrieved if EAX Extension is supported
++	//EAXSet					eaxSet;					// EAXSet function, retrieved if EAX Extension is supported
++	//EAXGet					eaxGet;					// EAXGet function, retrieved if EAX Extension is supported
+ 	ALCdevice* 				pDevice;
+@@ -26,4 +25,8 @@
+ 
+-	struct SListener{
++	struct SListener
++	{
+ 		Fvector				position;
++		Fvector prevVelocity;
++		Fvector curVelocity;
++		Fvector accVelocity;
+ 		Fvector				orientation[2];
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrSound/SoundRender_Emitter.cpp xray-monolith/src/xrSound/SoundRender_Emitter.cpp
+--- coc-1.4-xray-64/src/xrSound/SoundRender_Emitter.cpp	2023-10-20 20:54:52.155327300 +0100
++++ xray-monolith/src/xrSound/SoundRender_Emitter.cpp	2023-10-20 20:54:33.562036700 +0100
+@@ -14,3 +14,3 @@
+ 	if(source()->channels_num()==1)
+-		p_source.position	= pos; 
++		p_source.update_position(pos);
+ 	else
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrSound/SoundRender_Emitter.h xray-monolith/src/xrSound/SoundRender_Emitter.h
+--- coc-1.4-xray-64/src/xrSound/SoundRender_Emitter.h	2023-10-20 20:54:52.155327300 +0100
++++ xray-monolith/src/xrSound/SoundRender_Emitter.h	2023-10-20 20:54:33.563035500 +0100
+@@ -5,2 +5,3 @@
+ #include "soundrender.h"
++#include "SoundRender_Core.h"
+ #include "soundrender_environment.h"
+@@ -79,5 +81,24 @@
+ 	virtual void				set_position			(const Fvector &pos);
+-	virtual void				set_frequency			(float scale)			{ VERIFY(_valid(scale));			p_source.freq=scale;}
+-	virtual void				set_range				(float min, float max)	{ VERIFY(_valid(min)&&_valid(max));	p_source.min_distance=min; p_source.max_distance=max;}
+-	virtual void				set_volume				(float vol)				{ if(!_valid(vol)) vol=0.0f;		p_source.volume=vol;}
++
++	virtual void set_frequency(float scale)
++	{
++		VERIFY(_valid(scale));
++		p_source.freq = scale;
++		if (fTimeToStop != 0.f)
++			fTimeToStop = SoundRender->fTimer_Value + ((get_length_sec() - (SoundRender->fTimer_Value - fTimeStarted)) / (scale * psSpeedOfSound));
++	}
++
++	virtual void set_range(float min, float max)
++	{
++		VERIFY(_valid(min)&&_valid(max));
++		p_source.min_distance = min;
++		p_source.max_distance = max;
++	}
++
++	virtual void set_volume(float vol)
++	{
++		if (!_valid(vol)) vol = 0.0f;
++		p_source.volume = vol;
++	}
++
+ 	virtual void				set_priority			(float p)				{ priority_scale = p;									}
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrSound/SoundRender_Emitter_FSM.cpp xray-monolith/src/xrSound/SoundRender_Emitter_FSM.cpp
+--- coc-1.4-xray-64/src/xrSound/SoundRender_Emitter_FSM.cpp	2023-10-20 20:54:52.155327300 +0100
++++ xray-monolith/src/xrSound/SoundRender_Emitter_FSM.cpp	2023-10-20 20:54:33.563035500 +0100
+@@ -7,2 +7,8 @@
+ 
++//#define MEASURE_PROCESSING_TIME
++
++#ifdef MEASURE_PROCESSING_TIME
++	CTimer Timer;
++#endif
++
+ XRSOUND_API extern float psSoundCull;
+@@ -31,3 +36,8 @@
+ 
+-	if (bRewind){
++#ifdef MEASURE_PROCESSING_TIME
++	float time1 = Timer.GetElapsed_ms_f();
++#endif
++
++	if (bRewind)
++	{
+ 		if (target)		SoundRender->i_rewind	(this);
+@@ -36,2 +46,7 @@
+ 
++	if (m_current_state != stStopped && !_valid(p_source.position))
++	{
++		m_current_state = stStopped;
++	}
++
+ 	switch (m_current_state)	
+@@ -49,3 +64,3 @@
+ 		fTimeStarted						= fTime;
+-		fTimeToStop							= fTime + get_length_sec();
++		fTimeToStop = fTime + (get_length_sec() / psSpeedOfSound); 
+ 		fTimeToPropagade					= fTime;
+@@ -53,3 +68,5 @@
+ 		occluder_volume						= SoundRender->get_occlusion	(p_source.position,.2f,occluder);
+-		smooth_volume						= p_source.base_volume*p_source.volume*(owner_data->s_type==st_Effect?psSoundVEffects*psSoundVFactor:psSoundVMusic)*(b2D?1.f:occluder_volume);
++		smooth_volume = p_source.base_volume * p_source.volume * (owner_data->s_type == st_Effect
++			                                                          ? psSoundVEffects * psSoundVFactor
++			                                                          : psSoundVMusic * psSoundVMusicFactor) * (b2D ? 1.f : occluder_volume);
+ 		e_current = e_target= *SoundRender->get_environment	(p_source.position);
+@@ -77,3 +94,5 @@
+ 		occluder_volume						= SoundRender->get_occlusion	(p_source.position,.2f,occluder);
+-		smooth_volume						= p_source.base_volume*p_source.volume*(owner_data->s_type==st_Effect?psSoundVEffects*psSoundVFactor:psSoundVMusic)*(b2D?1.f:occluder_volume);
++		smooth_volume = p_source.base_volume * p_source.volume * (owner_data->s_type == st_Effect
++			                                                          ? psSoundVEffects * psSoundVFactor
++			                                                          : psSoundVMusic * psSoundVMusicFactor) * (b2D ? 1.f : occluder_volume);
+ 		e_current = e_target				= *SoundRender->get_environment	(p_source.position);
+@@ -197,2 +223,6 @@
+ 
++#ifdef MEASURE_PROCESSING_TIME
++	float time2 = Timer.GetElapsed_ms_f();
++#endif
++
+ 	// if deffered stop active and volume==0 -> physically stop sound
+@@ -217,2 +247,17 @@
+ 	}
++	
++#ifdef MEASURE_PROCESSING_TIME
++	float time3 = Timer.GetElapsed_ms_f();
++	const char* name = "?";
++	if (owner_data && source())
++	{
++		name = source()->fname.c_str();
++	}
++	float d1 = time2 - time1;
++	float d2 = time3 - time2;
++	if (d1 > 1 || d2 > 1)
++	{
++		Msg("|SND| %s took long: %f %f", name, d1, d2);
++	}
++#endif
+ }
+@@ -236,10 +282,23 @@
+ 		fade_volume			+= dt*10.f*(bStopping?-1.f:1.f);
+-	}else{
++	}
++	else
++	{
+ 		// Check range
+ 		float	dist		= SoundRender->listener_position().distance_to	(p_source.position);
+-		if (dist>p_source.max_distance)										{ smooth_volume = 0; return FALSE; }
++		if (dist > p_source.max_distance)
++		{
++			smooth_volume = 0;
++			return FALSE;
++		}
+ 
+ 		// Calc attenuated volume
+-		float att			= p_source.min_distance/(psSoundRolloff*dist);	clamp(att,0.f,1.f);
+-		float fade_scale	= bStopping||(att*p_source.base_volume*p_source.volume*(owner_data->s_type==st_Effect?psSoundVEffects*psSoundVFactor:psSoundVMusic)<psSoundCull)?-1.f:1.f;
++		float att = p_source.min_distance / (psSoundRolloff * dist);
++		clamp(att, 0.f, 1.f);
++		float fade_scale = bStopping || (att * p_source.base_volume * p_source.volume * (owner_data->s_type == st_Effect
++			                                                                                 ? psSoundVEffects *
++			                                                                                 psSoundVFactor
++			                                                                                 : psSoundVMusic * psSoundVMusicFactor) <
++			                   psSoundCull)
++			                   ? -1.f
++			                   : 1.f;
+ 		fade_volume			+=	dt*10.f*fade_scale;
+@@ -253,3 +314,5 @@
+ 	// Update smoothing
+-	smooth_volume		= .9f*smooth_volume + .1f*(p_source.base_volume*p_source.volume*(owner_data->s_type==st_Effect?psSoundVEffects*psSoundVFactor:psSoundVMusic)*occluder_volume*fade_volume);
++	smooth_volume = .9f * smooth_volume + .1f * (p_source.base_volume * p_source.volume * (
++			owner_data->s_type == st_Effect ? psSoundVEffects * psSoundVFactor : psSoundVMusic * psSoundVMusicFactor) * occluder_volume *
++		fade_volume);
+ 	if (smooth_volume<psSoundCull)							return FALSE;	// allow volume to go up
+@@ -271,3 +335,6 @@
+ {
+-	if (bMoved)			e_target	= *SoundRender->get_environment	(p_source.position);
++	if (bMoved) {
++		e_target = *SoundRender->get_environment(p_source.position);
++		p_source.update_velocity(dt);
++	}
+ 	e_current.lerp		(e_current,e_target, dt);
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrSound/SoundRender_Environment.cpp xray-monolith/src/xrSound/SoundRender_Environment.cpp
+--- coc-1.4-xray-64/src/xrSound/SoundRender_Environment.cpp	2023-10-20 20:54:52.156327400 +0100
++++ xray-monolith/src/xrSound/SoundRender_Environment.cpp	2023-10-20 20:54:33.564036700 +0100
+@@ -5,6 +5,2 @@
+ #include "soundrender_environment.h"
+-#pragma warning(push)
+-#pragma warning(disable:4995)
+-#include <eax/eax.h>
+-#pragma warning(pop)
+ 
+@@ -22,15 +18,15 @@
+ {
+-	Environment				= EAX_ENVIRONMENT_GENERIC;
+-    Room                    = EAXLISTENER_DEFAULTROOM;
+-    RoomHF                  = EAXLISTENER_DEFAULTROOMHF;
+-    RoomRolloffFactor       = EAXLISTENER_DEFAULTROOMROLLOFFFACTOR;
+-    DecayTime               = EAXLISTENER_DEFAULTDECAYTIME;
+-    DecayHFRatio            = EAXLISTENER_DEFAULTDECAYHFRATIO;
+-    Reflections             = EAXLISTENER_DEFAULTREFLECTIONS;
+-    ReflectionsDelay        = EAXLISTENER_DEFAULTREFLECTIONSDELAY;
+-    Reverb                  = EAXLISTENER_DEFAULTREVERB;
+-    ReverbDelay             = EAXLISTENER_DEFAULTREVERBDELAY;
+-    EnvironmentSize         = EAXLISTENER_DEFAULTENVIRONMENTSIZE;
+-    EnvironmentDiffusion    = EAXLISTENER_DEFAULTENVIRONMENTDIFFUSION;
+-    AirAbsorptionHF         = EAXLISTENER_DEFAULTAIRABSORPTIONHF;
++	Environment = 0; // EAX_ENVIRONMENT_GENERIC;
++	Room = 0.0f; // EAXLISTENER_DEFAULTROOM;
++	RoomHF = 0.0f; // EAXLISTENER_DEFAULTROOMHF;
++	RoomRolloffFactor = 0.0f; // EAXLISTENER_DEFAULTROOMROLLOFFFACTOR;
++	DecayTime = 0.0f; // EAXLISTENER_DEFAULTDECAYTIME;
++	DecayHFRatio = 0.0f; // EAXLISTENER_DEFAULTDECAYHFRATIO;
++	Reflections = 0.0f; // EAXLISTENER_DEFAULTREFLECTIONS;
++	ReflectionsDelay = 0.0f; // EAXLISTENER_DEFAULTREFLECTIONSDELAY;
++	Reverb = 0.0f; // EAXLISTENER_DEFAULTREVERB;
++	ReverbDelay = 0.0f; // EAXLISTENER_DEFAULTREVERBDELAY;
++	EnvironmentSize = 0.0f; // EAXLISTENER_DEFAULTENVIRONMENTSIZE;
++	EnvironmentDiffusion = 0.0f; // EAXLISTENER_DEFAULTENVIRONMENTDIFFUSION;
++	AirAbsorptionHF = 0.0f; // EAXLISTENER_DEFAULTAIRABSORPTIONHF;
+ }
+@@ -40,3 +36,3 @@
+ 	set_default				();
+-    Room                    = EAXLISTENER_MINROOM;
++	//Room                    = EAXLISTENER_MINROOM;
+ 	clamp				  	();
+@@ -85,14 +81,14 @@
+ {
+-    ::clamp(Room,             		(float)EAXLISTENER_MINROOM, 	  	(float)EAXLISTENER_MAXROOM			);
+-    ::clamp(RoomHF,              	(float)EAXLISTENER_MINROOMHF, 	  	(float)EAXLISTENER_MAXROOMHF		);
+-    ::clamp(RoomRolloffFactor,   	EAXLISTENER_MINROOMROLLOFFFACTOR, 	EAXLISTENER_MAXROOMROLLOFFFACTOR	);
+-    ::clamp(DecayTime,           	EAXLISTENER_MINDECAYTIME, 			EAXLISTENER_MAXDECAYTIME			);
+-    ::clamp(DecayHFRatio,        	EAXLISTENER_MINDECAYHFRATIO, 		EAXLISTENER_MAXDECAYHFRATIO			);
+-    ::clamp(Reflections,         	(float)EAXLISTENER_MINREFLECTIONS,	(float)EAXLISTENER_MAXREFLECTIONS	);
+-    ::clamp(ReflectionsDelay,    	EAXLISTENER_MINREFLECTIONSDELAY, 	EAXLISTENER_MAXREFLECTIONSDELAY		);
+-    ::clamp(Reverb,              	(float)EAXLISTENER_MINREVERB, 	  	(float)EAXLISTENER_MAXREVERB		);
+-    ::clamp(ReverbDelay,         	EAXLISTENER_MINREVERBDELAY, 		EAXLISTENER_MAXREVERBDELAY			);
+-    ::clamp(EnvironmentSize,     	EAXLISTENER_MINENVIRONMENTSIZE, 	EAXLISTENER_MAXENVIRONMENTSIZE		);
+-    ::clamp(EnvironmentDiffusion,	EAXLISTENER_MINENVIRONMENTDIFFUSION,EAXLISTENER_MAXENVIRONMENTDIFFUSION	);
+-    ::clamp(AirAbsorptionHF,     	EAXLISTENER_MINAIRABSORPTIONHF, 	EAXLISTENER_MAXAIRABSORPTIONHF		);
++	//::clamp(Room,             		(float)EAXLISTENER_MINROOM, 	  	(float)EAXLISTENER_MAXROOM			);
++	//::clamp(RoomHF,              	(float)EAXLISTENER_MINROOMHF, 	  	(float)EAXLISTENER_MAXROOMHF		);
++	//::clamp(RoomRolloffFactor,   	EAXLISTENER_MINROOMROLLOFFFACTOR, 	EAXLISTENER_MAXROOMROLLOFFFACTOR	);
++	//::clamp(DecayTime,           	EAXLISTENER_MINDECAYTIME, 			EAXLISTENER_MAXDECAYTIME			);
++	//::clamp(DecayHFRatio,        	EAXLISTENER_MINDECAYHFRATIO, 		EAXLISTENER_MAXDECAYHFRATIO			);
++	//::clamp(Reflections,         	(float)EAXLISTENER_MINREFLECTIONS,	(float)EAXLISTENER_MAXREFLECTIONS	);
++	//::clamp(ReflectionsDelay,    	EAXLISTENER_MINREFLECTIONSDELAY, 	EAXLISTENER_MAXREFLECTIONSDELAY		);
++	//::clamp(Reverb,              	(float)EAXLISTENER_MINREVERB, 	  	(float)EAXLISTENER_MAXREVERB		);
++	//::clamp(ReverbDelay,         	EAXLISTENER_MINREVERBDELAY, 		EAXLISTENER_MAXREVERBDELAY			);
++	//::clamp(EnvironmentSize,     	EAXLISTENER_MINENVIRONMENTSIZE, 	EAXLISTENER_MAXENVIRONMENTSIZE		);
++	//::clamp(EnvironmentDiffusion,	EAXLISTENER_MINENVIRONMENTDIFFUSION,EAXLISTENER_MAXENVIRONMENTDIFFUSION	);
++	//::clamp(AirAbsorptionHF,     	EAXLISTENER_MINAIRABSORPTIONHF, 	EAXLISTENER_MAXAIRABSORPTIONHF		);
+ }
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrSound/SoundRender_Source.h xray-monolith/src/xrSound/SoundRender_Source.h
+--- coc-1.4-xray-64/src/xrSound/SoundRender_Source.h	2023-10-20 20:54:52.157326800 +0100
++++ xray-monolith/src/xrSound/SoundRender_Source.h	2023-10-20 20:54:33.565035800 +0100
+@@ -29,3 +29,3 @@
+ 	void 					i_decompress_fr			(OggVorbis_File* ovf, char* dest, u32 size);    
+-	void					LoadWave 				(LPCSTR name);
++	bool LoadWave(LPCSTR name);
+ public:
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrSound/SoundRender_Source_loader.cpp xray-monolith/src/xrSound/SoundRender_Source_loader.cpp
+--- coc-1.4-xray-64/src/xrSound/SoundRender_Source_loader.cpp	2023-10-20 20:54:52.158326500 +0100
++++ xray-monolith/src/xrSound/SoundRender_Source_loader.cpp	2023-10-20 20:54:33.565035800 +0100
+@@ -56,3 +63,3 @@
+ 
+-void CSoundRender_Source::LoadWave	(LPCSTR pName)
++bool CSoundRender_Source::LoadWave(LPCSTR pName)
+ {
+@@ -70,3 +77,11 @@
+ 	R_ASSERT3				(ovi,"Invalid source info:",pName);
+-	R_ASSERT3				(ovi->rate==44100,"Invalid source rate:",pName);
++	//R_ASSERT3				(ovi->rate==44100,"Invalid source rate:",pName);
++
++	if (ovi->rate != 44100)
++	{
++		Msg("! Warning: Invalid source rate: %s", pName);
++		ov_clear(&ovf);
++		FS.r_close(wave);
++		return false;
++	}
+ 
+@@ -126,2 +150,4 @@
+ 	FS.r_close				(wave);
++
++	return true;
+ }
+@@ -138,10 +164,13 @@
+ 	strconcat			(sizeof(fn),fn,N,".ogg");
+-	if (!FS.exist("$level$",fn))	FS.update_path	(fn,"$game_sounds$",fn);
++	if (!FS.exist("$level$", fn))
++		FS.update_path(fn, "$game_sounds$", fn);
+ 
+-#ifdef _EDITOR
+ 	if (!FS.exist(fn)){ 
++		{
++			Msg("! Can't find sound '%s'", name);
+ 		FS.update_path	(fn,"$game_sounds$","$no_sound.ogg");
+     }
+-#endif
+-	LoadWave			(fn);
++    }
++
++	if (LoadWave(fn))
+ 	SoundRender->cache.cat_create	(CAT, dwBytesTotal);
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrSound/SoundRender_TargetA.cpp xray-monolith/src/xrSound/SoundRender_TargetA.cpp
+--- coc-1.4-xray-64/src/xrSound/SoundRender_TargetA.cpp	2023-10-20 20:54:52.158326500 +0100
++++ xray-monolith/src/xrSound/SoundRender_TargetA.cpp	2023-10-20 20:54:33.566036900 +0100
+@@ -147,3 +153,7 @@
+ 	VERIFY2(m_pEmitter,SE->source()->file_name                                       ());
+-	A_CHK(alSource3f(pSource, AL_POSITION,	 			m_pEmitter->p_source.position.x,m_pEmitter->p_source.position.y,-m_pEmitter->p_source.position.z));
++	A_CHK(alSource3f(pSource, AL_POSITION, m_pEmitter->p_source.position.x,m_pEmitter->p_source.position.y,-m_pEmitter->
++		p_source.position.z));
++
++	VERIFY2(m_pEmitter, SE->source()->file_name());
++	A_CHK(alSource3f(pSource, AL_VELOCITY, m_pEmitter->p_source.velocity.x, m_pEmitter->p_source.velocity.y, -m_pEmitter->p_source.velocity.z));
+ 
+@@ -163,6 +174,14 @@
+ 	VERIFY2(m_pEmitter,SE->source()->file_name());
+-    float	_pitch	= m_pEmitter->p_source.freq;			clamp	(_pitch,EPS_L,2.f);
+-    if (!fsimilar(_pitch,cache_pitch)){
+-        cache_pitch	= _pitch;
+-        A_CHK(alSourcef	(pSource, AL_PITCH,				_pitch));
++	float _pitch = m_pEmitter->p_source.freq;
++	clamp(_pitch, EPS_L, 2.f);
++
++	if (!fsimilar(cache_pitch, _pitch * psSpeedOfSound))
++	{
++		cache_pitch = _pitch * psSpeedOfSound;
++
++		// Only update time to stop for non-looped sounds
++		if (!m_pEmitter->iPaused && (m_pEmitter->m_current_state == CSoundRender_Emitter::stStarting || m_pEmitter->m_current_state == CSoundRender_Emitter::stPlaying || m_pEmitter->m_current_state == CSoundRender_Emitter::stSimulating))
++			m_pEmitter->fTimeToStop = SoundRender->fTimer_Value + ((m_pEmitter->get_length_sec() - (SoundRender->fTimer_Value - m_pEmitter->fTimeStarted)) / cache_pitch);
++
++		A_CHK(alSourcef(pSource, AL_PITCH, cache_pitch));
+     }
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrSound/stdafx.cpp xray-monolith/src/xrSound/stdafx.cpp
+--- coc-1.4-xray-64/src/xrSound/stdafx.cpp	2023-10-20 20:54:52.161327700 +0100
++++ xray-monolith/src/xrSound/stdafx.cpp	2023-10-20 20:54:33.568036600 +0100
+@@ -18,3 +18,2 @@
+ #else
+-#	pragma comment(lib,	"eax.lib"			)
+ #	pragma comment(lib,	"xrCore.lib"		)
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrSound/xrSound.vcxproj xray-monolith/src/xrSound/xrSound.vcxproj
+--- coc-1.4-xray-64/src/xrSound/xrSound.vcxproj	2023-10-20 20:54:52.162327100 +0100
++++ xray-monolith/src/xrSound/xrSound.vcxproj	2023-10-20 20:54:33.569035500 +0100
+@@ -1,40 +1,8 @@
+-﻿<?xml version="1.0" encoding="utf-8"?>
+-<Project DefaultTargets="Build" ToolsVersion="12.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
++<?xml version="1.0" encoding="utf-8"?>
++<Project DefaultTargets="Build" ToolsVersion="14.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+   <ItemGroup Label="ProjectConfigurations">
+-    <ProjectConfiguration Include="Debug_NEW|Win32">
+-      <Configuration>Debug_NEW</Configuration>
+-      <Platform>Win32</Platform>
+-    </ProjectConfiguration>
+-    <ProjectConfiguration Include="Debug_NEW|x64">
+-      <Configuration>Debug_NEW</Configuration>
+-      <Platform>x64</Platform>
+-    </ProjectConfiguration>
+-    <ProjectConfiguration Include="Debug|Win32">
+-      <Configuration>Debug</Configuration>
+-      <Platform>Win32</Platform>
+-    </ProjectConfiguration>
+-    <ProjectConfiguration Include="Debug|x64">
+-      <Configuration>Debug</Configuration>
+-      <Platform>x64</Platform>
+-    </ProjectConfiguration>
+-    <ProjectConfiguration Include="Mixed|Win32">
+-      <Configuration>Mixed</Configuration>
+-      <Platform>Win32</Platform>
+-    </ProjectConfiguration>
+-    <ProjectConfiguration Include="Mixed|x64">
+-      <Configuration>Mixed</Configuration>
+-      <Platform>x64</Platform>
+-    </ProjectConfiguration>
+-    <ProjectConfiguration Include="Release_LuaJit_one|Win32">
+-      <Configuration>Release_LuaJit_one</Configuration>
+-      <Platform>Win32</Platform>
+-    </ProjectConfiguration>
+-    <ProjectConfiguration Include="Release_LuaJit_one|x64">
+-      <Configuration>Release_LuaJit_one</Configuration>
++    <ProjectConfiguration Include="Release-AVX|x64">
++      <Configuration>Release-AVX</Configuration>
+       <Platform>x64</Platform>
+     </ProjectConfiguration>
+-    <ProjectConfiguration Include="Release|Win32">
+-      <Configuration>Release</Configuration>
+-      <Platform>Win32</Platform>
+-    </ProjectConfiguration>
+     <ProjectConfiguration Include="Release|x64">
+@@ -43,2 +11,6 @@
+     </ProjectConfiguration>
++    <ProjectConfiguration Include="VerifiedDX11|x64">
++      <Configuration>VerifiedDX11</Configuration>
++      <Platform>x64</Platform>
++    </ProjectConfiguration>
+   </ItemGroup>
+@@ -47,59 +19,22 @@
+     <Keyword>Win32Proj</Keyword>
++    <WindowsTargetPlatformVersion>8.1</WindowsTargetPlatformVersion>
+   </PropertyGroup>
+   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Mixed|Win32'" Label="Configuration">
+-    <ConfigurationType>DynamicLibrary</ConfigurationType>
+-    <PlatformToolset>v120</PlatformToolset>
+-    <CharacterSet>MultiByte</CharacterSet>
+-  </PropertyGroup>
+-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Mixed|x64'" Label="Configuration">
+-    <ConfigurationType>DynamicLibrary</ConfigurationType>
+-    <PlatformToolset>v120</PlatformToolset>
+-    <CharacterSet>MultiByte</CharacterSet>
+-  </PropertyGroup>
+-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+-    <ConfigurationType>DynamicLibrary</ConfigurationType>
+-    <PlatformToolset>v120</PlatformToolset>
+-    <CharacterSet>MultiByte</CharacterSet>
+-    <WholeProgramOptimization>true</WholeProgramOptimization>
+-  </PropertyGroup>
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+-    <ConfigurationType>DynamicLibrary</ConfigurationType>
+-    <PlatformToolset>v120</PlatformToolset>
+-    <CharacterSet>MultiByte</CharacterSet>
+-    <WholeProgramOptimization>true</WholeProgramOptimization>
+-  </PropertyGroup>
+-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|Win32'" Label="Configuration">
+-    <ConfigurationType>DynamicLibrary</ConfigurationType>
+-    <PlatformToolset>v120</PlatformToolset>
+-    <CharacterSet>MultiByte</CharacterSet>
+-    <WholeProgramOptimization>true</WholeProgramOptimization>
+-  </PropertyGroup>
+-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|x64'" Label="Configuration">
+-    <ConfigurationType>DynamicLibrary</ConfigurationType>
+-    <PlatformToolset>v120</PlatformToolset>
+-    <CharacterSet>MultiByte</CharacterSet>
+-    <WholeProgramOptimization>true</WholeProgramOptimization>
+-  </PropertyGroup>
+-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|Win32'" Label="Configuration">
+-    <ConfigurationType>DynamicLibrary</ConfigurationType>
+-    <PlatformToolset>v120</PlatformToolset>
+-    <CharacterSet>MultiByte</CharacterSet>
+-    <WholeProgramOptimization>true</WholeProgramOptimization>
+-  </PropertyGroup>
+-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|x64'" Label="Configuration">
+-    <ConfigurationType>DynamicLibrary</ConfigurationType>
+-    <PlatformToolset>v120</PlatformToolset>
++    <ConfigurationType>StaticLibrary</ConfigurationType>
++    <PlatformToolset>v140</PlatformToolset>
+     <CharacterSet>MultiByte</CharacterSet>
+-    <WholeProgramOptimization>true</WholeProgramOptimization>
++    <WholeProgramOptimization>false</WholeProgramOptimization>
+   </PropertyGroup>
+-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+-    <ConfigurationType>DynamicLibrary</ConfigurationType>
+-    <PlatformToolset>v120</PlatformToolset>
++  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='VerifiedDX11|x64'" Label="Configuration">
++    <ConfigurationType>StaticLibrary</ConfigurationType>
++    <PlatformToolset>v140</PlatformToolset>
+     <CharacterSet>MultiByte</CharacterSet>
++    <WholeProgramOptimization>false</WholeProgramOptimization>
+   </PropertyGroup>
+-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+-    <ConfigurationType>DynamicLibrary</ConfigurationType>
+-    <PlatformToolset>v120</PlatformToolset>
++  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release-AVX|x64'" Label="Configuration">
++    <ConfigurationType>StaticLibrary</ConfigurationType>
++    <PlatformToolset>v140</PlatformToolset>
+     <CharacterSet>MultiByte</CharacterSet>
++    <WholeProgramOptimization>false</WholeProgramOptimization>
+   </PropertyGroup>
+@@ -108,17 +43,2 @@
+   </ImportGroup>
+-  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Mixed|Win32'" Label="PropertySheets">
+-    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+-    <Import Project="$(VCTargetsPath)Microsoft.CPP.UpgradeFromVC71.props" />
+-    <Import Project="$(SolutionDir)Common.props" />
+-  </ImportGroup>
+-  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Mixed|x64'" Label="PropertySheets">
+-    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+-    <Import Project="$(VCTargetsPath)Microsoft.CPP.UpgradeFromVC71.props" />
+-    <Import Project="$(SolutionDir)Common.props" />
+-  </ImportGroup>
+-  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="PropertySheets">
+-    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+-    <Import Project="$(VCTargetsPath)Microsoft.CPP.UpgradeFromVC71.props" />
+-    <Import Project="$(SolutionDir)Common.props" />
+-  </ImportGroup>
+   <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="PropertySheets">
+@@ -128,23 +48,3 @@
+   </ImportGroup>
+-  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|Win32'" Label="PropertySheets">
+-    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+-    <Import Project="$(VCTargetsPath)Microsoft.CPP.UpgradeFromVC71.props" />
+-    <Import Project="$(SolutionDir)Common.props" />
+-  </ImportGroup>
+-  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|x64'" Label="PropertySheets">
+-    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+-    <Import Project="$(VCTargetsPath)Microsoft.CPP.UpgradeFromVC71.props" />
+-    <Import Project="$(SolutionDir)Common.props" />
+-  </ImportGroup>
+-  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|Win32'" Label="PropertySheets">
+-    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+-    <Import Project="$(VCTargetsPath)Microsoft.CPP.UpgradeFromVC71.props" />
+-    <Import Project="$(SolutionDir)Common.props" />
+-  </ImportGroup>
+-  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|x64'" Label="PropertySheets">
+-    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+-    <Import Project="$(VCTargetsPath)Microsoft.CPP.UpgradeFromVC71.props" />
+-    <Import Project="$(SolutionDir)Common.props" />
+-  </ImportGroup>
+-  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="PropertySheets">
++  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='VerifiedDX11|x64'" Label="PropertySheets">
+     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+@@ -153,3 +53,3 @@
+   </ImportGroup>
+-  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="PropertySheets">
++  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release-AVX|x64'" Label="PropertySheets">
+     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+@@ -162,159 +62,17 @@
+   </PropertyGroup>
+-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+-    <OutDir>$(xrGameDir)bin_dbg\</OutDir>
+-    <IntDir>$(xrIntDir)$(ProjectName)\</IntDir>
+-    <IgnoreImportLibrary>true</IgnoreImportLibrary>
+-    <LinkIncremental>true</LinkIncremental>
+-  </PropertyGroup>
+-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+-    <IgnoreImportLibrary>true</IgnoreImportLibrary>
+-    <LinkIncremental>true</LinkIncremental>
+-  </PropertyGroup>
+-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+-    <OutDir>$(xrGameDir)bin_rel\</OutDir>
+-    <IntDir>$(xrIntDir)$(ProjectName)\</IntDir>
+-    <LinkIncremental>false</LinkIncremental>
+-  </PropertyGroup>
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+     <LinkIncremental>false</LinkIncremental>
+-  </PropertyGroup>
+-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|Win32'">
+-    <OutDir>$(xrGameDir)bin_dbg\</OutDir>
++    <OutDir>$(xrGameDir)bin_dbg\$(Platform)\$(Configuration)\</OutDir>
+     <IntDir>$(xrIntDir)$(ProjectName)\</IntDir>
+-    <LinkIncremental>false</LinkIncremental>
+   </PropertyGroup>
+-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|x64'">
++  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='VerifiedDX11|x64'">
+     <LinkIncremental>false</LinkIncremental>
+-  </PropertyGroup>
+-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|Win32'">
+-    <OutDir>$(xrGameDir)bin_rel\</OutDir>
++    <OutDir>$(xrGameDir)bin_dbg\$(Platform)\$(Configuration)\</OutDir>
+     <IntDir>$(xrIntDir)$(ProjectName)\</IntDir>
+-    <LinkIncremental>false</LinkIncremental>
+   </PropertyGroup>
+-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|x64'">
++  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release-AVX|x64'">
+     <LinkIncremental>false</LinkIncremental>
+-  </PropertyGroup>
+-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Mixed|Win32'">
+-    <OutDir>$(xrBinDir)</OutDir>
++    <OutDir>$(xrGameDir)bin_dbg\$(Platform)\$(Configuration)\</OutDir>
+     <IntDir>$(xrIntDir)$(ProjectName)\</IntDir>
+-    <LinkIncremental>false</LinkIncremental>
+-  </PropertyGroup>
+-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Mixed|x64'">
+-    <LinkIncremental>false</LinkIncremental>
+   </PropertyGroup>
+-  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+-    <ClCompile>
+-      <Optimization>Disabled</Optimization>
+-      <IntrinsicFunctions>false</IntrinsicFunctions>
+-      <FavorSizeOrSpeed>Neither</FavorSizeOrSpeed>
+-      <EnableFiberSafeOptimizations>true</EnableFiberSafeOptimizations>
+-      <AdditionalIncludeDirectories>$(xrSdkDir)include;$(XRAY_16X_LIBS)libvorbis-1.2.3\include;$(XRAY_16X_LIBS)libogg-1.1.4\include;$(SolutionDir)3rd party\OpenAL\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+-      <PreprocessorDefinitions>WIN32;DEBUG;_WINDOWS;_USRDLL;XRSOUND_EXPORTS;_SECURE_SCL=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+-      <StringPooling>false</StringPooling>
+-      <MinimalRebuild>true</MinimalRebuild>
+-      <ExceptionHandling>Sync</ExceptionHandling>
+-      <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
+-      <SmallerTypeCheck>true</SmallerTypeCheck>
+-      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+-      <FunctionLevelLinking>true</FunctionLevelLinking>
+-      <FloatingPointModel>Fast</FloatingPointModel>
+-      <ForceConformanceInForLoopScope>false</ForceConformanceInForLoopScope>
+-      <RuntimeTypeInfo>true</RuntimeTypeInfo>
+-      <PrecompiledHeader>Use</PrecompiledHeader>
+-      <BrowseInformation />
+-      <WarningLevel>Level4</WarningLevel>
+-      <SuppressStartupBanner>true</SuppressStartupBanner>
+-      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+-    </ClCompile>
+-    <Link>
+-      <AdditionalOptions>/NODEFAULTLIB:LIBCMTD %(AdditionalOptions)</AdditionalOptions>
+-      <AdditionalDependencies>libogg_static.lib;libvorbis_static.lib;libvorbisfile_static.lib;OpenAL32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+-      <SuppressStartupBanner>true</SuppressStartupBanner>
+-      <AdditionalLibraryDirectories>$(xrSdkDir)libraries;$(xrLibDir);$(XRAY_16X_LIBS)libvorbis-1.2.3\win32\lib\$(Platform)\Debug;$(XRAY_16X_LIBS)libogg-1.1.4\win32\lib\$(Platform)\Debug;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+-      <GenerateDebugInformation>true</GenerateDebugInformation>
+-      <MapExports>false</MapExports>
+-      <SubSystem>Windows</SubSystem>
+-      <LargeAddressAware>true</LargeAddressAware>
+-      <RandomizedBaseAddress>false</RandomizedBaseAddress>
+-      <ImportLibrary>$(xrLibDir)$(TargetName).lib</ImportLibrary>
+-      <TargetMachine>MachineX86</TargetMachine>
+-    </Link>
+-  </ItemDefinitionGroup>
+-  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+-    <ClCompile>
+-      <Optimization>Disabled</Optimization>
+-      <IntrinsicFunctions>false</IntrinsicFunctions>
+-      <FavorSizeOrSpeed>Neither</FavorSizeOrSpeed>
+-      <EnableFiberSafeOptimizations>true</EnableFiberSafeOptimizations>
+-      <AdditionalIncludeDirectories>$(xrSdkDir)include;$(XRAY_16X_LIBS)libvorbis-1.2.3\include;$(XRAY_16X_LIBS)libogg-1.1.4\include;$(SolutionDir)3rd party\OpenAL\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+-      <PreprocessorDefinitions>WIN32;DEBUG;_WINDOWS;_USRDLL;XRSOUND_EXPORTS;_SECURE_SCL=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+-      <StringPooling>false</StringPooling>
+-      <ExceptionHandling>Sync</ExceptionHandling>
+-      <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
+-      <SmallerTypeCheck>true</SmallerTypeCheck>
+-      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+-      <FunctionLevelLinking>true</FunctionLevelLinking>
+-      <FloatingPointModel>Fast</FloatingPointModel>
+-      <ForceConformanceInForLoopScope>false</ForceConformanceInForLoopScope>
+-      <RuntimeTypeInfo>true</RuntimeTypeInfo>
+-      <PrecompiledHeader>Use</PrecompiledHeader>
+-      <BrowseInformation>
+-      </BrowseInformation>
+-      <WarningLevel>Level4</WarningLevel>
+-      <SuppressStartupBanner>true</SuppressStartupBanner>
+-      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+-    </ClCompile>
+-    <Link>
+-      <AdditionalOptions>/NODEFAULTLIB:LIBCMTD %(AdditionalOptions)</AdditionalOptions>
+-      <AdditionalDependencies>libogg_static.lib;libvorbis_static.lib;libvorbisfile_static.lib;OpenAL32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+-      <SuppressStartupBanner>true</SuppressStartupBanner>
+-      <AdditionalLibraryDirectories>$(xrSdkDir)libraries;$(xrLibDir);$(XRAY_16X_LIBS)libvorbis-1.2.3\win32\lib\$(Platform)\Debug;$(XRAY_16X_LIBS)libogg-1.1.4\win32\lib\$(Platform)\Debug;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+-      <GenerateDebugInformation>true</GenerateDebugInformation>
+-      <MapExports>false</MapExports>
+-      <SubSystem>Windows</SubSystem>
+-      <LargeAddressAware>true</LargeAddressAware>
+-      <RandomizedBaseAddress>false</RandomizedBaseAddress>
+-      <ImportLibrary>$(xrLibDir)$(TargetName).lib</ImportLibrary>
+-    </Link>
+-  </ItemDefinitionGroup>
+-  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+-    <ClCompile>
+-      <Optimization>MaxSpeed</Optimization>
+-      <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
+-      <IntrinsicFunctions>true</IntrinsicFunctions>
+-      <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
+-      <OmitFramePointers>true</OmitFramePointers>
+-      <EnableFiberSafeOptimizations>true</EnableFiberSafeOptimizations>
+-      <WholeProgramOptimization>true</WholeProgramOptimization>
+-      <AdditionalIncludeDirectories>$(xrSdkDir)include;$(XRAY_16X_LIBS)libvorbis-1.2.3\include;$(XRAY_16X_LIBS)libogg-1.1.4\include;$(SolutionDir)3rd party\OpenAL\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+-      <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;_USRDLL;XRSOUND_EXPORTS;_SECURE_SCL=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+-      <StringPooling>true</StringPooling>
+-      <ExceptionHandling />
+-      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+-      <BufferSecurityCheck>false</BufferSecurityCheck>
+-      <FunctionLevelLinking>true</FunctionLevelLinking>
+-      <EnableEnhancedInstructionSet>StreamingSIMDExtensions2</EnableEnhancedInstructionSet>
+-      <FloatingPointModel>Fast</FloatingPointModel>
+-      <ForceConformanceInForLoopScope>false</ForceConformanceInForLoopScope>
+-      <RuntimeTypeInfo>true</RuntimeTypeInfo>
+-      <PrecompiledHeader>Use</PrecompiledHeader>
+-      <BrowseInformation />
+-      <WarningLevel>Level4</WarningLevel>
+-      <DebugInformationFormat>None</DebugInformationFormat>
+-      <UndefinePreprocessorDefinitions>USE_LUAJIT_ONE</UndefinePreprocessorDefinitions>
+-    </ClCompile>
+-    <Link>
+-      <AdditionalDependencies>libogg_static.lib;libvorbis_static.lib;libvorbisfile_static.lib;OpenAL32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+-      <AdditionalLibraryDirectories>$(xrSdkDir)libraries;$(xrLibDir);$(XRAY_16X_LIBS)libvorbis-1.2.3\win32\lib\$(Platform)\Release;$(XRAY_16X_LIBS)libogg-1.1.4\win32\lib\$(Platform)\Release;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+-      <SubSystem>NotSet</SubSystem>
+-      <LargeAddressAware>true</LargeAddressAware>
+-      <OptimizeReferences>true</OptimizeReferences>
+-      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+-      <LinkTimeCodeGeneration>UseLinkTimeCodeGeneration</LinkTimeCodeGeneration>
+-      <RandomizedBaseAddress>false</RandomizedBaseAddress>
+-      <ImportLibrary>$(xrLibDir)$(TargetName).lib</ImportLibrary>
+-      <TargetMachine>MachineX86</TargetMachine>
+-      <AdditionalOptions>/ignore:4099</AdditionalOptions>
+-    </Link>
+-  </ItemDefinitionGroup>
+   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+@@ -327,3 +85,3 @@
+       <EnableFiberSafeOptimizations>true</EnableFiberSafeOptimizations>
+-      <WholeProgramOptimization>true</WholeProgramOptimization>
++      <WholeProgramOptimization>false</WholeProgramOptimization>
+       <AdditionalIncludeDirectories>$(xrSdkDir)include;$(XRAY_16X_LIBS)libvorbis-1.2.3\include;$(XRAY_16X_LIBS)libogg-1.1.4\include;$(SolutionDir)3rd party\OpenAL\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+@@ -336,3 +94,3 @@
+       <FunctionLevelLinking>true</FunctionLevelLinking>
+-      <EnableEnhancedInstructionSet>AdvancedVectorExtensions</EnableEnhancedInstructionSet>
++      <EnableEnhancedInstructionSet>NotSet</EnableEnhancedInstructionSet>
+       <FloatingPointModel>Precise</FloatingPointModel>
+@@ -344,42 +102,2 @@
+       <WarningLevel>Level4</WarningLevel>
+-      <DebugInformationFormat>None</DebugInformationFormat>
+-      <UndefinePreprocessorDefinitions>USE_LUAJIT_ONE</UndefinePreprocessorDefinitions>
+-    </ClCompile>
+-    <Link>
+-      <AdditionalDependencies>libogg_static.lib;libvorbis_static.lib;libvorbisfile_static.lib;OpenAL32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+-      <AdditionalLibraryDirectories>$(xrSdkDir)libraries;$(xrLibDir);$(xrSdkDir)..\lib\$(Platform)\Release;$(xrGameDir)bin_dbg;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+-      <SubSystem>NotSet</SubSystem>
+-      <LargeAddressAware>true</LargeAddressAware>
+-      <OptimizeReferences>true</OptimizeReferences>
+-      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+-      <LinkTimeCodeGeneration>UseLinkTimeCodeGeneration</LinkTimeCodeGeneration>
+-      <RandomizedBaseAddress>false</RandomizedBaseAddress>
+-      <ImportLibrary>$(xrLibDir)$(TargetName).lib</ImportLibrary>
+-      <AdditionalOptions>/ignore:4099</AdditionalOptions>
+-    </Link>
+-  </ItemDefinitionGroup>
+-  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|Win32'">
+-    <ClCompile>
+-      <Optimization>MaxSpeed</Optimization>
+-      <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
+-      <IntrinsicFunctions>true</IntrinsicFunctions>
+-      <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
+-      <OmitFramePointers>true</OmitFramePointers>
+-      <EnableFiberSafeOptimizations>true</EnableFiberSafeOptimizations>
+-      <WholeProgramOptimization>true</WholeProgramOptimization>
+-      <AdditionalIncludeDirectories>$(xrSdkDir)include;$(XRAY_16X_LIBS)libvorbis-1.2.3\include;$(XRAY_16X_LIBS)libogg-1.1.4\include;$(SolutionDir)3rd party\OpenAL\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+-      <PreprocessorDefinitions>WIN32;DEBUG;_WINDOWS;_USRDLL;XRSOUND_EXPORTS;_SECURE_SCL=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+-      <StringPooling>true</StringPooling>
+-      <ExceptionHandling>Sync</ExceptionHandling>
+-      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+-      <BufferSecurityCheck>false</BufferSecurityCheck>
+-      <FunctionLevelLinking>false</FunctionLevelLinking>
+-      <EnableEnhancedInstructionSet>StreamingSIMDExtensions2</EnableEnhancedInstructionSet>
+-      <FloatingPointModel>Fast</FloatingPointModel>
+-      <ForceConformanceInForLoopScope>false</ForceConformanceInForLoopScope>
+-      <RuntimeTypeInfo>true</RuntimeTypeInfo>
+-      <PrecompiledHeader>Use</PrecompiledHeader>
+-      <BrowseInformation>
+-      </BrowseInformation>
+-      <WarningLevel>Level4</WarningLevel>
+       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+@@ -389,4 +107,3 @@
+       <AdditionalDependencies>libogg_static.lib;libvorbis_static.lib;libvorbisfile_static.lib;OpenAL32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+-      <AdditionalLibraryDirectories>$(xrSdkDir)libraries;$(xrLibDir);$(XRAY_16X_LIBS)libvorbis-1.2.3\win32\lib\$(Platform)\Release;$(XRAY_16X_LIBS)libogg-1.1.4\win32\lib\$(Platform)\Release;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+-      <GenerateDebugInformation>true</GenerateDebugInformation>
++      <AdditionalLibraryDirectories>$(xrSdkDir)libraries;$(xrLibDir);$(xrSdkDir)..\lib\$(Platform)\Release;$(xrGameDir)bin_dbg;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+       <SubSystem>NotSet</SubSystem>
+@@ -395,62 +112,20 @@
+       <EnableCOMDATFolding>true</EnableCOMDATFolding>
+-      <LinkTimeCodeGeneration>UseLinkTimeCodeGeneration</LinkTimeCodeGeneration>
++      <LinkTimeCodeGeneration>Default</LinkTimeCodeGeneration>
+       <RandomizedBaseAddress>false</RandomizedBaseAddress>
+       <ImportLibrary>$(xrLibDir)$(TargetName).lib</ImportLibrary>
+-      <TargetMachine>MachineX86</TargetMachine>
+       <AdditionalOptions>/ignore:4099</AdditionalOptions>
+-    </Link>
+-  </ItemDefinitionGroup>
+-  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|x64'">
+-    <ClCompile>
+-      <Optimization>MaxSpeed</Optimization>
+-      <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
+-      <IntrinsicFunctions>true</IntrinsicFunctions>
+-      <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
+-      <OmitFramePointers>true</OmitFramePointers>
+-      <EnableFiberSafeOptimizations>true</EnableFiberSafeOptimizations>
+-      <WholeProgramOptimization>true</WholeProgramOptimization>
+-      <AdditionalIncludeDirectories>$(xrSdkDir)include;$(XRAY_16X_LIBS)libvorbis-1.2.3\include;$(XRAY_16X_LIBS)libogg-1.1.4\include;$(SolutionDir)3rd party\OpenAL\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+-      <PreprocessorDefinitions>WIN32;DEBUG;_WINDOWS;_USRDLL;XRSOUND_EXPORTS;_SECURE_SCL=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+-      <StringPooling>true</StringPooling>
+-      <ExceptionHandling>Sync</ExceptionHandling>
+-      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+-      <BufferSecurityCheck>false</BufferSecurityCheck>
+-      <FunctionLevelLinking>false</FunctionLevelLinking>
+-      <EnableEnhancedInstructionSet>StreamingSIMDExtensions2</EnableEnhancedInstructionSet>
+-      <FloatingPointModel>Fast</FloatingPointModel>
+-      <ForceConformanceInForLoopScope>false</ForceConformanceInForLoopScope>
+-      <RuntimeTypeInfo>true</RuntimeTypeInfo>
+-      <PrecompiledHeader>Use</PrecompiledHeader>
+-      <BrowseInformation>
+-      </BrowseInformation>
+-      <WarningLevel>Level4</WarningLevel>
+-      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+-      <UndefinePreprocessorDefinitions>USE_LUAJIT_ONE</UndefinePreprocessorDefinitions>
+-    </ClCompile>
+-    <Link>
+-      <AdditionalDependencies>libogg_static.lib;libvorbis_static.lib;libvorbisfile_static.lib;OpenAL32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+-      <AdditionalLibraryDirectories>$(xrSdkDir)libraries;$(xrLibDir);$(XRAY_16X_LIBS)libvorbis-1.2.3\win32\lib\$(Platform)\Release;$(XRAY_16X_LIBS)libogg-1.1.4\win32\lib\$(Platform)\Release;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+       <GenerateDebugInformation>true</GenerateDebugInformation>
+-      <SubSystem>NotSet</SubSystem>
+-      <LargeAddressAware>true</LargeAddressAware>
+-      <OptimizeReferences>true</OptimizeReferences>
+-      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+-      <LinkTimeCodeGeneration>UseLinkTimeCodeGeneration</LinkTimeCodeGeneration>
+-      <RandomizedBaseAddress>false</RandomizedBaseAddress>
+-      <ImportLibrary>$(xrLibDir)$(TargetName).lib</ImportLibrary>
+-      <AdditionalOptions>/ignore:4099</AdditionalOptions>
+     </Link>
+   </ItemDefinitionGroup>
+-  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|Win32'">
++  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='VerifiedDX11|x64'">
+     <ClCompile>
+-      <Optimization>MaxSpeed</Optimization>
+-      <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
+-      <IntrinsicFunctions>true</IntrinsicFunctions>
+-      <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
+-      <OmitFramePointers>true</OmitFramePointers>
+-      <EnableFiberSafeOptimizations>true</EnableFiberSafeOptimizations>
+-      <WholeProgramOptimization>true</WholeProgramOptimization>
++      <Optimization>Disabled</Optimization>
++      <InlineFunctionExpansion>Disabled</InlineFunctionExpansion>
++      <IntrinsicFunctions>false</IntrinsicFunctions>
++      <FavorSizeOrSpeed>Neither</FavorSizeOrSpeed>
++      <OmitFramePointers>false</OmitFramePointers>
++      <EnableFiberSafeOptimizations>false</EnableFiberSafeOptimizations>
++      <WholeProgramOptimization>false</WholeProgramOptimization>
+       <AdditionalIncludeDirectories>$(xrSdkDir)include;$(XRAY_16X_LIBS)libvorbis-1.2.3\include;$(XRAY_16X_LIBS)libogg-1.1.4\include;$(SolutionDir)3rd party\OpenAL\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+-      <PreprocessorDefinitions>USE_LUAJIT_ONE;WIN32;NDEBUG;_WINDOWS;_USRDLL;XRSOUND_EXPORTS;_SECURE_SCL=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+-      <StringPooling>true</StringPooling>
++      <PreprocessorDefinitions>USE_VERIFY_IN_RELEASE;WIN32;NDEBUG;_WINDOWS;_USRDLL;XRSOUND_EXPORTS;_SECURE_SCL=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+       <ExceptionHandling>
+@@ -458,6 +133,6 @@
+       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+-      <BufferSecurityCheck>false</BufferSecurityCheck>
+-      <FunctionLevelLinking>false</FunctionLevelLinking>
+-      <EnableEnhancedInstructionSet>StreamingSIMDExtensions2</EnableEnhancedInstructionSet>
+-      <FloatingPointModel>Fast</FloatingPointModel>
++      <BufferSecurityCheck>true</BufferSecurityCheck>
++      <FunctionLevelLinking>true</FunctionLevelLinking>
++      <EnableEnhancedInstructionSet>NotSet</EnableEnhancedInstructionSet>
++      <FloatingPointModel>Precise</FloatingPointModel>
+       <ForceConformanceInForLoopScope>false</ForceConformanceInForLoopScope>
+@@ -469,2 +144,5 @@
+       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
++      <UndefinePreprocessorDefinitions>USE_LUAJIT_ONE</UndefinePreprocessorDefinitions>
++      <MinimalRebuild>true</MinimalRebuild>
++      <RemoveUnreferencedCodeData>false</RemoveUnreferencedCodeData>
+     </ClCompile>
+@@ -472,4 +150,3 @@
+       <AdditionalDependencies>libogg_static.lib;libvorbis_static.lib;libvorbisfile_static.lib;OpenAL32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+-      <AdditionalLibraryDirectories>$(xrSdkDir)libraries;$(xrLibDir);$(XRAY_16X_LIBS)libvorbis-1.2.3\win32\lib\$(Platform)\Release;$(XRAY_16X_LIBS)libogg-1.1.4\win32\lib\$(Platform)\Release;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+-      <GenerateDebugInformation>true</GenerateDebugInformation>
++      <AdditionalLibraryDirectories>$(xrSdkDir)libraries;$(xrLibDir);$(xrSdkDir)..\lib\$(Platform)\Release;$(xrGameDir)bin_dbg;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+       <SubSystem>NotSet</SubSystem>
+@@ -478,10 +155,10 @@
+       <EnableCOMDATFolding>true</EnableCOMDATFolding>
+-      <LinkTimeCodeGeneration>UseLinkTimeCodeGeneration</LinkTimeCodeGeneration>
++      <LinkTimeCodeGeneration>Default</LinkTimeCodeGeneration>
+       <RandomizedBaseAddress>false</RandomizedBaseAddress>
+       <ImportLibrary>$(xrLibDir)$(TargetName).lib</ImportLibrary>
+-      <TargetMachine>MachineX86</TargetMachine>
+       <AdditionalOptions>/ignore:4099</AdditionalOptions>
++      <GenerateDebugInformation>true</GenerateDebugInformation>
+     </Link>
+   </ItemDefinitionGroup>
+-  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|x64'">
++  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release-AVX|x64'">
+     <ClCompile>
+@@ -493,5 +170,5 @@
+       <EnableFiberSafeOptimizations>true</EnableFiberSafeOptimizations>
+-      <WholeProgramOptimization>true</WholeProgramOptimization>
++      <WholeProgramOptimization>false</WholeProgramOptimization>
+       <AdditionalIncludeDirectories>$(xrSdkDir)include;$(XRAY_16X_LIBS)libvorbis-1.2.3\include;$(XRAY_16X_LIBS)libogg-1.1.4\include;$(SolutionDir)3rd party\OpenAL\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+-      <PreprocessorDefinitions>USE_LUAJIT_ONE;WIN32;NDEBUG;_WINDOWS;_USRDLL;XRSOUND_EXPORTS;_SECURE_SCL=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
++      <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;_USRDLL;XRSOUND_EXPORTS;_SECURE_SCL=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+       <StringPooling>true</StringPooling>
+@@ -501,5 +178,5 @@
+       <BufferSecurityCheck>false</BufferSecurityCheck>
+-      <FunctionLevelLinking>false</FunctionLevelLinking>
+-      <EnableEnhancedInstructionSet>StreamingSIMDExtensions2</EnableEnhancedInstructionSet>
+-      <FloatingPointModel>Fast</FloatingPointModel>
++      <FunctionLevelLinking>true</FunctionLevelLinking>
++      <EnableEnhancedInstructionSet>AdvancedVectorExtensions</EnableEnhancedInstructionSet>
++      <FloatingPointModel>Precise</FloatingPointModel>
+       <ForceConformanceInForLoopScope>false</ForceConformanceInForLoopScope>
+@@ -511,2 +188,3 @@
+       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
++      <UndefinePreprocessorDefinitions>USE_LUAJIT_ONE</UndefinePreprocessorDefinitions>
+     </ClCompile>
+@@ -514,4 +192,3 @@
+       <AdditionalDependencies>libogg_static.lib;libvorbis_static.lib;libvorbisfile_static.lib;OpenAL32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+-      <AdditionalLibraryDirectories>$(xrSdkDir)libraries;$(xrLibDir);$(XRAY_16X_LIBS)libvorbis-1.2.3\win32\lib\$(Platform)\Release;$(XRAY_16X_LIBS)libogg-1.1.4\win32\lib\$(Platform)\Release;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+-      <GenerateDebugInformation>true</GenerateDebugInformation>
++      <AdditionalLibraryDirectories>$(xrSdkDir)libraries;$(xrLibDir);$(xrSdkDir)..\lib\$(Platform)\Release;$(xrGameDir)bin_dbg;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+       <SubSystem>NotSet</SubSystem>
+@@ -520,3 +197,3 @@
+       <EnableCOMDATFolding>true</EnableCOMDATFolding>
+-      <LinkTimeCodeGeneration>UseLinkTimeCodeGeneration</LinkTimeCodeGeneration>
++      <LinkTimeCodeGeneration>Default</LinkTimeCodeGeneration>
+       <RandomizedBaseAddress>false</RandomizedBaseAddress>
+@@ -524,68 +201,3 @@
+       <AdditionalOptions>/ignore:4099</AdditionalOptions>
+-    </Link>
+-  </ItemDefinitionGroup>
+-  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Mixed|Win32'">
+-    <ClCompile>
+-      <Optimization>Full</Optimization>
+-      <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
+-      <IntrinsicFunctions>true</IntrinsicFunctions>
+-      <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
+-      <OmitFramePointers>false</OmitFramePointers>
+-      <EnableFiberSafeOptimizations>true</EnableFiberSafeOptimizations>
+-      <AdditionalIncludeDirectories>$(xrSdkDir)include;$(XRAY_16X_LIBS)libvorbis-1.2.3\include;$(XRAY_16X_LIBS)libogg-1.1.4\include;$(SolutionDir)3rd party\OpenAL\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+-      <PreprocessorDefinitions>MIXED;WIN32;DEBUG;_WINDOWS;_USRDLL;XRSOUND_EXPORTS;_SECURE_SCL=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+-      <StringPooling>true</StringPooling>
+-      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+-      <BufferSecurityCheck>true</BufferSecurityCheck>
+-      <FunctionLevelLinking>false</FunctionLevelLinking>
+-      <FloatingPointModel>Fast</FloatingPointModel>
+-      <ForceConformanceInForLoopScope>false</ForceConformanceInForLoopScope>
+-      <RuntimeTypeInfo>true</RuntimeTypeInfo>
+-      <PrecompiledHeader>Use</PrecompiledHeader>
+-      <BrowseInformation />
+-      <WarningLevel>Level4</WarningLevel>
+-      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+-    </ClCompile>
+-    <Link>
+-      <AdditionalDependencies>libogg_static.lib;libvorbis_static.lib;libvorbisfile_static.lib;OpenAL32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+-      <AdditionalLibraryDirectories>$(xrSdkDir)libraries;$(xrLibDir);$(XRAY_16X_LIBS)libvorbis-1.2.3\win32\lib\$(Platform)\Release;$(XRAY_16X_LIBS)libogg-1.1.4\win32\lib\$(Platform)\Release;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+       <GenerateDebugInformation>true</GenerateDebugInformation>
+-      <SubSystem>Windows</SubSystem>
+-      <LargeAddressAware>true</LargeAddressAware>
+-      <RandomizedBaseAddress>false</RandomizedBaseAddress>
+-      <ImportLibrary>$(xrLibDir)$(TargetName).lib</ImportLibrary>
+-      <TargetMachine>NotSet</TargetMachine>
+-    </Link>
+-  </ItemDefinitionGroup>
+-  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Mixed|x64'">
+-    <ClCompile>
+-      <Optimization>Full</Optimization>
+-      <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
+-      <IntrinsicFunctions>true</IntrinsicFunctions>
+-      <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
+-      <OmitFramePointers>false</OmitFramePointers>
+-      <EnableFiberSafeOptimizations>true</EnableFiberSafeOptimizations>
+-      <AdditionalIncludeDirectories>$(xrSdkDir)include;$(XRAY_16X_LIBS)libvorbis-1.2.3\include;$(XRAY_16X_LIBS)libogg-1.1.4\include;$(SolutionDir)3rd party\OpenAL\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+-      <PreprocessorDefinitions>MIXED;WIN32;DEBUG;_WINDOWS;_USRDLL;XRSOUND_EXPORTS;_SECURE_SCL=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+-      <StringPooling>true</StringPooling>
+-      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+-      <BufferSecurityCheck>true</BufferSecurityCheck>
+-      <FunctionLevelLinking>false</FunctionLevelLinking>
+-      <FloatingPointModel>Fast</FloatingPointModel>
+-      <ForceConformanceInForLoopScope>false</ForceConformanceInForLoopScope>
+-      <RuntimeTypeInfo>true</RuntimeTypeInfo>
+-      <PrecompiledHeader>Use</PrecompiledHeader>
+-      <BrowseInformation>
+-      </BrowseInformation>
+-      <WarningLevel>Level4</WarningLevel>
+-      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+-    </ClCompile>
+-    <Link>
+-      <AdditionalDependencies>libogg_static.lib;libvorbis_static.lib;libvorbisfile_static.lib;OpenAL32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+-      <AdditionalLibraryDirectories>$(xrSdkDir)libraries;$(xrLibDir);$(XRAY_16X_LIBS)libvorbis-1.2.3\win32\lib\$(Platform)\Release;$(XRAY_16X_LIBS)libogg-1.1.4\win32\lib\$(Platform)\Release;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+-      <GenerateDebugInformation>true</GenerateDebugInformation>
+-      <SubSystem>Windows</SubSystem>
+-      <LargeAddressAware>true</LargeAddressAware>
+-      <RandomizedBaseAddress>false</RandomizedBaseAddress>
+-      <ImportLibrary>$(xrLibDir)$(TargetName).lib</ImportLibrary>
+     </Link>
+@@ -609,21 +221,7 @@
+     <ClCompile Include="guids.cpp">
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+-      </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+-      </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Mixed|Win32'">
+-      </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Mixed|x64'">
+-      </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+-      </PrecompiledHeader>
+       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+       </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|Win32'">
+-      </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|x64'">
++      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='VerifiedDX11|x64'">
+       </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|Win32'">
+-      </PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|x64'">
++      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release-AVX|x64'">
+       </PrecompiledHeader>
+@@ -641,8 +239,3 @@
+     <ClCompile Include="SoundRender_Emitter_StartStop.cpp" />
+-    <ClCompile Include="SoundRender_Emitter_streamer.cpp">
+-      <Optimization Condition="'$(Configuration)|$(Platform)'=='Mixed|Win32'">Full</Optimization>
+-      <Optimization Condition="'$(Configuration)|$(Platform)'=='Mixed|x64'">Full</Optimization>
+-      <InlineFunctionExpansion Condition="'$(Configuration)|$(Platform)'=='Mixed|Win32'">AnySuitable</InlineFunctionExpansion>
+-      <InlineFunctionExpansion Condition="'$(Configuration)|$(Platform)'=='Mixed|x64'">AnySuitable</InlineFunctionExpansion>
+-    </ClCompile>
++    <ClCompile Include="SoundRender_Emitter_streamer.cpp" />
+     <ClCompile Include="SoundRender_Environment.cpp" />
+@@ -653,12 +246,5 @@
+     <ClCompile Include="stdafx.cpp">
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Mixed|Win32'">Create</PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Mixed|x64'">Create</PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Create</PrecompiledHeader>
+       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|Win32'">Create</PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug_NEW|x64'">Create</PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|Win32'">Create</PrecompiledHeader>
+-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release_LuaJit_one|x64'">Create</PrecompiledHeader>
++      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='VerifiedDX11|x64'">Create</PrecompiledHeader>
++      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release-AVX|x64'">Create</PrecompiledHeader>
+     </ClCompile>

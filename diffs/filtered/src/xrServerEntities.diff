@@ -1,0 +1,1447 @@
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrServerEntities/alife_movement_manager_holder.h xray-monolith/src/xrServerEntities/alife_movement_manager_holder.h
+--- coc-1.4-xray-64/src/xrServerEntities/alife_movement_manager_holder.h	2023-10-20 20:54:52.099326600 +0100
++++ xray-monolith/src/xrServerEntities/alife_movement_manager_holder.h	2023-10-20 20:54:33.509036700 +0100
+@@ -7,5 +7,6 @@
+ ////////////////////////////////////////////////////////////////////////////
+-#pragma once;
++#pragma once
+ 
+-class CMovementManagerHolder {
++class CMovementManagerHolder
++{
+ public:
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrServerEntities/character_info.cpp xray-monolith/src/xrServerEntities/character_info.cpp
+--- coc-1.4-xray-64/src/xrServerEntities/character_info.cpp	2023-10-20 20:54:52.101326600 +0100
++++ xray-monolith/src/xrServerEntities/character_info.cpp	2023-10-20 20:54:33.511036400 +0100
+@@ -1,3 +1,3 @@
+-//////////////////////////////////////////////////////////////////////////
+-// character_info.cpp			игровая информация для персонажей в игре
++п»ї//////////////////////////////////////////////////////////////////////////
++// character_info.cpp			РёРіСЂРѕРІР°С РёРЅС„РѕСЂРјР°С†РёС РґР»С РїРµСЂСРѕРЅР°Р¶РµР№ РІ РёРіСЂРµ
+ // 
+@@ -66,5 +65,17 @@
+ 	if(Rank().value() == NO_RANK)
+-		SetRank(m_SpecificCharacter.Rank());
++		if (m_SpecificCharacter.RankDef().min != m_SpecificCharacter.RankDef().max)
++		{
++			int rank = ::Random.randI(m_SpecificCharacter.RankDef().min, m_SpecificCharacter.RankDef().max);
++			SetRank(rank);
++		}
++		else
++			SetRank(m_SpecificCharacter.RankDef().max);
+ 	if(Reputation().value() == NO_REPUTATION)
+-		SetReputation(m_SpecificCharacter.Reputation());
++		if (m_SpecificCharacter.ReputationDef().min != m_SpecificCharacter.ReputationDef().max)
++		{
++			int rep = ::Random.randI(m_SpecificCharacter.ReputationDef().min, m_SpecificCharacter.ReputationDef().max);
++			SetReputation(rep);
++		}
++		else
++			SetReputation(m_SpecificCharacter.ReputationDef().max);
+ 	if(Community().index() == NO_COMMUNITY_INDEX)
+@@ -109,3 +119,29 @@
+ 			
++
++		int min_rank = pXML->ReadAttribInt("rank", 0, "min", NO_RANK);
++		int max_rank = pXML->ReadAttribInt("rank", 0, "max", NO_RANK);
++		if (min_rank != NO_RANK && max_rank != NO_RANK)
++		{
++			min_rank = _min(min_rank, max_rank);
++			max_rank = _max(max_rank, min_rank);
++			if (max_rank != min_rank)
++				data()->m_Rank = ::Random.randI(min_rank, max_rank);
++			else
++				data()->m_Rank = max_rank;
++		}
++		else
+ 		data()->m_Rank = pXML->ReadInt			("rank",		0,	NO_RANK);
++
++		int min_reputation = pXML->ReadAttribInt("reputation", 0, "min", NO_REPUTATION);
++		int max_reputation = pXML->ReadAttribInt("reputation", 0, "max", NO_REPUTATION);
++		if (min_reputation != NO_REPUTATION && max_reputation != NO_REPUTATION)
++		{
++			min_reputation = _min(min_reputation, max_reputation);
++			max_reputation = _max(max_reputation, min_reputation);
++			if (max_reputation != min_reputation)
++				data()->m_Reputation = ::Random.randI(min_reputation, max_reputation);
++			else
++				data()->m_Reputation = max_reputation;
++		}
++		else
+ 		data()->m_Reputation = pXML->ReadInt	("reputation",	0,	NO_REPUTATION);
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrServerEntities/clsid_game.h xray-monolith/src/xrServerEntities/clsid_game.h
+--- coc-1.4-xray-64/src/xrServerEntities/clsid_game.h	2023-10-20 20:54:52.102326500 +0100
++++ xray-monolith/src/xrServerEntities/clsid_game.h	2023-10-20 20:54:33.512036900 +0100
+@@ -163,2 +163,3 @@
+ #define CLSID_DETECTOR_SCIENTIFIC	MK_CLSID('D','_','S','C','I','E','N','T')
++#define CLSID_DEVICE_DOSIMETER		MK_CLSID('D','_','D','S','M','E','T','R')
+ 
+@@ -171,2 +172,3 @@
+ #define CLSID_DEVICE_FLARE			MK_CLSID('D','_','F','L','A','R','E',' ')
++#define CLSID_DEVICE_FLASHLIGHT		MK_CLSID('D','_','F','L','A','L','I','T')
+ 
+@@ -205,2 +207,3 @@
+ #define CLSID_EQUIPMENT_HELMET		MK_CLSID('E','Q','_','H','L','M','E','T')
++#define CLSID_EQUIPMENT_BACKPACK	MK_CLSID('E','Q','_','B','A','K','P','K')
+ 
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrServerEntities/inventory_space.h xray-monolith/src/xrServerEntities/inventory_space.h
+--- coc-1.4-xray-64/src/xrServerEntities/inventory_space.h	2023-10-20 20:54:52.105326400 +0100
++++ xray-monolith/src/xrServerEntities/inventory_space.h	2023-10-20 20:54:33.515036800 +0100
+@@ -5,16 +5,29 @@
+ 
+-enum{
++enum
++{
+ 	NO_ACTIVE_SLOT	= 0,
+-	KNIFE_SLOT		= 1,//btn1			was (0)			!!!
+-	INV_SLOT_2,		//btn2 PISTOL_SLOT	was (1)
+-	INV_SLOT_3,		//btn3 RIFLE_SLOT	was (2)
+-	GRENADE_SLOT,	//btn4 GRENADE_SLOT	was (3)
+-	BINOCULAR_SLOT,	//btn5 BINOCULAR_SLOT
+-	BOLT_SLOT,		//btn6 BOLT_SLOT
+-	OUTFIT_SLOT,	// outfit
+-	PDA_SLOT,		// pda
+-	DETECTOR_SLOT,	// detector
+-	TORCH_SLOT,		// torch
+-	ARTEFACT_SLOT,	// artefact
++	KNIFE_SLOT = 1,
++	//btn1			was (0)			!!!
++	INV_SLOT_2,
++	//btn2 PISTOL_SLOT	was (1)
++	INV_SLOT_3,
++	//btn3 RIFLE_SLOT	was (2)
++	GRENADE_SLOT,
++	//btn4 GRENADE_SLOT	was (3)
++	BINOCULAR_SLOT,
++	//btn5 BINOCULAR_SLOT
++	BOLT_SLOT,
++	//btn6 BOLT_SLOT
++	OUTFIT_SLOT,
++	// outfit
++	PDA_SLOT,
++	// pda
++	DETECTOR_SLOT,
++	// detector
++	TORCH_SLOT,
++	// torch
++	ARTEFACT_SLOT,
++	// artefact
+ 	HELMET_SLOT,
++	BACKPACK_SLOT,
+ 	//Alundaio: More slots for custom uses
+@@ -28,3 +41,3 @@
+ #else
+-	LAST_SLOT = HELMET_SLOT
++	LAST_SLOT = BACKPACK_SLOT
+ #endif
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrServerEntities/lua_studio.cpp xray-monolith/src/xrServerEntities/lua_studio.cpp
+--- coc-1.4-xray-64/src/xrServerEntities/lua_studio.cpp	2023-10-20 20:54:52.106326500 +0100
++++ xray-monolith/src/xrServerEntities/lua_studio.cpp	2023-10-20 20:54:33.515036800 +0100
+@@ -332,5 +336,7 @@
+ 
+-bool engine::type_to_string						(char* const buffer, unsigned int const size, lua_State* const state, int const index, bool &use_in_description)
++bool engine::type_to_string(char* const buffer, unsigned int const size, lua_State* const state, int const index,
++                            bool& use_in_description)
++{
++	switch (lua_type(state, index))
+ {
+-	switch (lua_type(state, index)) {
+ 		case engine::lua_type_string	:
+@@ -491,5 +512,8 @@
+ 
+-bool engine::value_to_string					(cs::lua_studio::backend& backend, char* const buffer, unsigned int const size, lua_State* const state, int const index, cs::lua_studio::icon_type& icon_type, bool const full_description)
++bool engine::value_to_string(cs::lua_studio::backend& backend, char* const buffer, unsigned int const size,
++                             lua_State* const state, int const index, cs::lua_studio::icon_type& icon_type,
++                             bool const full_description)
++{
++	switch (lua_type(state, index))
+ {
+-	switch (lua_type(state, index)) {
+ 		case engine::lua_type_string	:
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrServerEntities/object_factory_register.cpp xray-monolith/src/xrServerEntities/object_factory_register.cpp
+--- coc-1.4-xray-64/src/xrServerEntities/object_factory_register.cpp	2023-10-20 20:54:52.109326400 +0100
++++ xray-monolith/src/xrServerEntities/object_factory_register.cpp	2023-10-20 20:54:33.519037000 +0100
+@@ -118,3 +118,3 @@
+ #	include "ActorHelmet.h"
+-
++#	include "ActorBackpack.h"
+ #	include "f1.h"
+@@ -182,2 +182,6 @@
+ #include "..\xrGame\HolderEntityObject.h"
++
++#include "Flashlight.h"
++#include "Dosimeter.h"
++#include "CustomDevice.h"
+ #endif // NO_XR_GAME
+@@ -185,3 +189,3 @@
+ #ifndef NO_XR_GAME
+-	ENGINE_API					bool g_dedicated_server;
++extern ENGINE_API bool g_dedicated_server;
+ #	define ADD(a,b,c,d)			add<a,b>(c,d)
+@@ -355,2 +359,3 @@
+ 	ADD(CHelmet					,CSE_ALifeItem					,CLSID_EQUIPMENT_HELMET			,"helmet");
++	ADD(CBackpack, CSE_ALifeItem, CLSID_EQUIPMENT_BACKPACK, "equ_backpack");
+ 
+@@ -399,2 +404,5 @@
+ 	ADD(CFlare					,CSE_ALifeItem					,CLSID_DEVICE_FLARE				,"device_flare");
++	ADD(CFlashlight, CSE_ALifeItem, CLSID_DEVICE_FLASHLIGHT, "device_flashlight");
++	ADD(CDosimeter, CSE_ALifeItem, CLSID_DEVICE_DOSIMETER, "device_dosimeter");
++	ADD(CCustomDevice, CSE_ALifeItem, TEXT2CLSID("D_CUSTOM"), "device_custom");
+ 
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrServerEntities/object_factory_script.cpp xray-monolith/src/xrServerEntities/object_factory_script.cpp
+--- coc-1.4-xray-64/src/xrServerEntities/object_factory_script.cpp	2023-10-20 20:54:52.109326400 +0100
++++ xray-monolith/src/xrServerEntities/object_factory_script.cpp	2023-10-20 20:54:33.519037000 +0100
+@@ -64,3 +67,3 @@
+ #ifndef NO_XR_GAME
+-	ENGINE_API	bool g_dedicated_server;
++extern ENGINE_API bool g_dedicated_server;
+ #endif // NO_XR_GAME
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrServerEntities/object_type_traits.h xray-monolith/src/xrServerEntities/object_type_traits.h
+--- coc-1.4-xray-64/src/xrServerEntities/object_type_traits.h	2023-10-20 20:54:52.113327200 +0100
++++ xray-monolith/src/xrServerEntities/object_type_traits.h	2023-10-20 20:54:33.523037300 +0100
+@@ -63,10 +70,25 @@
+ 
+-	namespace object_type_traits {
+-		namespace detail {
+-			struct yes {char a[1];};
+-			struct no  {char a[2];};
+-			template <typename T> struct other{};
++namespace object_type_traits
++{
++	namespace detail
++	{
++		struct yes
++		{
++			char a[1];
+ 		};
+ 
+-		template <typename T> struct remove_pointer{
++		struct no
++		{
++			char a[2];
++		};
++
++		template <typename T>
++		struct other
++		{
++		};
++	};
++
++	template <typename T>
++	struct remove_pointer
++	{
+ 			typedef T type;
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrServerEntities/script_engine.cpp xray-monolith/src/xrServerEntities/script_engine.cpp
+--- coc-1.4-xray-64/src/xrServerEntities/script_engine.cpp	2023-10-20 20:54:52.118328900 +0100
++++ xray-monolith/src/xrServerEntities/script_engine.cpp	2023-10-20 20:54:33.527037800 +0100
+@@ -15,2 +15,4 @@
+ #include "script_storage.h"
++#include <unordered_map>
++#include <set>
+ 
+@@ -178,2 +180,3 @@
+ {
++	ai().script_engine().print_stack();
+     print_output(L, "PANIC", LUA_ERRRUN);
+@@ -182,4 +185,30 @@
+ 
++// demonized: get lua stack in array
++static std::vector<std::string> get_lua_stack(lua_State* L)
++{
++	std::vector<std::string> res;
++	lua_Debug l_tDebugInfo;
++	for (int i = 0; lua_getstack(L, i, &l_tDebugInfo); ++i)
++	{
++		lua_getinfo(L, "nSlu", &l_tDebugInfo);
++		if (!l_tDebugInfo.name)
++		{
++			res.push_back(make_string("%2d : [%s] %s(%d) : %s", i, l_tDebugInfo.what, l_tDebugInfo.short_src, l_tDebugInfo.currentline, ""));
++		} else
++		{
++			if (!xr_strcmp(l_tDebugInfo.what, "C"))
++			{
++				res.push_back(make_string("%2d : [C  ] %s", i, l_tDebugInfo.name));
++			} else
++			{
++				res.push_back(make_string("%2d : [%s] %s(%d) : %s", i, l_tDebugInfo.what, l_tDebugInfo.short_src, l_tDebugInfo.currentline, l_tDebugInfo.name));
++			}
++		}
++	}
++	return res;
++}
++
+ void CScriptEngine::lua_error(lua_State *L)
+ {
++	ai().script_engine().print_stack();
+     print_output(L, "", LUA_ERRRUN);
+@@ -187,4 +216,17 @@
+ 
++	// demonized: print first line with lua error
++	auto stack = get_lua_stack(L);
++	std::string lua_error_line = "";
++	for (auto const& s : stack) {
++		if (s.find("[Lua]") != std::string::npos) {
++			lua_error_line = s;
++			break;
++		}
++	}
++
++	auto error_str = make_string("\n%s\n\nLUA error: %s\n\nCheck log for details", lua_error_line.c_str(), lua_tostring(L, -1));
++	LPCSTR error_msg = error_str.c_str();
++
+ #if !XRAY_EXCEPTIONS
+-    Debug.fatal(DEBUG_INFO, "LUA error: %s", lua_tostring(L, -1));
++	Debug.fatal(DEBUG_INFO, error_msg);
+ #else
+@@ -196,2 +238,3 @@
+ {
++	ai().script_engine().print_stack();
+     print_output(L, "", LUA_ERRRUN);
+@@ -199,4 +242,17 @@
+ 
++	// demonized: print first line with lua error
++	auto stack = get_lua_stack(L);
++	std::string lua_error_line = "";
++	for (auto const& s : stack) {
++		if (s.find("[Lua]") != std::string::npos) {
++			lua_error_line = s;
++			break;
++		}
++	}
++
++	auto error_str = make_string("\n%s\n\nLUA error: %s\n\nCheck log for details", lua_error_line.c_str(), lua_isstring(L, -1) ? lua_tostring(L, -1) : "");
++	LPCSTR error_msg = error_str.c_str();
++
+ #if !XRAY_EXCEPTIONS
+-    Debug.fatal(DEBUG_INFO, "LUA error: %s", lua_isstring(L, -1) ? lua_tostring(L, -1) : "");
++	Debug.fatal(DEBUG_INFO, error_msg);
+ #endif
+@@ -233,5 +289,3 @@
+ 
+-#ifndef MASTER_GOLD
+         luabind::set_pcall_callback		(CScriptEngine::lua_pcall_failed);
+-#endif // MASTER_GOLD
+     }
+@@ -283,2 +337,4 @@
+ extern void export_classes(lua_State *L);
++extern std::unordered_map<std::string, std::set<std::string>> unlocalizers;
++extern bool unlocalizerPassed;
+ 
+@@ -329,2 +385,4 @@
+ 
++	unlocalizers.clear();
++	unlocalizerPassed = false;
+     bool								save = m_reload_modules;
+@@ -408,3 +466,3 @@
+                 print_stack			();
+-                Msg					("* trying to access variable %s, which doesn't exist, or to load script %s, which doesn't exist too",file_name,S1);
++                Msg					("* trying to access variable %s, which doesn't exist, or to load script %s, which doesn't exist too",file_name,S);
+                 m_stack_is_ready	= true;
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrServerEntities/script_engine_export.h xray-monolith/src/xrServerEntities/script_engine_export.h
+--- coc-1.4-xray-64/src/xrServerEntities/script_engine_export.h	2023-10-20 20:54:52.119326900 +0100
++++ xray-monolith/src/xrServerEntities/script_engine_export.h	2023-10-20 20:54:33.528036800 +0100
+@@ -148,3 +148,3 @@
+ #	include "smart_cover_object.h"
+-#	include "ui/FactionState.h"
++//#	include "ui/FactionState.h"
+ #	include "actor.h"
+@@ -154,2 +154,5 @@
+ #	include	"profile_data_types.h"
++#	include "script_light.h"
++#	include "script_wallmarks_manager.h"
++#	include "player_hud.h"
+ #endif
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrServerEntities/script_engine_script.cpp xray-monolith/src/xrServerEntities/script_engine_script.cpp
+--- coc-1.4-xray-64/src/xrServerEntities/script_engine_script.cpp	2023-10-20 20:54:52.119326900 +0100
++++ xray-monolith/src/xrServerEntities/script_engine_script.cpp	2023-10-20 20:54:33.528036800 +0100
+@@ -12,2 +12,3 @@
+ #include "script_debugger.h"
++#include "new_sds.h"
+ 
+@@ -15,3 +16,7 @@
+ 
+-void LuaLog(LPCSTR caMessage)
++void AddScope(LPCSTR key, float val) {
++    listScopeRadii[key] = val;
++}
++
++void LuaLog1(LPCSTR caMessage)
+ {
+@@ -227,3 +233,3 @@
+         //def("log1", (void(*) (LPCSTR msg)) &Log), // AVO: fixed log func
+-        def("log", &LuaLog),
++		def("log", &LuaLog1),
+         def("print_stack", &PrintStack),
+@@ -241,2 +247,3 @@
+         def("time_global_async", &script_time_global_async),
++        def("add_scope_radii", &AddScope),
+ #ifdef XRGAME_EXPORTS
+@@ -257,3 +264,3 @@
+     //function(L, "print_stack", PrintStack);
+-    //function(L, "log", LuaLog);
++	//function(L, "log", LuaLog1);
+     //function(L, "error_log", ErrorLog);
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrServerEntities/script_fmatrix_script.cpp xray-monolith/src/xrServerEntities/script_fmatrix_script.cpp
+--- coc-1.4-xray-64/src/xrServerEntities/script_fmatrix_script.cpp	2023-10-20 20:54:52.122326700 +0100
++++ xray-monolith/src/xrServerEntities/script_fmatrix_script.cpp	2023-10-20 20:54:33.531038000 +0100
+@@ -12,5 +12,8 @@
+ using namespace luabind;
+-void get_matrix_hpb(Fmatrix* self, float* h, float* p, float* b)
++
++Fvector get_matrix_hpb(Fmatrix* self)
+ {
+-	self->getHPB	(*h, *p, *b);
++	Fvector temp;
++	self->getHPB(temp);
++	return temp;
+ }
+@@ -37,5 +41,20 @@
+ 			.def("set",							(Fmatrix & (Fmatrix::*)(const Fmatrix &))(&Fmatrix::set),																return_reference_to(_1))
+-			.def("set",							(Fmatrix & (Fmatrix::*)(const Fvector &, const Fvector &, const Fvector &, const Fvector &))(&Fmatrix::set),				return_reference_to(_1))
++			.def("set",
++				(Fmatrix & (Fmatrix::*)(const Fvector&, const Fvector&, const Fvector&, const Fvector&))(&Fmatrix::set),
++				return_reference_to(_1))
+ 			.def("identity",					&Fmatrix::identity,																										return_reference_to(_1))
+ 			.def("mk_xform",					&Fmatrix::mk_xform,																										return_reference_to(_1))
++			.def("build_camera_dir", &Fmatrix::build_camera_dir, return_reference_to(_1))
++			.def("build_projection", &Fmatrix::build_projection, return_reference_to(_1))
++			.def("mulA_43", &Fmatrix::mulA_43, return_reference_to(_1))
++			.def("mulA_44", &Fmatrix::mulA_44, return_reference_to(_1))
++			.def("mulB_43", &Fmatrix::mulB_43, return_reference_to(_1))
++			.def("mulB_44", &Fmatrix::mulB_44, return_reference_to(_1))
++			.def("mul_43", &Fmatrix::mul_43, return_reference_to(_1))
++			.def("translate", (Fmatrix & (Fmatrix::*)(float, float, float))(&Fmatrix::translate), return_reference_to(_1))
++			.def("translate", (Fmatrix & (Fmatrix::*)(const Fvector&))(&Fmatrix::translate), return_reference_to(_1))
++			.def("translate_add", (Fmatrix & (Fmatrix::*)(float, float, float))(&Fmatrix::translate_add), return_reference_to(_1))
++			.def("translate_add", (Fmatrix & (Fmatrix::*)(const Fvector&))(&Fmatrix::translate_add), return_reference_to(_1))
++			.def("translate_over", (Fmatrix & (Fmatrix::*)(float, float, float))(&Fmatrix::translate_over), return_reference_to(_1))
++			.def("translate_over", (Fmatrix & (Fmatrix::*)(const Fvector&))(&Fmatrix::translate_over), return_reference_to(_1))
+ 			.def("mul",							(Fmatrix & (Fmatrix::*)(const Fmatrix &, const Fmatrix &))(&Fmatrix::mul),												return_reference_to(_1))
+@@ -43,63 +62,16 @@
+ 			.def("mul",							(Fmatrix & (Fmatrix::*)(float))(&Fmatrix::mul),																			return_reference_to(_1))
++			.def("invert", (Fmatrix & (Fmatrix::*)())(&Fmatrix::invert), return_reference_to(_1))
++			.def("invert", (Fmatrix & (Fmatrix::*)(const Fmatrix&))(&Fmatrix::invert), return_reference_to(_1))
++			.def("invert_b", &Fmatrix::invert_b, return_reference_to(_1))
+ 			.def("div",							(Fmatrix & (Fmatrix::*)(const Fmatrix &, float))(&Fmatrix::div),															return_reference_to(_1))
+ 			.def("div",							(Fmatrix & (Fmatrix::*)(float))(&Fmatrix::div),																			return_reference_to(_1))
+-//			.def("invert",						(Fmatrix & (Fmatrix::*)())(&Fmatrix::invert),																			return_reference_to(_1))
+-//			.def("invert",						(Fmatrix & (Fmatrix::*)(const Fmatrix &))(&Fmatrix::invert),																return_reference_to(_1))
+-//			.def("transpose",					(Fmatrix & (Fmatrix::*)())(&Fmatrix::transpose),																			return_reference_to(_1))
+-//			.def("transpose",					(Fmatrix & (Fmatrix::*)(const Fmatrix &))(&Fmatrix::transpose),															return_reference_to(_1))
+-//			.def("translate",					(Fmatrix & (Fmatrix::*)(const Fvector &))(&Fmatrix::translate),															return_reference_to(_1))
+-//			.def("translate",					(Fmatrix & (Fmatrix::*)(float, float, float))(&Fmatrix::translate),														return_reference_to(_1))
+-//			.def("translate_over",				(Fmatrix & (Fmatrix::*)(const Fvector &))(&Fmatrix::translate_over),														return_reference_to(_1))
+-//			.def("translate_over",				(Fmatrix & (Fmatrix::*)(float, float, float))(&Fmatrix::translate_over),													return_reference_to(_1))
+-//			.def("translate_add",				&Fmatrix::translate_add,																								return_reference_to(_1))
+-//			.def("scale",						(Fmatrix & (Fmatrix::*)(const Fvector &))(&Fmatrix::scale),																return_reference_to(_1))
+-//			.def("scale",						(Fmatrix & (Fmatrix::*)(float, float, float))(&Fmatrix::scale),															return_reference_to(_1))
+-//			.def("rotateX",						&Fmatrix::rotateX,																										return_reference_to(_1))
+-//			.def("rotateY",						&Fmatrix::rotateY,																										return_reference_to(_1))
+-//			.def("rotateZ",						&Fmatrix::rotateZ,																										return_reference_to(_1))
+-//			.def("rotation",					(Fmatrix & (Fmatrix::*)(const Fvector &, const Fvector &))(&Fmatrix::rotation),											return_reference_to(_1))
+-//			.def("rotation",					(Fmatrix & (Fmatrix::*)(const Fvector &, float))(&Fmatrix::rotation),													return_reference_to(_1))
+-//			.def("rotation",					&Fmatrix::rotation,																										return_reference_to(_1))
+-/*
+-			.def("mapXYZ",						&Fmatrix::mapXYZ,																										return_reference_to(_1))
+-			.def("mapXZY",						&Fmatrix::mapXZY,																										return_reference_to(_1))
+-			.def("mapYXZ",						&Fmatrix::mapYXZ,																										return_reference_to(_1))
+-			.def("mapYZX",						&Fmatrix::mapYZX,																										return_reference_to(_1))
+-			.def("mapZXY",						&Fmatrix::mapZXY,																										return_reference_to(_1))
+-			.def("mapZYX",						&Fmatrix::mapZYX,																										return_reference_to(_1))
+-			.def("mirrorX",						&Fmatrix::mirrorX,																										return_reference_to(_1))
+-			.def("mirrorX_over",				&Fmatrix::mirrorX_over,																									return_reference_to(_1))
+-			.def("mirrorX_add ",				&Fmatrix::mirrorX_add,																									return_reference_to(_1))
+-			.def("mirrorY",						&Fmatrix::mirrorY,																										return_reference_to(_1))
+-			.def("mirrorY_over",				&Fmatrix::mirrorY_over,																									return_reference_to(_1))
+-			.def("mirrorY_add ",				&Fmatrix::mirrorY_add,																									return_reference_to(_1))
+-			.def("mirrorZ",						&Fmatrix::mirrorZ,																										return_reference_to(_1))
+-			.def("mirrorZ_over",				&Fmatrix::mirrorZ_over,																									return_reference_to(_1))
+-			.def("mirrorZ_add ",				&Fmatrix::mirrorZ_add,																									return_reference_to(_1))
+-*/
+-//			.def("build_projection",			&Fmatrix::build_projection,																								return_reference_to(_1))
+-//			.def("build_projection_HAT",		&Fmatrix::build_projection_HAT,																							return_reference_to(_1))
+-//			.def("build_projection_ortho",		&Fmatrix::build_projection_ortho,																						return_reference_to(_1))
+-//			.def("build_camera",				&Fmatrix::build_camera,																									return_reference_to(_1))
+-//			.def("build_camera_dir",			&Fmatrix::build_camera_dir,																								return_reference_to(_1))
+-//			.def("inertion",					&Fmatrix::inertion,																										return_reference_to(_1))
+-//			.def("transform_tiny32",			&Fmatrix::transform_tiny32)
+-//			.def("transform_tiny23",			&Fmatrix::transform_tiny23)
+-//			.def("transform_tiny",				(void	   (Fmatrix::*)(Fvector &) const)(&Fmatrix::transform_tiny),																					out_value(_2))
+-//			.def("transform_tiny",				(void	   (Fmatrix::*)(Fvector &, const Fvector &) const)(&Fmatrix::transform_tiny),																out_value(_2))
+-//			.def("transform_dir",				(void	   (Fmatrix::*)(Fvector &) const)(&Fmatrix::transform_dir),																					out_value(_2))
+-//			.def("transform_dir",				(void	   (Fmatrix::*)(Fvector &, const Fvector &) const)(&Fmatrix::transform_dir),																	out_value(_2))
+-//			.def("transform",					(void	   (Fmatrix::*)(Fvector &) const)(&Fmatrix::transform),																						out_value(_2))
+-//			.def("transform",					&matrix_transform)
+-			.def("setHPB",						&Fmatrix::setHPB,																										return_reference_to(_1))
+-//			.def("setXYZ",						(Fmatrix & (Fmatrix::*)(Fvector &))(&Fmatrix::setXYZ),																	return_reference_to(_1)	+	out_value(_2))
++			.def("scale", (Fmatrix & (Fmatrix::*)(float, float, float))(&Fmatrix::scale), return_reference_to(_1))
++			.def("scale", (Fmatrix & (Fmatrix::*)(const Fvector&))(&Fmatrix::scale), return_reference_to(_1))
++			.def("setHPB", (Fmatrix & (Fmatrix::*)(float, float, float))(&Fmatrix::setHPB), return_reference_to(_1))
++			.def("setHPB", (Fmatrix & (Fmatrix::*)(const Fvector&))(&Fmatrix::setHPB), return_reference_to(_1))
+ 			.def("setXYZ",						(Fmatrix & (Fmatrix::*)(float, float, float))(&Fmatrix::setXYZ),															return_reference_to(_1))	 
+-//			.def("setXYZi",						(Fmatrix & (Fmatrix::*)(Fvector &))(&Fmatrix::setXYZi),																	return_reference_to(_1) +	out_value(_2))
++			.def("setXYZ", (Fmatrix & (Fmatrix::*)(const Fvector&))(&Fmatrix::setXYZ), return_reference_to(_1))
+ 			.def("setXYZi",						(Fmatrix & (Fmatrix::*)(float, float, float))(&Fmatrix::setXYZi),														return_reference_to(_1))
+-//			.def("getHPB",						(void	   (Fmatrix::*)(Fvector &) const)(&Fmatrix::getHPB),																							out_value(_2))
++			.def("setXYZi", (Fmatrix & (Fmatrix::*)(const Fvector&))(&Fmatrix::setXYZi), return_reference_to(_1))
+ 			.def("getHPB",						&get_matrix_hpb)
+-//			.def("getXYZ",						(void	   (Fmatrix::*)(Fvector &) const)(&Fmatrix::getXYZ),																							out_value(_2))
+-//			.def("getXYZ",						(void	   (Fmatrix::*)(float &, float &, float &) const)(&Fmatrix::getXYZ))
+-//			.def("getXYZi",						(void	   (Fmatrix::*)(Fvector &) const)(&Fmatrix::getXYZi),																						out_value(_2))
+-//			.def("getXYZi",						(void	   (Fmatrix::*)(float &, float &, float &) const)(&Fmatrix::getXYZi))
+ 	];
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrServerEntities/script_fvector_script.cpp xray-monolith/src/xrServerEntities/script_fvector_script.cpp
+--- coc-1.4-xray-64/src/xrServerEntities/script_fvector_script.cpp	2023-10-20 20:54:52.123326200 +0100
++++ xray-monolith/src/xrServerEntities/script_fvector_script.cpp	2023-10-20 20:54:33.532035900 +0100
+@@ -26,2 +26,3 @@
+ 			.def("add",							(Fvector & (Fvector::*)(float))(&Fvector::add),																			return_reference_to(_1))
++		.def("add", (Fvector & (Fvector::*)(float, float, float))(&Fvector::add), return_reference_to(_1))
+ 			.def("add",							(Fvector & (Fvector::*)(const Fvector &))(&Fvector::add),																return_reference_to(_1))
+@@ -30,2 +31,3 @@
+ 			.def("sub",							(Fvector & (Fvector::*)(float))(&Fvector::sub),																			return_reference_to(_1))
++		.def("sub", (Fvector & (Fvector::*)(float, float, float))(&Fvector::sub), return_reference_to(_1))
+ 			.def("sub",							(Fvector & (Fvector::*)(const Fvector &))(&Fvector::sub),																return_reference_to(_1))
+@@ -34,2 +36,3 @@
+ 			.def("mul",							(Fvector & (Fvector::*)(float))(&Fvector::mul),																			return_reference_to(_1))
++		.def("mul", (Fvector & (Fvector::*)(float, float, float))(&Fvector::mul), return_reference_to(_1))
+ 			.def("mul",							(Fvector & (Fvector::*)(const Fvector &))(&Fvector::mul),																return_reference_to(_1))
+@@ -38,2 +41,3 @@
+ 			.def("div",							(Fvector & (Fvector::*)(float))(&Fvector::div),																			return_reference_to(_1))
++		.def("div", (Fvector & (Fvector::*)(float, float, float))(&Fvector::div), return_reference_to(_1))
+ 			.def("div",							(Fvector & (Fvector::*)(const Fvector &))(&Fvector::div),																return_reference_to(_1))
+@@ -76,2 +85,3 @@
+ 			.def("distance_to_xz",				&Fvector::distance_to_xz)
++		.def("distance_to_xz_sqr", &Fvector::distance_to_xz_sqr)
+ 			.def("distance_to_sqr",				&Fvector::distance_to_sqr)
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrServerEntities/script_ini_file.cpp xray-monolith/src/xrServerEntities/script_ini_file.cpp
+--- coc-1.4-xray-64/src/xrServerEntities/script_ini_file.cpp	2023-10-20 20:54:52.123326200 +0100
++++ xray-monolith/src/xrServerEntities/script_ini_file.cpp	2023-10-20 20:54:33.532035900 +0100
+@@ -245,2 +248,7 @@
+ 
++void CScriptIniFile::close()
++{
++	inherited::Destroy(this);
++}
++
+ u32 CScriptIniFile::section_count()
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrServerEntities/script_ini_file.h xray-monolith/src/xrServerEntities/script_ini_file.h
+--- coc-1.4-xray-64/src/xrServerEntities/script_ini_file.h	2023-10-20 20:54:52.123326200 +0100
++++ xray-monolith/src/xrServerEntities/script_ini_file.h	2023-10-20 20:54:33.532035900 +0100
+@@ -58,2 +60,3 @@
+ 			void set_readonly(bool b);
++	void close();
+ #endif
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrServerEntities/script_ini_file_script.cpp xray-monolith/src/xrServerEntities/script_ini_file_script.cpp
+--- coc-1.4-xray-64/src/xrServerEntities/script_ini_file_script.cpp	2023-10-20 20:54:52.124326600 +0100
++++ xray-monolith/src/xrServerEntities/script_ini_file_script.cpp	2023-10-20 20:54:33.533038400 +0100
+@@ -88,2 +88,35 @@
+ 
++// demonized: get modded exes version
++int get_modded_exes_version() {
++	LPSTR month_id[12] =
++	{
++		"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
++	};
++
++	LPCSTR build_date = __DATE__;
++
++	int days;
++	int months = 0;
++	int years;
++	string16 month;
++	string256 buffer;
++	xr_strcpy(buffer, build_date);
++	sscanf(buffer, "%s %d %d", month, &days, &years);
++
++	for (int i = 0; i < 12; i++)
++	{
++		if (_stricmp(month_id[i], month))
++			continue;
++
++		months = i;
++		break;
++	}
++
++	months++;
++
++	// Convert the parsed date to the desired integer format
++	int result = years * 10000 + months * 100 + days;
++	return result;
++}
++
+ #pragma optimize("s",on)
+@@ -97,2 +130,3 @@
+ #ifdef INI_FILE_EXTENDED_EXPORTS
++		.def(constructor<IReader*, LPCSTR>())
+             .def(constructor<LPCSTR,BOOL,BOOL,BOOL,LPCSTR>())
+@@ -135,2 +169,3 @@
+ 			.def("r_vector",		&CScriptIniFile::r_fvector3)
++		.def("close", &CScriptIniFile::close)
+ 			.def("r_line",			&::r_line, out_value(_4) + out_value(_5)),
+@@ -146,3 +181,6 @@
+ #endif // XRGAME_EXPORTS
+-		def("create_ini_file",		&create_ini_file,	adopt(result))
++		def("create_ini_file", &create_ini_file, adopt(result)),
++
++		// demonized: get modded exes version
++		def("get_modded_exes_version", &get_modded_exes_version)
+ 	];
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrServerEntities/script_storage.cpp xray-monolith/src/xrServerEntities/script_storage.cpp
+--- coc-1.4-xray-64/src/xrServerEntities/script_storage.cpp	2023-10-20 20:54:52.130326900 +0100
++++ xray-monolith/src/xrServerEntities/script_storage.cpp	2023-10-20 20:54:33.539039200 +0100
+@@ -12,3 +12,6 @@
+ #include <stdarg.h>
+-#include "../xrCore/doug_lea_allocator.h"
++#include <unordered_map>
++#include <set>
++#include <sstream>
++#include <regex>
+ 
+@@ -65,3 +70,3 @@
+ //#	ifndef USE_MEMORY_MONITOR
+-#		define USE_DL_ALLOCATOR
++//#		define USE_DL_ALLOCATOR
+ //#	endif //!USE_MEMORY_MONITOR
+@@ -84,4 +91,9 @@
+ }
++
++u32 game_lua_memory_usage()
++{
++	return (0);
++}
+ #else //USE_DL_ALLOCATOR
+-#   include "../xrCore/memory_allocator_options.h"
++
+ #   ifdef USE_ARENA_ALLOCATOR
+@@ -89,5 +101,5 @@
+         static char					s_fake_array[s_arena_size];
+-        static doug_lea_allocator	s_allocator( s_fake_array, s_arena_size, "lua" );
++//        static doug_lea_allocator	s_allocator( s_fake_array, s_arena_size, "lua" );
+ #   else //-USE_ARENA_ALLOCATOR
+-        static doug_lea_allocator	s_allocator(0, 0, "lua");
++//        static doug_lea_allocator	s_allocator(0, 0, "lua");
+ #   endif //-USE_ARENA_ALLOCATOR
+@@ -293,2 +305,23 @@
+ 
++extern int luaopen_lua_extensions(lua_State* L);
++
++void disable_os_funcs(lua_State* L)
++{
++	lua_getglobal(L, "os");
++	lua_pushnil(L);
++	lua_setfield(L, -2, "execute");
++	lua_pushnil(L);
++	lua_setfield(L, -2, "rename");
++	lua_pushnil(L);
++	lua_setfield(L, -2, "remove");
++	lua_pushnil(L);
++	lua_setfield(L, -2, "exit");
++	lua_pop(L, 1);
++
++	lua_getglobal(L, "io");
++	lua_pushnil(L);
++	lua_setfield(L, -2, "popen");
++	lua_pop(L, 1);
++}
++
+ void CScriptStorage::reinit()
+@@ -355,2 +388,5 @@
+ 
++	luaopen_lua_extensions(lua());
++	disable_os_funcs(lua());
++
+     if (strstr(Core.Params, "-_g"))
+@@ -514,4 +562,2 @@
+ 
+-#ifdef PRINT_CALL_STACK
+-#	ifndef ENGINE_BUILD
+     static bool	reenterability = false;
+@@ -520,3 +566,3 @@
+         reenterability = true;
+-        if (eLuaMessageTypeError == tLuaMessageType)
++		if (tLuaMessageType == ScriptStorage::eLuaMessageTypeError)
+             ai().script_engine().print_stack();
+@@ -524,4 +570,15 @@
+     }
+-#	endif //!ENGINE_BUILD
+-#endif //-PRINT_CALL_STACK
++
++	// #ifdef PRINT_CALL_STACK
++	// #	ifndef ENGINE_BUILD
++	//     static bool	reenterability = false;
++	//     if (!reenterability)
++	//     {
++	//         reenterability = true;
++	//         if (eLuaMessageTypeError == tLuaMessageType)
++	//             ai().script_engine().print_stack();
++	//         reenterability = false;
++	//     }
++	// #	endif //!ENGINE_BUILD
++	// #endif //-PRINT_CALL_STACK
+ 
+@@ -628,5 +686,5 @@
+     {
+-#ifdef DEBUG
+-        print_output	(L,caScriptName,l_iErrorCode);
+-#endif //-DEBUG
++//#ifdef DEBUG
++		if (strstr(Core.Params, "-dbg")) print_output(L,caScriptName,l_iErrorCode);
++//#endif //-DEBUG
+         on_error(L);
+@@ -637,4 +695,141 @@
+ 
++std::unordered_map<std::string, std::set<std::string>> unlocalizers;
++bool unlocalizerPassed = false;
++
++std::vector<std::string> splitStringMulti(std::string& inputString, std::string separator = " ", bool includeSeparators = false) {
++	std::stringstream stringStream(inputString);
++	std::string line;
++	std::vector<std::string> wordVector;
++	while (std::getline(stringStream, line))
++	{
++		std::size_t prev = 0, pos;
++		while ((pos = line.find_first_of(separator, prev)) != std::string::npos)
++		{
++			if (pos > prev)
++				wordVector.push_back(line.substr(prev, pos - prev));
++
++			if (includeSeparators)
++				wordVector.push_back(line.substr(pos, 1));
++
++			prev = pos + 1;
++		}
++		if (prev < line.length())
++			wordVector.push_back(line.substr(prev, std::string::npos));
++	}
++	return wordVector;
++}
++
++std::vector<std::string> splitStringLimit(std::string& inputString, std::string separator = " ", int limit = 0) {
++	std::stringstream stringStream(inputString);
++	std::string line;
++	std::vector<std::string> wordVector;
++	while (std::getline(stringStream, line))
++	{
++		std::size_t prev = 0, pos;
++		while ((pos = line.find_first_of(separator, prev)) != std::string::npos)
++		{
++			if (pos > prev)
++				wordVector.push_back(line.substr(prev, pos - prev));
++
++			prev = pos + 1;
++			if (limit > 0) {
++				if (wordVector.size() >= limit) {
++					wordVector.push_back(line.substr(prev, std::string::npos));
++					return wordVector;
++				}
++			}
++		}
++		if (prev < line.length())
++			wordVector.push_back(line.substr(prev, std::string::npos));
++	}
++	return wordVector;
++}
++
++static std::string join_list(const std::vector<std::string>& items_vec) {
++	std::string ret;
++	for (const auto& i : items_vec) {
++		ret += i;
++	}
++	return ret;
++};
++
++bool unlocalRegex(std::set<std::string>& unlocals, std::string& s, const std::regex& pattern, const int group, const std::string& replacement) {
++	if (std::regex_match(s, pattern)) {
++		//Msg("matching local function pattern");
++		std::smatch match;
++		std::regex_search(s, match, pattern);
++		std::string variable = match[group];
++		if (unlocals.find(variable) != unlocals.end()) {
++			Msg("[unlocalRegex] found variable %s to unlocal", variable.c_str());
++			s = std::regex_replace(s, pattern, replacement);
++			return true;
++		}
++	} else {
++		return false;
++	}
++	return false;
++};
++
++static void trim(std::string& s, const char* t = " \t\n\r\f\v") {
++	s.erase(s.find_last_not_of(t) + 1);
++	s.erase(0, s.find_first_not_of(t));
++};
++
++
+ bool CScriptStorage::do_file(LPCSTR caScriptName, LPCSTR caNameSpaceName)
+ {
++	if (!unlocalizerPassed) {
++		auto file_list = FS.file_list_open("$game_config$", "unlocalizers\\", FS_RootOnly | FS_ListFiles);
++		if (!file_list) {
++			unlocalizerPassed = true;
++		} else {
++			xr_string id;
++			auto i = file_list->begin();
++			auto e = file_list->end();
++			for (; i != e; ++i)
++			{
++				u32 length = xr_strlen(*i);
++
++				if (!((length >= 4) &&
++					((*i)[length - 4] == '.') &&
++					((*i)[length - 3] == 'l') &&
++					((*i)[length - 2] == 't') &&
++					((*i)[length - 1] == 'x')))
++					continue;
++
++				id.assign(*i, length - 4);
++
++				string_path file_name;
++				FS.update_path(file_name, "$game_config$", (xr_string("unlocalizers\\") + id).c_str());
++				xr_strcat(file_name, ".ltx");
++
++				Msg("opening file %s", file_name);
++				CInifile* config = CInifile::Create(file_name);
++
++				typedef CInifile::Root sections_type;
++				sections_type& sections = config->sections();
++
++				sections_type::const_iterator i = sections.begin();
++				sections_type::const_iterator e = sections.end();
++				for (; i != e; ++i)
++				{
++					auto sectionName = std::string((*i)->Name.c_str());
++					if (unlocalizers.find(sectionName) == unlocalizers.end()) {
++
++						// construct set that contains top level variables to delocalize by section name
++						unlocalizers[sectionName].clear();
++						Msg("creating unlocalizer for script %s", sectionName.c_str());
++					}
++					auto& data = (*i)->Data;
++					for (auto& item : data) {
++						unlocalizers[sectionName].insert(std::string(item.first.c_str()));
++						Msg("adding variable %s for unlocalizer for script %s", item.first.c_str(), sectionName.c_str());
++					}
++				}
++				CInifile::Destroy(config);
++			}
++			FS.file_list_close(file_list);
++			unlocalizerPassed = true;
++		}
++	}
+     int				start = lua_gettop(lua());
+@@ -647,5 +843,115 @@
+     }
++
++	// Unlocalize variables in the script defined by unlocalizers map
++	auto scriptContents = static_cast<LPCSTR>(l_tpFileReader->pointer());
++	auto scriptLength = (size_t)l_tpFileReader->length();
++	if (unlocalizers.find(std::string(caNameSpaceName)) != unlocalizers.end()) {
++		Msg("found script %s in unlocalizers data", caNameSpaceName);
++
++		// Get contents of the script file and split by lines
++		std::vector<std::string> tokens;
++		std::string temp;
++		while (!l_tpFileReader->eof())
++		{
++			char c = l_tpFileReader->r_u8();
++			temp += c;
++		}
++
++		std::stringstream stringStream(temp);
++		std::string line;
++		tokens.clear();
++		while (std::getline(stringStream, line)) {
++			tokens.push_back(line);
++		}
++
++		// Iterate lines and unlocalize variables
++		auto& unlocals = unlocalizers[std::string(caNameSpaceName)];
++
++		/*for (auto& u : unlocals) {
++			Msg("%s", u);
++		}*/
++
++		for (auto& s : tokens) {
++
++			//Msg("%s", s.c_str());
++
++			trim(s, "\n\r");
++			if (s.empty()) {
++				continue;
++			}
++
++			std::regex pattern;
++
++			//local function x(a,b,c)
++			pattern = std::regex(R"((^local)([\t ]+)(function)([\t ]+)([_a-zA-Z].*)([\t ]*)(\(.*$))");
++			if (unlocalRegex(unlocals, s, pattern, 5, "$3$4$5$6$7")) {
++				continue;
++			}
++
++			//local a = ...
++			//local a
++			//local a,b,c = ... (if one of a,b,c is in unlocalizers list - all of them will be unlocalized)
++			//local x; local y; - unsupported yet
++			pattern = std::regex(R"((^local)([\t ]+)(.*))");
++			if (std::regex_match(s, pattern)) {
++				std::smatch match;
++				std::regex_search(s, match, pattern);
++				std::string m = match[3];
++
++				// strip comments
++				std::regex r = std::regex(R"((.*)--.*)");
++				if (std::regex_match(m, r)) {
++					//Msg("found comments\n");
++					std::smatch noncomments;
++					std::regex_search(m, noncomments, r);
++					m = noncomments[1];
++				}
++
++
++				auto variablesAndValues = splitStringLimit(m, "=", 1);
++				bool hasValue = variablesAndValues.size() > 1;
++				auto variables = splitStringMulti(variablesAndValues[0], ",");
++				for (auto v : variables) {
++					trim(v);
++					//Msg("%s\n", v.c_str());
++					if (unlocals.find(v) != unlocals.end()) {
++						Msg("found variable %s to unlocal", v.c_str());
++						s = std::regex_replace(s, pattern, "$3");
++						if (!hasValue) {
++
++							// strip comments
++							std::regex r = std::regex(R"((.*)(--.*))");
++							if (std::regex_match(s, r)) {
++								//Msg("found comments\n");
++								std::smatch noncomments;
++								std::regex_search(s, noncomments, r);
++								s = std::string(noncomments[1]) + "= nil " + std::string(noncomments[2]);
++							} else {
++								s += " = nil";
++							}
++						}
++						break;
++					}
++				}
++			}
++		}
++
++		// Store result back
++		for (auto& s : tokens) {
++			s += "\n";
++		}
++
++		/*for (auto& s : tokens) {
++			Msg("%s", s.c_str());
++		}*/
++
++		auto result = join_list(tokens);
++		scriptContents = result.c_str();
++		scriptLength = strlen(scriptContents);
++	}
++
+     strconcat(sizeof(l_caLuaFileName), l_caLuaFileName, "@", caScriptName);
+ 
+-    if (!load_buffer(lua(), static_cast<LPCSTR>(l_tpFileReader->pointer()), (size_t) l_tpFileReader->length(), l_caLuaFileName, caNameSpaceName))
++	if (!load_buffer(lua(), scriptContents, scriptLength,
++	                 l_caLuaFileName, caNameSpaceName))
+     {
+@@ -686,5 +992,5 @@
+     {
+-#ifdef DEBUG
+-        print_output(lua(),caScriptName,l_iErrorCode);
+-#endif
++//#ifdef DEBUG
++		if (strstr(Core.Params, "-dbg")) print_output(lua(),caScriptName,l_iErrorCode);
++//#endif
+         on_error(lua());
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrServerEntities/smart_cast.h xray-monolith/src/xrServerEntities/smart_cast.h
+--- coc-1.4-xray-64/src/xrServerEntities/smart_cast.h	2023-10-20 20:54:52.135328800 +0100
++++ xray-monolith/src/xrServerEntities/smart_cast.h	2023-10-20 20:54:33.544036600 +0100
+@@ -66,6 +66,12 @@
+ 			class ENGINE_API ISpatial;
+-			namespace Feel { class ENGINE_API Sound; }
++
++namespace Feel
++{
++	class ENGINE_API Sound;
++}
++
+ 			typedef Feel::Sound Feel__Sound;
+-			template <> extern\
+-			Feel::Sound* SmartDynamicCast::smart_cast<Feel::Sound,ISpatial>(ISpatial *p);\
++template <>
++extern
++Feel::Sound* SmartDynamicCast::smart_cast<Feel::Sound, ISpatial>(ISpatial* p);
+ 			add_to_cast_list(Feel__Sound,ISpatial);
+@@ -135,2 +141,6 @@
+ 
++DECLARE_SPECIALIZATION(CFlashlight, CInventoryItem, cast_flashlight);
++#		undef cast_type_list
++#		define cast_type_list save_cast_list	(CFlashlight,		CInventoryItem)
++
+ 		DECLARE_SPECIALIZATION	(CCustomZone,		CGameObject,			cast_custom_zone);
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrServerEntities/smart_cast_impl2.h xray-monolith/src/xrServerEntities/smart_cast_impl2.h
+--- coc-1.4-xray-64/src/xrServerEntities/smart_cast_impl2.h	2023-10-20 20:54:52.136326600 +0100
++++ xray-monolith/src/xrServerEntities/smart_cast_impl2.h	2023-10-20 20:54:33.545035900 +0100
+@@ -14,4 +14,3 @@
+ 	template <>\
+-	B* SmartDynamicCast::smart_cast<B,A>(A *p){return p->C();};\
+-
++	B* SmartDynamicCast::smart_cast<B,A>(A *p){return p->C();};
+ #ifdef XRGAME_EXPORTS
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrServerEntities/specific_character.cpp xray-monolith/src/xrServerEntities/specific_character.cpp
+--- coc-1.4-xray-64/src/xrServerEntities/specific_character.cpp	2023-10-20 20:54:52.136326600 +0100
++++ xray-monolith/src/xrServerEntities/specific_character.cpp	2023-10-20 20:54:33.545035900 +0100
+@@ -1,2 +1,2 @@
+-#include "stdafx.h"
++п»ї#include "stdafx.h"
+ #include "specific_character.h"
+@@ -7,2 +7,4 @@
+ 
++#include "ai_space.h"
++#include "Script_Game_Object.h"
+ 
+@@ -23,2 +25,12 @@
+ 
++	money_def.inf_money = false;
++	money_def.max_money = 0;
++	money_def.min_money = 0;
++
++	rank_def.min = NO_RANK;
++	rank_def.max = NO_RANK;
++
++	reputation_def.min = NO_REPUTATION;
++	reputation_def.max = NO_REPUTATION;
++
+ 	m_bNoRandom				= false;
+@@ -118,2 +129,28 @@
+ 
++	luabind::functor<luabind::object> funct;
++	if (ai().script_engine().functor("_G.CSpecificCharacterDialogList", funct))
++	{
++		luabind::object table = luabind::newtable(ai().script_engine().lua());
++		int i = 1;
++		for (auto const &dialog : data()->m_ActorDialogs) {
++			table[i] = dialog.c_str();
++			i++;
++		}
++		auto character_name = item_data.id.c_str();
++		luabind::object output = funct(character_name, table);
++		if (output && output.type() == LUA_TTABLE) {
++			data()->m_ActorDialogs.clear();
++			luabind::object::iterator i = output.begin();
++			luabind::object::iterator e = output.end();
++			for (; i != e; ++i) {
++				luabind::object v = *i;
++				if (v.type() == LUA_TSTRING) {
++					shared_str dialog_name = luabind::object_cast<LPCSTR>(v);
++					//Msg("character_id %s, dialog_name %s", character_name, dialog_name.c_str());
++					data()->m_ActorDialogs.push_back(dialog_name);
++				}
++			}
++		}
++	}
++
+ 	data()->m_icon_name		= pXML->Read("icon", 0, "ui_npc_u_barman");
+@@ -121,3 +158,3 @@
+ 
+-	//игровое имя персонажа
++	//РёРіСЂРѕРІРѕРµ РёРјС РїРµСЂСРѕРЅР°Р¶Р°
+ 	data()->m_sGameName		= pXML->Read("name", 0, "");
+@@ -188,6 +225,32 @@
+ 
+-	data()->m_Rank			= pXML->ReadInt("rank", 0, NO_RANK);
+-	R_ASSERT3(data()->m_Rank != NO_RANK, "'rank' field not fulfiled for specific character", *m_OwnId);
+-	data()->m_Reputation	= pXML->ReadInt("reputation", 0, NO_REPUTATION);
+-	R_ASSERT3(data()->m_Reputation != NO_REPUTATION, "'reputation' field not fulfiled for specific character", *m_OwnId);
++
++	int min_rank = pXML->ReadAttribInt("rank", 0, "min", NO_RANK);
++	int max_rank = pXML->ReadAttribInt("rank", 0, "max", NO_RANK);
++	if (min_rank != NO_RANK && max_rank != NO_RANK)
++	{
++		RankDef().min = _min(min_rank, max_rank);
++		RankDef().max = _max(max_rank, min_rank);
++	}
++	else
++	{
++		int rank = pXML->ReadInt("rank", 0, NO_RANK);
++		R_ASSERT3(rank != NO_RANK, "'rank' field not fulfiled for specific character", *m_OwnId);
++		RankDef().min = rank;
++		RankDef().max = rank;
++	}
++
++	int min_reputation = pXML->ReadAttribInt("reputation", 0, "min", NO_REPUTATION);
++	int max_reputation = pXML->ReadAttribInt("reputation", 0, "max", NO_REPUTATION);
++	if (min_reputation != NO_REPUTATION && max_reputation != NO_REPUTATION)
++	{
++		ReputationDef().min = _min(min_reputation, max_reputation);
++		ReputationDef().max = _max(max_reputation, min_reputation);
++	}
++	else
++	{
++		int rep = pXML->ReadInt("reputation", 0, NO_REPUTATION);
++		R_ASSERT3(rep != NO_REPUTATION, "'reputation' field not fulfiled for specific character", *m_OwnId);
++		ReputationDef().min = rep;
++		ReputationDef().max = rep;
++	}
+ 
+@@ -206,2 +270,74 @@
+ 
++	luabind::functor<luabind::object> init_funct;
++	if (ai().script_engine().functor("_G.CSpecificCharacterInit", init_funct))
++	{
++		luabind::object table = luabind::newtable(ai().script_engine().lua());
++		table["name"] = Name();
++		table["bio"] = Bio().c_str();
++		table["community"] = Community().id().c_str();
++		table["icon"] = data()->m_icon_name.c_str();
++		table["start_dialog"] = data()->m_StartDialog.c_str();
++		table["panic_threshold"] = panic_threshold();
++		table["hit_probability_factor"] = hit_probability_factor();
++		table["crouch_type"] = crouch_type();
++		table["mechanic_mode"] = upgrade_mechanic();
++		table["critical_wound_weights"] = critical_wound_weights();
++		table["supplies"] = SupplySpawn();
++		table["visual"] = Visual();
++		table["npc_config"] = NpcConfigSect();
++		table["snd_config"] = sound_voice_prefix();
++		table["terrain_sect"] = terrain_sect().c_str();
++		table["rank_min"] = RankDef().min;
++		table["rank_max"] = RankDef().max;
++		table["reputation_min"] = ReputationDef().min;
++		table["reputation_max"] = ReputationDef().max;
++		table["money_min"] = MoneyDef().min_money;
++		table["money_max"] = MoneyDef().max_money;
++		table["money_infinitive"] = MoneyDef().inf_money;
++		auto character_name = item_data.id.c_str();
++		luabind::object output = init_funct(character_name, table);
++		if (output && output.type() == LUA_TTABLE) {
++			data()->m_sGameName = luabind::object_cast<LPCSTR>(output["name"]);
++			data()->m_sBioText = CStringTable().translate(luabind::object_cast<LPCSTR>(output["bio"]));
++
++			data()->m_Community.set(luabind::object_cast<LPCSTR>(output["community"]));
++			if (data()->m_Community.index() == NO_COMMUNITY_INDEX)
++				Debug.fatal(DEBUG_INFO, "wrong 'community' '%s' in specific character %s ", luabind::object_cast<LPCSTR>(output["community"]), *m_OwnId);
++
++			data()->m_icon_name = luabind::object_cast<LPCSTR>(output["icon"]);
++			data()->m_StartDialog = output["start_dialog"].type() == LUA_TSTRING ? luabind::object_cast<LPCSTR>(output["start_dialog"]) : NULL;
++			data()->m_fPanic_threshold = luabind::object_cast<float>(output["panic_threshold"]);
++			data()->m_fHitProbabilityFactor = luabind::object_cast<float>(output["hit_probability_factor"]);
++			data()->m_crouch_type = luabind::object_cast<int>(output["crouch_type"]);
++			data()->m_upgrade_mechanic = luabind::object_cast<bool>(output["mechanic_mode"]);
++			data()->m_critical_wound_weights = luabind::object_cast<LPCSTR>(output["critical_wound_weights"]);
++			data()->m_sVisual = luabind::object_cast<LPCSTR>(output["visual"]);
++			data()->m_sNpcConfigSect = luabind::object_cast<LPCSTR>(output["npc_config"]);
++			data()->m_sound_voice_prefix = luabind::object_cast<LPCSTR>(output["snd_config"]);
++			data()->m_terrain_sect = luabind::object_cast<LPCSTR>(output["terrain_sect"]);
++
++			data()->m_sSupplySpawn = luabind::object_cast<LPCSTR>(output["supplies"]);
++			if (!data()->m_sSupplySpawn.empty())
++			{
++				xr_string& str = data()->m_sSupplySpawn;
++				xr_string::size_type pos = str.find("\\n");
++				while (xr_string::npos != pos)
++				{
++					str.replace(pos, 2, "\n");
++					pos = str.find("\\n", pos + 1);
++				}
++			}
++
++			RankDef().min = _min(luabind::object_cast<int>(output["rank_min"]), luabind::object_cast<int>(output["rank_max"]));
++			RankDef().max = _max(luabind::object_cast<int>(output["rank_min"]), luabind::object_cast<int>(output["rank_max"]));
++
++			ReputationDef().min = _min(luabind::object_cast<int>(output["reputation_min"]), luabind::object_cast<int>(output["reputation_max"]));
++			ReputationDef().max = _max(luabind::object_cast<int>(output["reputation_min"]), luabind::object_cast<int>(output["reputation_max"]));
++
++			MoneyDef().min_money = _min(luabind::object_cast<int>(output["money_min"]), luabind::object_cast<int>(output["money_max"]));
++			MoneyDef().max_money = _max(luabind::object_cast<int>(output["money_min"]), luabind::object_cast<int>(output["money_max"]));
++			MoneyDef().inf_money = luabind::object_cast<bool>(output["money_infinitive"]);
++		}
++	}
++
+ #endif
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrServerEntities/specific_character.h xray-monolith/src/xrServerEntities/specific_character.h
+--- coc-1.4-xray-64/src/xrServerEntities/specific_character.h	2023-10-20 20:54:52.137326300 +0100
++++ xray-monolith/src/xrServerEntities/specific_character.h	2023-10-20 20:54:33.546041300 +0100
+@@ -73,2 +72,19 @@
+ 
++	//Alun
++	struct SRankDef
++	{
++		CHARACTER_RANK_VALUE min;
++		CHARACTER_RANK_VALUE max;
++	};
++
++	struct SReputationDef
++	{
++		CHARACTER_REPUTATION_VALUE min;
++		CHARACTER_REPUTATION_VALUE max;
++	};
++
++	SRankDef rank_def;
++	SReputationDef reputation_def;
++	//-Alun
++
+ 	//классы персонажа (военные-ветераны, ученые и т.д.)
+@@ -132,2 +159,4 @@
+ 	SSpecificCharacterData::SMoneyDef& MoneyDef			() 	{return data()->money_def;}
++	SSpecificCharacterData::SRankDef& RankDef() { return data()->rank_def; }
++	SSpecificCharacterData::SReputationDef& ReputationDef() { return data()->reputation_def; }
+ #endif
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrServerEntities/xml_str_id_loader.h xray-monolith/src/xrServerEntities/xml_str_id_loader.h
+--- coc-1.4-xray-64/src/xrServerEntities/xml_str_id_loader.h	2023-10-20 20:54:52.137326300 +0100
++++ xray-monolith/src/xrServerEntities/xml_str_id_loader.h	2023-10-20 20:54:33.546041300 +0100
+@@ -97,5 +99,5 @@
+ 	T_INIT::InitXmlIdToIndex();
++	T_VECTOR::iterator it = m_pItemDataVector->begin();
+ 		
+-	for(T_VECTOR::iterator it = m_pItemDataVector->begin();
+-		m_pItemDataVector->end() != it; ++it)
++	for (; m_pItemDataVector->end() != it; ++it)
+ 	{
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrServerEntities/xrEProps.h xray-monolith/src/xrServerEntities/xrEProps.h
+--- coc-1.4-xray-64/src/xrServerEntities/xrEProps.h	2023-10-20 20:54:52.137326300 +0100
++++ xray-monolith/src/xrServerEntities/xrEProps.h	2023-10-20 20:54:33.546041300 +0100
+@@ -4,6 +4,8 @@
+ #ifdef XR_EPROPS_EXPORTS
+-#define XR_EPROPS_API __declspec(dllexport)
++#define XR_EPROPS_API
++//__declspec(dllexport)
+ #else
+ #	ifndef XR_EPROPS_API
+-#		define XR_EPROPS_API __declspec(dllimport)
++#		define XR_EPROPS_API
++//__declspec(dllimport)
+ #	endif
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrServerEntities/xrMessages.h xray-monolith/src/xrServerEntities/xrMessages.h
+--- coc-1.4-xray-64/src/xrServerEntities/xrMessages.h	2023-10-20 20:54:52.138326600 +0100
++++ xray-monolith/src/xrServerEntities/xrMessages.h	2023-10-20 20:54:33.547035000 +0100
+@@ -162,2 +189,4 @@
+ 
++	GE_TRADER_FLAGS,
++
+ 	GE_FORCEDWORD				= u32(-1)
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrServerEntities/xrServer_Factory.cpp xray-monolith/src/xrServerEntities/xrServer_Factory.cpp
+--- coc-1.4-xray-64/src/xrServerEntities/xrServer_Factory.cpp	2023-10-20 20:54:52.138326600 +0100
++++ xray-monolith/src/xrServerEntities/xrServer_Factory.cpp	2023-10-20 20:54:33.547035000 +0100
+@@ -13,2 +13,3 @@
+ {
++	if (!pSettings->section_exist(section)) return nullptr;
+ 	return			(object_factory().server_object(pSettings->r_clsid(section,"class"),section));
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrServerEntities/xrServer_Object_Base.cpp xray-monolith/src/xrServerEntities/xrServer_Object_Base.cpp
+--- coc-1.4-xray-64/src/xrServerEntities/xrServer_Object_Base.cpp	2023-10-20 20:54:52.138326600 +0100
++++ xray-monolith/src/xrServerEntities/xrServer_Object_Base.cpp	2023-10-20 20:54:33.547035000 +0100
+@@ -44,3 +44,3 @@
+ 
+-IC	u16	script_server_object_version	()
++u16 script_server_object_version()
+ {
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrServerEntities/xrServer_Objects_ALife.cpp xray-monolith/src/xrServerEntities/xrServer_Objects_ALife.cpp
+--- coc-1.4-xray-64/src/xrServerEntities/xrServer_Objects_ALife.cpp	2023-10-20 20:54:52.140326600 +0100
++++ xray-monolith/src/xrServerEntities/xrServer_Objects_ALife.cpp	2023-10-20 20:54:33.549039500 +0100
+@@ -902,3 +918,3 @@
+ 
+-CSE_ALifeLevelChanger::~CSE_ALifeLevelChanger()\
++CSE_ALifeLevelChanger::~CSE_ALifeLevelChanger()
+ {
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrServerEntities/xrServer_Objects_ALife_Monsters.cpp xray-monolith/src/xrServerEntities/xrServer_Objects_ALife_Monsters.cpp
+--- coc-1.4-xray-64/src/xrServerEntities/xrServer_Objects_ALife_Monsters.cpp	2023-10-20 20:54:52.143326600 +0100
++++ xray-monolith/src/xrServerEntities/xrServer_Objects_ALife_Monsters.cpp	2023-10-20 20:54:33.552036100 +0100
+@@ -118,2 +120,29 @@
+ 
++xr_string TranslateName(LPCSTR nameStr)
++{
++	xr_string ret;
++
++	// Savegame (before this tweak) + custom npc compatibility
++	if (!strstr(nameStr, ":lname_"))
++	{
++		ret = (*CStringTable().translate(nameStr));
++		return ret;
++	}
++
++	// Split name string and translate it
++	R_ASSERT2(_GetItemCount(nameStr, ':') == 2, nameStr);
++
++	string512 name;
++	_GetItem(nameStr, 0, name, ':');
++
++	string512 lname;
++	_GetItem(nameStr, 1, lname, ':');
++
++	ret = (*CStringTable().translate(name));
++	ret += " ";
++	ret += (*CStringTable().translate(lname));
++
++	return ret;
++}
++
+ ////////////////////////////////////////////////////////////////////////////
+@@ -182,3 +211,3 @@
+ #endif
+-	save_data					(m_character_name, tNetPacket);
++	save_data(m_character_name_str, tNetPacket);
+ 	
+@@ -244,4 +280,6 @@
+ 
+-		if (m_wVersion > 104) {
+-			load_data			(m_character_name, tNetPacket);
++		if (m_wVersion > 104)
++		{
++			load_data(m_character_name_str, tNetPacket);
++			m_character_name = TranslateName(m_character_name_str.c_str());
+ 		}
+@@ -351,5 +392,15 @@
+ 		}
+-		R_ASSERT3(!m_DefaultCharacters.empty(), 
++		VERIFY3(!m_DefaultCharacters.empty(),
+ 			"no default specific character set for class", *char_info.data()->m_Class);
+ 
++		if (m_DefaultCharacters.empty())
++		{
++			if (!m_CheckedCharacters.empty())
++			{
++				char_info.m_SpecificCharacterId = m_CheckedCharacters[Random.randI(m_CheckedCharacters.size())];
++				set_specific_character(char_info.m_SpecificCharacterId);
++			}
++			return m_SpecificCharacter;
++		}
++		
+ #ifdef XRGAME_EXPORTS
+@@ -420,6 +472,16 @@
+ 	if(NO_RANK == m_rank)
+-		m_rank = selected_char.Rank();
++	{
++		if (selected_char.RankDef().min != selected_char.RankDef().max)
++			m_rank = ::Random.randI(selected_char.RankDef().min, selected_char.RankDef().max);
++		else
++			m_rank = selected_char.RankDef().max;
++	}
+ 
+ 	if(NO_REPUTATION == m_reputation)
+-		m_reputation = selected_char.Reputation();
++	{
++		if (selected_char.ReputationDef().min != selected_char.ReputationDef().max)
++			m_reputation = ::Random.randI(selected_char.ReputationDef().min, selected_char.ReputationDef().max);
++		else
++			m_reputation = selected_char.ReputationDef().max;
++	}
+ 
+@@ -427,8 +489,9 @@
+ 
+-	m_character_name = *(CStringTable().translate(selected_char.Name()));
++	m_character_name_str = selected_char.Name();
+ 	
+ 	LPCSTR gen_name = "GENERATE_NAME_";
+-	if( strstr(m_character_name.c_str(),gen_name) ){
++	if (strstr(m_character_name_str.c_str(), gen_name))
++	{
+ 		//select name and lastname
+-		xr_string subset			= m_character_name.c_str()+xr_strlen(gen_name);
++		xr_string subset = m_character_name_str.c_str() + xr_strlen(gen_name);
+ 
+@@ -444,4 +507,4 @@
+ 		n					+= itoa(::Random.randI(name_cnt),S,10);
+-		m_character_name	= *(CStringTable().translate(n.c_str()));
+-		m_character_name	+= " ";
++		m_character_name_str = n.c_str();
++		m_character_name_str += ":";
+ 
+@@ -451,10 +514,11 @@
+ 		n					+= itoa(::Random.randI(last_name_cnt),S,10);
+-		m_character_name	+= *(CStringTable().translate(n.c_str()));
+-
++		m_character_name_str += n.c_str();
++	}
+ 
++	m_character_name = TranslateName(m_character_name_str.c_str());
+ 	
+-	}
+ 	u32 min_m = selected_char.MoneyDef().min_money;
+ 	u32 max_m = selected_char.MoneyDef().max_money;
+-	if(min_m!=0 && max_m!=0){
++	if (min_m != 0 && max_m != 0)
++	{
+ 		m_dwMoney = min_m;
+@@ -496,2 +560,4 @@
+ {
++	if (NO_COMMUNITY_INDEX == m_community_index)
++		return "unknown";
+ 	return *CHARACTER_COMMUNITY::IndexToId(m_community_index);
+@@ -1116,3 +1196,3 @@
+ 
+-IC	void CSE_ALifeCreatureAbstract::set_health	(float const health_value)
++void CSE_ALifeCreatureAbstract::set_health(float const health_value)
+ {
+@@ -1122,3 +1202,3 @@
+ 
+-IC	void CSE_ALifeCreatureAbstract::set_killer_id	(ALife::_OBJECT_ID const killer_id)
++void CSE_ALifeCreatureAbstract::set_killer_id(ALife::_OBJECT_ID const killer_id)
+ {
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrServerEntities/xrServer_Objects_ALife_Monsters.h xray-monolith/src/xrServerEntities/xrServer_Objects_ALife_Monsters.h
+--- coc-1.4-xray-64/src/xrServerEntities/xrServer_Objects_ALife_Monsters.h	2023-10-20 20:54:52.143326600 +0100
++++ xray-monolith/src/xrServerEntities/xrServer_Objects_ALife_Monsters.h	2023-10-20 20:54:33.552036100 +0100
+@@ -26,4 +26,7 @@
+ SERVER_ENTITY_DECLARE_BEGIN0(CSE_ALifeTraderAbstract)
+-	enum eTraderFlags {
++
++	enum eTraderFlags
++	{
+ 		eTraderFlagInfiniteAmmo		= u32(1) << 0,
++		eTraderFlagNightVisionActive = u32(1) << 1,
+ 		eTraderFlagDummy			= u32(-1),
+@@ -49,2 +53,3 @@
+ 	xr_string						m_character_name;
++	xr_string m_character_name_str;
+ 	shared_str						m_icon_name;
+@@ -223,4 +235,4 @@
+ 
+-	IC		void					set_health				(float const health_value);
+-	IC		void					set_killer_id			(ALife::_OBJECT_ID const killer_id);
++	void set_health(float const health_value);
++	void set_killer_id(ALife::_OBJECT_ID const killer_id);
+ 
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrServerEntities/xrServer_Objects_ALife_Monsters_script.cpp xray-monolith/src/xrServerEntities/xrServer_Objects_ALife_Monsters_script.cpp
+--- coc-1.4-xray-64/src/xrServerEntities/xrServer_Objects_ALife_Monsters_script.cpp	2023-10-20 20:54:52.144329500 +0100
++++ xray-monolith/src/xrServerEntities/xrServer_Objects_ALife_Monsters_script.cpp	2023-10-20 20:54:33.552036100 +0100
+@@ -12,2 +12,3 @@
+ #include "specific_character.h"
++#include "InventoryOwner.h"
+ 
+@@ -27,3 +28,12 @@
+ {
+-	ta->m_character_name = str;
++	ta->m_character_name_str = str;
++	ta->m_character_name = TranslateName(ta->m_character_name_str.c_str());
++	
++	if (g_pGameLevel)
++	{
++		CObject* obj = g_pGameLevel->Objects.net_Find(ta->object_id());
++		CInventoryOwner* owner = smart_cast<CInventoryOwner*>(obj);
++		if (owner)
++			owner->ChangeName(str);
++	}
+ }
+@@ -35,2 +45,7 @@
+ 
++LPCSTR character_name_str_script(CSE_ALifeTraderAbstract* ta)
++{
++	return ta->m_character_name_str.c_str();
++}
++
+ LPCSTR icon_name_script(CSE_ALifeTraderAbstract* ta)
+@@ -59,2 +74,3 @@
+ 			.def("character_name", &character_name_script)
++		.def("character_name_str", &character_name_str_script)
+ 			.def("set_character_name", &set_character_name_script)
+diff -U1 -w -B -r coc-1.4-xray-64/src/xrServerEntities/xrServer_script_macroses.h xray-monolith/src/xrServerEntities/xrServer_script_macroses.h
+--- coc-1.4-xray-64/src/xrServerEntities/xrServer_script_macroses.h	2023-10-20 20:54:52.148326300 +0100
++++ xray-monolith/src/xrServerEntities/xrServer_script_macroses.h	2023-10-20 20:54:33.557035000 +0100
+@@ -238,4 +282,3 @@
+ 	DEFINE_LUABIND_VIRTUAL_FUNCTION(a,b,used_ai_locations	) \
+-	DEFINE_LUABIND_VIRTUAL_FUNCTION(a,b,can_save			) \
+-
++	DEFINE_LUABIND_VIRTUAL_FUNCTION(a,b,can_save			)
+ #ifdef XRGAME_EXPORTS

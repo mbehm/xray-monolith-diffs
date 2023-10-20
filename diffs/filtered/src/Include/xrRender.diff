@@ -1,0 +1,111 @@
+diff -U1 -w -B -r coc-1.4-xray-64/src/Include/xrRender/DebugRender.h xray-monolith/src/Include/xrRender/DebugRender.h
+--- coc-1.4-xray-64/src/Include/xrRender/DebugRender.h	2023-10-20 20:54:49.043011500 +0100
++++ xray-monolith/src/Include/xrRender/DebugRender.h	2023-10-20 20:54:32.140036000 +0100
+@@ -1,7 +1,2 @@
+-#ifndef	DebugRender_included
+-#define	DebugRender_included
+ #pragma once
+-
+-#ifdef DEBUG
+-
+ #include "DebugShader.h"
+@@ -27,3 +22,3 @@
+ 	virtual void	Render				() = 0;
+-	virtual void	add_lines			(Fvector const *vertices, u32 const &vertex_count, u16 const *pairs, u32 const &pair_count, u32 const &color) = 0;
++	virtual void	add_lines			(Fvector const *vertices, u32 const &vertex_count, u16 const *pairs, u32 const &pair_count, u32 const &color, bool bHud = false) = 0;
+ 	
+@@ -41,10 +36,3 @@
+ 	virtual void	DestroyDebugShader	(dbgShaderHandle shdHandle) = 0;
+-
+-#ifdef DEBUG
+ 	virtual void	dbg_DrawTRI			(Fmatrix& T, Fvector& p1, Fvector& p2, Fvector& p3, u32 C) = 0;
+-#endif	//	DEBUG
+ };
+-
+-#endif // DEBUG
+-
+-#endif	//	DebugRender_included
+\ No newline at end of file
+diff -U1 -w -B -r coc-1.4-xray-64/src/Include/xrRender/FactoryPtr.h xray-monolith/src/Include/xrRender/FactoryPtr.h
+--- coc-1.4-xray-64/src/Include/xrRender/FactoryPtr.h	2023-10-20 20:54:49.044009000 +0100
++++ xray-monolith/src/Include/xrRender/FactoryPtr.h	2023-10-20 20:54:32.141035700 +0100
+@@ -6,2 +6,3 @@
+ #include "../../Include/xrAPI/xrAPI.h"
++#include "../../Layers/xrRender/dxRenderFactory.h"
+ 
+@@ -10,2 +11,3 @@
+ { \
++	if (!RenderFactory) RenderFactory = &RenderFactoryImpl; \
+ 	m_pObject = RenderFactory->Create##Class(); \
+diff -U1 -w -B -r coc-1.4-xray-64/src/Include/xrRender/KinematicsAnimated.h xray-monolith/src/Include/xrRender/KinematicsAnimated.h
+--- coc-1.4-xray-64/src/Include/xrRender/KinematicsAnimated.h	2023-10-20 20:54:49.045009200 +0100
++++ xray-monolith/src/Include/xrRender/KinematicsAnimated.h	2023-10-20 20:54:32.142035700 +0100
+@@ -91,5 +96,8 @@
+ 	virtual MotionID					ID_Cycle_Safe	(shared_str  N) = 0;
+-	virtual CBlend*						PlayCycle		(LPCSTR  N,  BOOL bMixIn=TRUE, PlayCallback Callback=0, LPVOID CallbackParam=0, u8 channel = 0) = 0;
+-	virtual CBlend*						PlayCycle		(MotionID M, BOOL bMixIn=TRUE, PlayCallback Callback=0, LPVOID CallbackParam=0, u8 channel = 0) = 0;
+-	virtual CBlend*						PlayCycle		(u16 partition, MotionID M, BOOL bMixIn=TRUE, PlayCallback Callback=0, LPVOID CallbackParam=0, u8 channel = 0) = 0;
++	virtual CBlend* PlayCycle(LPCSTR N, BOOL bMixIn = TRUE, PlayCallback Callback = 0, LPVOID CallbackParam = 0,
++	                          u8 channel = 0) = 0;
++	virtual CBlend* PlayCycle(MotionID M, BOOL bMixIn = TRUE, PlayCallback Callback = 0, LPVOID CallbackParam = 0,
++	                          u8 channel = 0) = 0;
++	virtual CBlend* PlayCycle(u16 partition, MotionID M, BOOL bMixIn = TRUE, PlayCallback Callback = 0,
++	                          LPVOID CallbackParam = 0, u8 channel = 0, float speed = 0) = 0;
+ 	// fx'es
+diff -U1 -w -B -r coc-1.4-xray-64/src/Include/xrRender/RenderDeviceRender.h xray-monolith/src/Include/xrRender/RenderDeviceRender.h
+--- coc-1.4-xray-64/src/Include/xrRender/RenderDeviceRender.h	2023-10-20 20:54:49.047009000 +0100
++++ xray-monolith/src/Include/xrRender/RenderDeviceRender.h	2023-10-20 20:54:32.144037700 +0100
+@@ -41,2 +41,3 @@
+ 	virtual void	ResourcesDeferredUpload() = 0;
++	virtual void ResourcesDeferredUnload() = 0;
+ 	virtual void	ResourcesGetMemoryUsage(u32& m_base, u32& c_base, u32& m_lmaps, u32& c_lmaps) = 0;
+@@ -45,2 +46,3 @@
+ 	virtual void	ResourcesDumpMemoryUsage() = 0;
++	virtual void ResourcesPrefetchCreateTexture(LPCSTR name) = 0;
+ 
+diff -U1 -w -B -r coc-1.4-xray-64/src/Include/xrRender/RenderFactory.h xray-monolith/src/Include/xrRender/RenderFactory.h
+--- coc-1.4-xray-64/src/Include/xrRender/RenderFactory.h	2023-10-20 20:54:49.047009000 +0100
++++ xray-monolith/src/Include/xrRender/RenderFactory.h	2023-10-20 20:54:32.144037700 +0100
+@@ -34,2 +34,3 @@
+ 
++/*
+ #define RENDER_FACTORY_INTERFACE(Class) \
+@@ -43,6 +44,5 @@
+ #ifndef _EDITOR
+-	/*
+-	virtual IStatsRender* CreateStatsRender() = 0;
+-	virtual void DestroyStatsRender(IStatsRender *pObject) = 0;
+-	*/
++	// virtual IStatsRender* CreateStatsRender() = 0;
++	// virtual void DestroyStatsRender(IStatsRender *pObject) = 0;
++
+ 	RENDER_FACTORY_INTERFACE(UISequenceVideoItem)
+@@ -75,2 +75,3 @@
+ };
++*/
+ 
+diff -U1 -w -B -r coc-1.4-xray-64/src/Include/xrRender/RenderVisual.h xray-monolith/src/Include/xrRender/RenderVisual.h
+--- coc-1.4-xray-64/src/Include/xrRender/RenderVisual.h	2023-10-20 20:54:49.047009000 +0100
++++ xray-monolith/src/Include/xrRender/RenderVisual.h	2023-10-20 20:54:32.144037700 +0100
+@@ -12,3 +12,7 @@
+ public:
+-	virtual ~IRenderVisual() {;}
++	IRenderVisual() { _ignore_optimization = false; }
++
++	virtual ~IRenderVisual()
++	{
++	}
+ 
+@@ -17,2 +21,4 @@
+ 
++	bool _ignore_optimization;
++
+ #ifdef DEBUG
+@@ -21,2 +27,6 @@
+ 
++	//--DSR-- HeatVision_start
++	virtual void MarkAsHot(bool is_hot) {};
++	//--DSR-- HeatVision_end
++
+ 	virtual	IKinematics*	_BCL	dcast_PKinematics			()				{ return 0;	}
+
