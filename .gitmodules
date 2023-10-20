@@ -1,0 +1,6 @@
+[submodule "xray-monolith"]
+	path = xray-monolith
+	url = https://github.com/themrdemonized/xray-monolith.git
+[submodule "coc-1.4-xray-64"]
+	path = coc-1.4-xray-64
+	url = https://bitbucket.org/SeargeDP/coc-1.4-xray-64.git
