@@ -3,6 +3,7 @@
 
 using std::swap;
 
+#include <functional>
 #include "_type_traits.h"
 
 #ifdef __BORLANDC__
@@ -85,9 +86,14 @@ public:
     char* _charalloc(size_type n) { return (char*)allocate(n); }
     void deallocate(pointer p, size_type n) const { xr_free(p); }
     void deallocate(void* p, size_type n) const { xr_free(p); }
-    void construct(pointer p, const T& _Val) { std::_Construct(p, _Val); }
-    void destroy(pointer p) { std::_Destroy(p); }
-    size_type max_size() const { size_type _Count = (size_type)(-1) / sizeof(T); return (0 < _Count ? _Count : 1); }
+	void construct(pointer p, const T& _Val) { ::new((void*)p) T(_Val); }
+	void destroy(pointer p) { p->~value_type(); }
+
+	size_type max_size() const
+	{
+		size_type _Count = (size_type)(-1) / sizeof(T);
+		return (0 < _Count ? _Count : 1);
+	}
 };
 
 struct xr_allocator
@@ -207,11 +213,46 @@ protected:
     _C c;
 };
 
-template <typename T, typename allocator = xalloc<T> > class xr_list : public std::list < T, allocator > { public: u32 size() const { return (u32)__super::size(); } };
-template <typename K, class P = std::less<K>, typename allocator = xalloc<K> > class xr_set : public std::set < K, P, allocator > { public: u32 size() const { return (u32)__super::size(); } };
-template <typename K, class P = std::less<K>, typename allocator = xalloc<K> > class xr_multiset : public std::multiset < K, P, allocator > { public: u32 size() const { return (u32)__super::size(); } };
-template <typename K, class V, class P = std::less<K>, typename allocator = xalloc<std::pair<K, V> > > class xr_map : public std::map < K, V, P, allocator > { public: u32 size() const { return (u32)__super::size(); } };
-template <typename K, class V, class P = std::less<K>, typename allocator = xalloc<std::pair<K, V> > > class xr_multimap : public std::multimap < K, V, P, allocator > { public: u32 size() const { return (u32)__super::size(); } };
+#include <unordered_map>
+
+template <typename K, class V, class Hasher = std::hash<K>, class Traits = std::equal_to<K>,
+          typename allocator = xalloc<std::pair<const K, V>>>
+using xr_unordered_map = std::unordered_map<K, V, Hasher, Traits, allocator>;
+
+template <typename T, typename allocator = xalloc<T>>
+class xr_list : public std::list<T, allocator>
+{
+public:
+	u32 size() const { return (u32)__super::size(); }
+};
+
+template <typename K, class P = std::less<K>, typename allocator = xalloc<K>>
+class xr_set : public std::set<K, P, allocator>
+{
+public:
+	u32 size() const { return (u32)__super::size(); }
+};
+
+template <typename K, class P = std::less<K>, typename allocator = xalloc<K>>
+class xr_multiset : public std::multiset<K, P, allocator>
+{
+public:
+	u32 size() const { return (u32)__super::size(); }
+};
+
+template <typename K, class V, class P = std::less<K>, typename allocator = xalloc<std::pair<K, V>>>
+class xr_map : public std::map<K, V, P, allocator>
+{
+public:
+	u32 size() const { return (u32)__super::size(); }
+};
+
+template <typename K, class V, class P = std::less<K>, typename allocator = xalloc<std::pair<K, V>>>
+class xr_multimap : public std::multimap<K, V, P, allocator>
+{
+public:
+	u32 size() const { return (u32)__super::size(); }
+};
 
 #ifdef STLPORT
 template <typename V, class _HashFcn = std::hash<V>, class _EqualKey = std::equal_to<V>, typename allocator = xalloc<V> > class xr_hash_set : public std::hash_set < V, _HashFcn, _EqualKey, allocator > { public: u32 size() const { return (u32)__super::size(); } };

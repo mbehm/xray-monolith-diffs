@@ -21,12 +21,18 @@ CScriptSound::CScriptSound				(LPCSTR caSoundName, ESoundTypes sound_type)
 	if (FS.exist(l_caFileName,"$game_sounds$",caSoundName,".ogg"))
 		m_sound.create		(caSoundName,st_Effect,sound_type);
 	else
+	{
 		ai().script_engine().script_log	(ScriptStorage::eLuaMessageTypeError,"File not found \"%s\"!",l_caFileName);
+		m_sound.create("$no_sound.ogg", st_Effect, sound_type);
+	}
 }
 
 CScriptSound::~CScriptSound		()
 {
-	THROW3					(!m_sound._feedback(),"playing sound is not completed, but is destroying",m_sound._handle() ? m_sound._handle()->file_name() : "unknown");
+#ifdef DEBUG
+	THROW3(!m_sound._feedback(), "playing sound is not completed, but is destroying",
+	       m_sound._handle() ? m_sound._handle()->file_name() : "unknown");
+#endif
 	m_sound.destroy			();
 }
 
@@ -56,8 +62,9 @@ void CScriptSound::PlayAtPos		(CScriptGameObject *object, const Fvector &positio
 	m_sound.play_at_pos			((object) ? &object->object() : NULL, position,flags,delay);
 }
 
-void CScriptSound::PlayNoFeedback	(CScriptGameObject *object,	u32 flags/*!< Looping */, float delay/*!< Delay */, Fvector pos, float vol)
+void CScriptSound::PlayNoFeedback(CScriptGameObject* object, u32 flags/*!< Looping */, float delay/*!< Delay */,
+                                  Fvector pos, float vol, float freq)
 {
 	THROW3						(m_sound._handle(),"There is no sound",*m_caSoundToPlay);
-	m_sound.play_no_feedback	((object) ? &object->object() : NULL, flags,delay,&pos,&vol);
+	m_sound.play_no_feedback((object) ? &object->object() : NULL, flags, delay, &pos, &vol, &freq);
 }

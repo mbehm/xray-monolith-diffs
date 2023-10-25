@@ -56,12 +56,16 @@ sPoly2D* C2DFrustum::ClipPoly	(sPoly2D& S, sPoly2D& D) const
 		// clip everything to this plane
 		cls[src->size()] = cls[0]	;
 		src->push_back((*src)[0])	;
-		Fvector2 dir_pt,dir_uv;		float denum,t;
-		for (j=0; j<src->size()-1; j++)	{
+		Fvector2 dir_pt, dir_uv;
+		float denum, t;
+		for (u32 j = 0; j < src->size() - 1; j++)
+		{
 			if ((*src)[j].pt.similar((*src)[j+1].pt,EPS_S)) continue;
-			if (negative(cls[j]))	{
+			if (negative(cls[j]))
+			{
 				dest->push_back((*src)[j])	;
-				if (positive(cls[j+1]))	{
+				if (positive(cls[j + 1]))
+				{
 					// segment intersects plane
 					dir_pt.sub((*src)[j+1].pt,(*src)[j].pt);
 					dir_uv.sub((*src)[j+1].uv,(*src)[j].uv);
@@ -254,7 +258,16 @@ void ui_core::RenderFont()
 
 bool ui_core::is_widescreen()
 {
-	return (Device.dwWidth)/float(Device.dwHeight) > (UI_BASE_WIDTH/UI_BASE_HEIGHT +0.01f);
+	return (float(Device.dwWidth) / float(Device.dwHeight)) > (UI_BASE_WIDTH / UI_BASE_HEIGHT + 0.01f);
+}
+
+u8 ui_core::screenmode()
+{
+	if ((float(Device.dwWidth) / float(Device.dwHeight)) > 1.8f)
+		return u8(2);
+	else if ((float(Device.dwWidth) / float(Device.dwHeight)) > (UI_BASE_WIDTH / UI_BASE_HEIGHT + 0.01f))
+		return u8(1);
+	return u8(0);
 }
 
 float ui_core::get_current_kx()
@@ -269,22 +282,36 @@ float ui_core::get_current_kx()
 shared_str	ui_core::get_xml_name(LPCSTR fn)
 {
 	string_path				str;
-	if(!is_widescreen()){
+	if (screenmode() == u8(0))
+	{
 		xr_sprintf(str, "%s", fn);
 		if ( NULL==strext(fn) ) xr_strcat(str, ".xml");
-	}else{
-
+	}
+	else
+	{
 		string_path			str_;
 		if ( strext(fn) )
 		{
 			xr_strcpy	(str, fn);
 			*strext(str)	= 0;
-			xr_strcat	(str, "_16.xml");
-		}else
-			xr_sprintf				(str, "%s_16", fn);
+			xr_strcat(str, screenmode() == u8(1) ? "_16.xml" : "_21.xml");
+		}
+		else
+			xr_sprintf(str, screenmode() == u8(1) ? "%s_16" : "%s_21", fn);
 
 		if(NULL==FS.exist(str_, "$game_config$", "ui\\" , str) )
 		{
+			if (screenmode() == u8(2))
+			{
+				xr_sprintf(str, "%s_16", fn);
+				if (NULL == strext(fn)) xr_strcat(str, "_16.xml");
+
+				if (NULL != FS.exist(str_, "$game_config$", "ui\\", str))
+				{
+					return str;
+				}
+					
+			}
 			xr_sprintf(str, "%s", fn);
 			if ( NULL==strext(fn) ) xr_strcat(str, ".xml");
 		}

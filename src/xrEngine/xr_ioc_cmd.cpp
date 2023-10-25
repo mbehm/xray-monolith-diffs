@@ -17,6 +17,15 @@
 
 xr_token* vid_quality_token = NULL;
 
+u32 g_screenmode = 1;
+xr_token screen_mode_tokens[] = 
+{
+	{"fullscreen", 2},
+	{"borderless", 1},
+	{"windowed", 0},
+	{0, 0}
+};
+
 xr_token vid_bpp_token[] =
 {
     {"16", 16},
@@ -390,6 +399,32 @@ public:
         Engine.Event.Defer("KERNEL:disconnect");
     }
 };
+
+//-----------------------------------------------------------------------
+class CCC_PART_Export : public IConsole_Command
+{
+public:
+	CCC_PART_Export(LPCSTR N) : IConsole_Command(N) { bEmptyArgsHandled = TRUE; };
+
+	virtual void Execute(LPCSTR args)
+	{
+		Msg("Exporting particles...");
+		Render->ExportParticles();
+	}
+};
+
+class CCC_PART_Import : public IConsole_Command
+{
+public:
+	CCC_PART_Import(LPCSTR N) : IConsole_Command(N) { bEmptyArgsHandled = TRUE; };
+
+	virtual void Execute(LPCSTR args)
+	{
+		Msg("Importing particles...");
+		Render->ImportParticles();
+	}
+};
+
 //-----------------------------------------------------------------------
 class CCC_VID_Reset : public IConsole_Command
 {
@@ -461,7 +496,42 @@ public:
             tok++;
         }
     }
+};
 
+extern void GetMonitorResolution(u32& horizontal, u32& vertical);
+
+class CCC_Screenmode : public CCC_Token
+{
+public:
+	CCC_Screenmode(LPCSTR N) : CCC_Token(N, &g_screenmode, screen_mode_tokens){};
+
+	virtual void Execute(LPCSTR args)
+	{
+		u32 prev_mode = g_screenmode;
+		CCC_Token::Execute(args);
+
+		if ((prev_mode != g_screenmode))
+		{
+			if (Device.b_is_Ready && (prev_mode == 2 || g_screenmode == 2))
+				Device.Reset();
+
+			if (g_screenmode == 0 || g_screenmode == 1)
+			{
+				u32 w, h;
+				GetMonitorResolution(w, h);
+				SetWindowLongPtr(Device.m_hWnd, GWL_STYLE, WS_VISIBLE | WS_POPUP);
+				SetWindowPos(Device.m_hWnd, HWND_TOP, 0, 0, w, h, SWP_FRAMECHANGED);
+
+				if (g_screenmode == 0)
+					SetWindowLongPtr(Device.m_hWnd, GWL_STYLE, WS_VISIBLE | WS_OVERLAPPEDWINDOW);
+			}
+		}
+
+		RECT winRect;
+		GetClientRect(Device.m_hWnd, &winRect);
+		MapWindowPoints(Device.m_hWnd, nullptr, reinterpret_cast<LPPOINT>(&winRect), 2);
+		ClipCursor(&winRect);
+	}
 };
 //-----------------------------------------------------------------------
 class CCC_SND_Restart : public IConsole_Command
@@ -493,6 +563,21 @@ public:
         //Device.Gamma.Update ();
         Device.m_pRender->updateGamma();
     }
+};
+
+extern void updateCurrentScope();
+class CCC_ScopeFactor : public CCC_Float
+{
+public:
+	CCC_ScopeFactor(LPCSTR N, float* V) : CCC_Float(N, V, 0.01f, 1.0f)
+	{
+	}
+
+	virtual void Execute(LPCSTR args)
+	{
+		CCC_Float::Execute(args);
+		updateCurrentScope();
+	}
 };
 
 //-----------------------------------------------------------------------
@@ -555,7 +640,8 @@ class CCC_r2 : public CCC_Token
 {
     typedef CCC_Token inherited;
 public:
-    CCC_r2(LPCSTR N) :inherited(N, &renderer_value, NULL) { renderer_value = 3; };
+	CCC_r2(LPCSTR N) : inherited(N, &renderer_value, NULL) { renderer_value = 0; };
+
     virtual ~CCC_r2()
     {
         //free_render_mode_list();
@@ -570,13 +656,44 @@ public:
         // 0 - r1
         // 1..3 - r2
         // 4 - r3
-        psDeviceFlags.set(rsR2, ((renderer_value > 0) && renderer_value < 4));
-        psDeviceFlags.set(rsR3, (renderer_value == 4));
-        psDeviceFlags.set(rsR4, (renderer_value >= 5));
+		LPCSTR renderer_name = "";
+		for (int i = 0; vid_quality_token[i].name; i++)
+			if (i == renderer_value)
+				renderer_name = vid_quality_token[i].name;
 
-        r2_sun_static = (renderer_value < 2);
+		bool isR2 = strcmp("renderer_r2a", renderer_name) == 0;
+		isR2 |= strcmp("renderer_r2", renderer_name) == 0;
+		isR2 |= strcmp("renderer_r2.5", renderer_name) == 0;
+		psDeviceFlags.set(rsR2, isR2);
+		psDeviceFlags.set(rsR3, strcmp("renderer_r3", renderer_name) == 0);
+		psDeviceFlags.set(rsR4, strcmp("renderer_r4", renderer_name) == 0);
 
-        r2_advanced_pp = (renderer_value >= 3);
+		r2_sun_static = strcmp("renderer_r1", renderer_name) == 0;
+		r2_sun_static |= strcmp("renderer_r2a", renderer_name) == 0;
+
+		r2_advanced_pp = strcmp("renderer_r2.5", renderer_name) == 0;
+		r2_advanced_pp |= strcmp("renderer_r3", renderer_name) == 0;
+		r2_advanced_pp |= strcmp("renderer_r4", renderer_name) == 0;
+	}
+
+	virtual void Status(TStatus& S)
+	{
+		tokens = vid_quality_token;
+
+		if (tokens == nullptr)
+			Engine.External.CreateRendererList();
+
+		while (tokens->name)
+		{
+			if (tokens->id == (int)(*value))
+			{
+				xr_strcpy(S, tokens->name);
+				return;
+			}
+			tokens++;
+		}
+		xr_strcpy(S, "?");
+		return;
     }
 
     virtual void Save(IWriter* F)
@@ -666,6 +783,7 @@ public:
 
     virtual void Save(IWriter* F)
     {
+		F->w_printf("input_exclusive_mode %s\r\n", pInput->get_exclusive_mode() ? "on" : "off");
     }
 };
 
@@ -691,8 +809,20 @@ public:
     }
 };
 
+class CCC_SoundParamsSmoothing : public CCC_Integer
+{
+public:
+	CCC_SoundParamsSmoothing(LPCSTR N, int* V, int _min = 0, int _max = 999) : CCC_Integer(N, V, _min, _max) {};
 
-ENGINE_API float psHUD_FOV = 0.45f;
+	virtual void Execute(LPCSTR args)
+	{
+		CCC_Integer::Execute(args);
+		soundSmoothingParams::alpha = soundSmoothingParams::getAlpha();
+	}
+};
+
+ENGINE_API float psHUD_FOV_def = 0.45f;
+ENGINE_API float psHUD_FOV = psHUD_FOV_def;
 
 //extern int psSkeletonUpdate;
 extern int rsDVB_Size;
@@ -711,6 +841,33 @@ extern int g_ErrorLineCount;
 ENGINE_API int ps_r__Supersample = 1;
 ENGINE_API float ps_r2_sun_shafts_min = 0.f;
 ENGINE_API float ps_r2_sun_shafts_value = 1.f;
+ENGINE_API float hit_modifier = 1.0f;
+
+extern float g_dispersion_base;
+extern float g_dispersion_factor;
+float g_AimLookFactor = 1.f;
+
+int ps_framelimiter = 0;
+Ivector4 g_crosshair_color_temp;
+float g_freelook_z_offset;
+float g_ironsights_factor = 1.25f;
+
+// crookr fake scope params (sorry)
+float scope_fog_interp = 0.15f;
+float scope_fog_travel = 0.25f;
+float scope_fog_attack = 0.66f;
+float scope_fog_mattack = 0.25f;
+//float scope_drift_amount = 1.f;
+float scope_ca = 0.003f;
+float scope_outerblur = 1.0f;
+float scope_innerblur = 0.1f;
+float scope_scrollpower = 0.66f;
+float scope_brightness = 1.0f;
+float scope_radius = 0.f;
+float scope_fog_radius = 1.25f;
+float scope_fog_sharp = 4.0f;
+int scope_2dtexactive = 0.0;
+Fvector3 ssfx_wetness_multiplier = Fvector3().set(1.0f, 0.3f, 0.0f);
 
 void CCC_Register()
 {
@@ -758,16 +915,21 @@ void CCC_Register()
     CMD3(CCC_Mask, "rs_render_dynamics", &psDeviceFlags, rsDrawDynamic);
 #endif
 
+	// bone damage modifier
+	CMD4(CCC_Float, "g_hit_pwr_modif", &hit_modifier, .5f, 3.f);
+	
+	CMD4(CCC_Float, "g_dispersion_base", &g_dispersion_base, 0.0f, 5.0f);
+	CMD4(CCC_Float, "g_dispersion_factor", &g_dispersion_factor, 0.1f, 10.0f);
+
     // Render device states
     CMD4(CCC_Integer, "r__supersample", &ps_r__Supersample, 1, 4);
 
-    CMD4(CCC_Float, "r2_sun_shafts_min", &ps_r2_sun_shafts_min, 0.0, 0.5);
-    CMD4(CCC_Float, "r2_sun_shafts_value", &ps_r2_sun_shafts_value, 0.5, 2.0);
+	CMD4(CCC_Float, "r2_sunshafts_min", &ps_r2_sun_shafts_min, 0.0, 0.5);
+	CMD4(CCC_Float, "r2_sunshafts_value", &ps_r2_sun_shafts_value, 0.5, 2.0);
 
     CMD3(CCC_Mask, "rs_v_sync", &psDeviceFlags, rsVSync);
     // CMD3(CCC_Mask, "rs_disable_objects_as_crows",&psDeviceFlags, rsDisableObjectsAsCrows );
-    CMD3(CCC_Mask, "rs_fullscreen", &psDeviceFlags, rsFullscreen);
-    CMD3(CCC_Mask, "rs_refresh_60hz", &psDeviceFlags, rsRefresh60hz);
+	CMD1(CCC_Screenmode, "rs_screenmode");
     CMD3(CCC_Mask, "rs_stats", &psDeviceFlags, rsStatistic);
     CMD4(CCC_Float, "rs_vis_distance", &psVisDistance, 0.4f, 1.5f);
 
@@ -786,7 +948,7 @@ void CCC_Register()
 
     // Texture manager
     CMD4(CCC_Integer, "texture_lod", &psTextureLOD, 0, 4);
-    CMD4(CCC_Integer, "net_dedicated_sleep", &psNET_DedicatedSleep, 0, 64);
+	//CMD4(CCC_Integer, "net_dedicated_sleep", &psNET_DedicatedSleep, 0, 64);
 
     // General video control
     CMD1(CCC_VidMode, "vid_mode");
@@ -794,6 +956,9 @@ void CCC_Register()
 #ifdef DEBUG
     CMD3(CCC_Token, "vid_bpp", &psCurrentBPP, vid_bpp_token);
 #endif // DEBUG
+
+	CMD1(CCC_PART_Export, "part_export");
+	CMD1(CCC_PART_Import, "part_import");
 
     CMD1(CCC_VID_Reset, "vid_restart");
 
@@ -803,8 +968,11 @@ void CCC_Register()
     CMD1(CCC_SND_Restart, "snd_restart");
     CMD3(CCC_Mask, "snd_acceleration", &psSoundFlags, ss_Hardware);
     CMD3(CCC_Mask, "snd_efx", &psSoundFlags, ss_EAX);
-    CMD4(CCC_Integer, "snd_targets", &psSoundTargets, 16, 256);
+	CMD4(CCC_Integer, "snd_targets", &psSoundTargets, 32, 1024);
     CMD4(CCC_Integer, "snd_cache_size", &psSoundCacheSizeMB, 8, 256);
+	// Doppler effect power
+	CMD4(CCC_Float, "snd_doppler_power", &soundSmoothingParams::power, 0.f, 5.f);
+	CMD4(CCC_SoundParamsSmoothing, "snd_doppler_smoothing", &soundSmoothingParams::steps, 1, 100);
 
 #ifdef DEBUG
     CMD3(CCC_Mask, "snd_stats", &g_stats_flags, st_sound);
@@ -837,22 +1005,51 @@ void CCC_Register()
 
     extern int g_Dump_Export_Obj;
     extern int g_Dump_Import_Obj;
-    CMD4(CCC_Integer, "net_dbg_dump_export_obj", &g_Dump_Export_Obj, 0, 1);
-    CMD4(CCC_Integer, "net_dbg_dump_import_obj", &g_Dump_Import_Obj, 0, 1);
+	//CMD4(CCC_Integer, "net_dbg_dump_export_obj", &g_Dump_Export_Obj, 0, 1);
+	//CMD4(CCC_Integer, "net_dbg_dump_import_obj", &g_Dump_Import_Obj, 0, 1);
 
 #ifdef DEBUG
     CMD1(CCC_DumpOpenFiles, "dump_open_files");
 #endif
 
-    CMD1(CCC_ExclusiveMode, "input_exclusive_mode");
+	//CMD1(CCC_ExclusiveMode, "input_exclusive_mode");
 
     extern int g_svTextConsoleUpdateRate;
-    CMD4(CCC_Integer, "sv_console_update_rate", &g_svTextConsoleUpdateRate, 1, 100);
+	//CMD4(CCC_Integer, "sv_console_update_rate", &g_svTextConsoleUpdateRate, 1, 100);
 
     extern int g_svDedicateServerUpdateReate;
-    CMD4(CCC_Integer, "sv_dedicated_server_update_rate", &g_svDedicateServerUpdateReate, 1, 1000);
+	//CMD4(CCC_Integer, "sv_dedicated_server_update_rate", &g_svDedicateServerUpdateReate, 1, 1000);
 
     CMD1(CCC_HideConsole, "hide");
+
+	CMD4(CCC_Integer, "r__framelimit", &ps_framelimiter, 0, 500);
+	CMD3(CCC_Mask, "rs_refresh_60hz", &psDeviceFlags, rsRefresh60hz);
+	CMD4(CCC_CrosshairColor, "g_crosshair_color", &g_crosshair_color_temp, Ivector4().set(0, 0, 0, 0), Ivector4().set(255, 255, 255, 255));
+	CMD4(CCC_Float, "mouse_sens_aim", &g_AimLookFactor, .5f, 2.f);
+
+	if (strstr(Core.Params, "-dbgdev"))
+		CMD4(CCC_Float, "g_freelook_z_offset_factor", &g_freelook_z_offset, -3.f, 3.f);
+
+	CMD4(CCC_Float, "g_ironsights_zoom_factor", &g_ironsights_factor, 1.f, 2.f);
+	CMD4(CCC_Vector3, "ssfx_wetness_multiplier", &ssfx_wetness_multiplier, Fvector3().set(0.1f, 0.1f, 0.0f), Fvector3().set(20.0f, 20.0f, 0.0f));
+	
+	// - CrookR
+	CMD2(CCC_Float, "scope_blur_outer", &scope_outerblur);
+	CMD2(CCC_Float, "scope_blur_inner", &scope_innerblur);
+	CMD2(CCC_ScopeFactor, "scope_factor", &scope_scrollpower);
+	CMD2(CCC_Float, "scope_brightness", &scope_brightness);
+
+	CMD2(CCC_Float, "scope_fog_interp", &scope_fog_interp);
+	CMD4(CCC_Float, "scope_fog_travel", &scope_fog_travel, 0.f, 5.f);
+	CMD4(CCC_Float, "scope_fog_swayAim", &scope_fog_attack, -999.f, 999.f);
+	CMD4(CCC_Float, "scope_fog_swayMove", &scope_fog_mattack, -999.f, 999.f);
+	//CMD4(CCC_Float, "scope_drift_amount", &scope_drift_amount, -999.f, 999.f);
+
+	CMD2(CCC_Float, "scope_ca", &scope_ca);
+	CMD4(CCC_Float, "scope_radius", &scope_radius, 0, 2);
+	CMD4(CCC_Float, "scope_fog_radius", &scope_fog_radius, 0, 1000);
+	CMD4(CCC_Float, "scope_fog_sharp", &scope_fog_sharp, 0, 1000);
+	CMD2(CCC_Integer, "scope_2dtexactive", &scope_2dtexactive);
 
 #ifdef DEBUG
     extern BOOL debug_destroy;

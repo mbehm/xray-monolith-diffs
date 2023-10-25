@@ -304,6 +304,12 @@ void CALifeSimulator__release					(CALifeSimulator *self, CSE_Abstract *object, 
 
 LPCSTR get_level_name							(const CALifeSimulator *self, int level_id)
 {
+	const GameGraph::LEVEL_MAP& levels = ai().game_graph().header().levels();
+	GameGraph::LEVEL_MAP::const_iterator I = levels.find((GameGraph::_LEVEL_ID)level_id);
+	if (I == levels.end())
+	{
+		return NULL;
+	}
 	LPCSTR								result = *ai().game_graph().header().level((GameGraph::_LEVEL_ID)level_id).name();
 	return								(result);
 }
@@ -339,8 +345,31 @@ bool dont_has_info								(const CALifeSimulator *self, const ALife::_OBJECT_ID 
 	return								(!has_info(self,id,info_id));
 }
 
+void AlifeGiveInfo(const CALifeSimulator *alife, const ALife::_OBJECT_ID &id, LPCSTR info_id)
+{
+	KNOWN_INFO_VECTOR *known_info = alife->registry(info_portions).object(id, true);
+	if (!known_info)
+		return;
+
+	if (std::find_if(known_info->begin(), known_info->end(), CFindByIDPred(info_id)) == known_info->end())
+	{
+		known_info->push_back(info_id);
+	}
+
+	return;
+}
+
+void AlifeRemoveInfo(const CALifeSimulator *alife, const ALife::_OBJECT_ID &id, LPCSTR info_id)
+{
+	KNOWN_INFO_VECTOR	*known_info = alife->registry(info_portions).object(id, true);
+	if (!known_info)
+		return;
+	known_info->erase(std::find_if(known_info->begin(), known_info->end(), CFindByIDPred(info_id)),known_info->end());
+}
+
 //Alundaio: teleport object
-void teleport_object(CALifeSimulator *alife, ALife::_OBJECT_ID id, GameGraph::_GRAPH_ID game_vertex_id, u32 level_vertex_id, const Fvector &position)
+void teleport_object(CALifeSimulator* alife, ALife::_OBJECT_ID id, GameGraph::_GRAPH_ID game_vertex_id,
+                     u32 level_vertex_id, const Fvector& position)
 {
 	alife->teleport_object(id, game_vertex_id, level_vertex_id, position);
 }
@@ -376,7 +405,18 @@ CSE_Abstract* reprocess_spawn(CALifeSimulator *self, CSE_Abstract *object)
 	return	(self->server().Process_spawn(packet, clientID));
 }
 
-CSE_Abstract* try_to_clone_object(CALifeSimulator *self, CSE_Abstract *object, LPCSTR section, const Fvector &position, u32 level_vertex_id, GameGraph::_GRAPH_ID game_vertex_id, ALife::_OBJECT_ID id_parent, bool bRegister = true)
+// demonized: iterate alife objects
+void CALifeSimulator__iterate_objects(const CALifeSimulator* self, luabind::functor<bool> functor)
+{
+	const CALifeObjectRegistry &objects = self->objects();
+	for (const auto& se_obj : objects.objects()) {
+		if (functor(se_obj.second)) break;
+	}
+}
+
+CSE_Abstract* try_to_clone_object(CALifeSimulator* self, CSE_Abstract* object, LPCSTR section, const Fvector& position,
+                                  u32 level_vertex_id, GameGraph::_GRAPH_ID game_vertex_id, ALife::_OBJECT_ID id_parent,
+                                  bool bRegister = true)
 {
 	CSE_ALifeItemWeaponMagazined* wpnmag = smart_cast<CSE_ALifeItemWeaponMagazined*>(object);
 	if (wpnmag)
@@ -411,6 +451,18 @@ void set_process_time(CALifeSimulator *self, int micro)
 {
 	self->set_process_time(micro);
 }
+
+const CALifeObjectRegistry::OBJECT_REGISTRY& alife_objects(const CALifeSimulator *self)
+{
+	VERIFY(self);
+	return self->objects().objects();
+}
+
+xr_vector<u16>& get_children(const CALifeSimulator *self, CSE_Abstract *object)
+{
+	VERIFY(self);
+	return object->children;
+}
 //-Alundaio
 
 
@@ -425,6 +477,7 @@ void CALifeSimulator::script_register			(lua_State *L)
 			.def("level_name",				&get_level_name)
 			.def("object",					(CSE_ALifeDynamicObject *(*) (const CALifeSimulator *,ALife::_OBJECT_ID))(alife_object))
 			.def("object",					(CSE_ALifeDynamicObject *(*) (const CALifeSimulator *,ALife::_OBJECT_ID, bool))(alife_object))
+// FIX LATER:		.def("objects", &alife_objects, return_stl_pair_iterator)
 			.def("story_object",			(CSE_ALifeDynamicObject *(*) (const CALifeSimulator *,ALife::_STORY_ID))(alife_story_object))
 			.def("set_switch_online",		(void (CALifeSimulator::*) (ALife::_OBJECT_ID,bool))(&CALifeSimulator::set_switch_online))
 			.def("set_switch_offline",		(void (CALifeSimulator::*) (ALife::_OBJECT_ID,bool))(&CALifeSimulator::set_switch_offline))
@@ -447,8 +500,11 @@ void CALifeSimulator::script_register			(lua_State *L)
 			.def("actor",					&get_actor)
 			.def("has_info",				&has_info)
 			.def("dont_has_info",			&dont_has_info)
+		.def("give_info", &AlifeGiveInfo)
+		.def("disable_info", &AlifeRemoveInfo)
 			.def("switch_distance",			&CALifeSimulator::switch_distance)
-			.def("set_switch_distance",			&CALifeSimulator::set_switch_distance) //Alundaio: renamed to set_switch_distance from switch_distance
+		.def("set_switch_distance", &CALifeSimulator::set_switch_distance)
+		//Alundaio: renamed to set_switch_distance from switch_distance
 			//Alundaio: extend alife simulator exports
 			.def("teleport_object", &teleport_object)
 			.def("iterate_info", &IterateInfo)
@@ -456,8 +512,12 @@ void CALifeSimulator::script_register			(lua_State *L)
 			.def("register", &reprocess_spawn)
 			.def("set_objects_per_update", &set_objects_per_update)
 			.def("set_process_time", &set_process_time)
+		.def("get_children", &get_children, return_stl_iterator)
 			//Alundaio: END
 	
+		// demonized: iterate alife objects
+		.def("iterate_objects", &CALifeSimulator__iterate_objects)
+
 		,def("alife",						&alife)
     ];
 

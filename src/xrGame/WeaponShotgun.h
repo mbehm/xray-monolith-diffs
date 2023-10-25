@@ -31,9 +31,10 @@ public:
 protected:
 	virtual void	OnAnimationEnd		(u32 state);
 	void			TriStateReload		();
-	virtual void	OnStateSwitch		(u32 S);
+	virtual void OnStateSwitch(u32 S, u32 oldState);
 
 	bool			HaveCartridgeInInventory(u8 cnt);
+	bool BeginReloadWasEmpty;
 	virtual u8		AddCartridge		(u8 cnt);
 
 	ESoundTypes		m_eSoundOpen;

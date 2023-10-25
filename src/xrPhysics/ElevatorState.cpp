@@ -35,26 +35,47 @@ float CElevatorState::ClimbDirection()
 	return dir;
 }
 
+extern bool g_actor_allow_ladder;
+
 void CElevatorState::PhTune(float step)
 {	
 	VERIFY(m_character&&m_character->b_exist&&m_character->is_active());
 	if(!m_ladder)			return;
-	switch(m_state)
+
+	if ((!g_actor_allow_ladder && m_character->RestrictionType() == rtActor) || m_character->RestrictionType() == rtMonsterMedium)
 	{
-	case	clbNone			:UpdateStNone()			;		break;			
-	case 	clbNearUp		:UpdateStNearUp()		;		break;						
-	case 	clbNearDown		:UpdateStNearDown()		;		break;					
-	case 	clbClimbingUp	:UpdateStClimbingUp()	;		break;					
-	case 	clbClimbingDown	:UpdateStClimbingDown()	;		break;	
-	case	clbDepart		:UpdateDepart()			;		break;
-	case	clbNoLadder		:m_ladder = NULL		;		break;		
+		if (m_state != clbNoLadder)
+			UpdateDepart();
+		else
+	{
+			m_state = clbNoLadder;
+			m_ladder = NULL;
 	}
 
+		return;
+}
+
+	switch (m_state)
+{
+	case clbNone: UpdateStNone();
+		break;
+	case clbNearUp: UpdateStNearUp();
+		break;
+	case clbNearDown: UpdateStNearDown();
+		break;
+	case clbClimbingUp: UpdateStClimbingUp();
+		break;
+	case clbClimbingDown: UpdateStClimbingDown();
+		break;
+	case clbDepart: UpdateDepart();
+		break;
+	case clbNoLadder: m_ladder = NULL;
+		break;
+	}
 }
 
 void CElevatorState::PhDataUpdate(float step)
 {
-
 }
 
 void CElevatorState::InitContact(dContact* c,bool &do_collide,u16 ,u16 )

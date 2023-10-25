@@ -37,6 +37,9 @@
 #include "car.h"
 #include "movement_manager.h"
 #include "detail_path_manager.h"
+#include "Inventory.h"
+#include "InventoryOwner.h"
+#include "CharacterPhysicsSupport.h"
 
 void CScriptGameObject::explode	(u32 level_time)
 {
@@ -150,21 +153,15 @@ void CScriptGameObject::Hit(CScriptHit *tpLuaHit)
 	CScriptHit		&tLuaHit = *tpLuaHit;
 	NET_Packet		P;
 	SHit			HS;
-	HS.GenHeader(GE_HIT,object().ID());										//	object().u_EventGen(P,GE_HIT,object().ID());
-	THROW2			(tLuaHit.m_tpDraftsman,"Where is hit initiator??!");	//	THROW2			(tLuaHit.m_tpDraftsman,"Where is hit initiator??!");
-	HS.whoID  = u16(tLuaHit.m_tpDraftsman->ID());							//	P.w_u16			(u16(tLuaHit.m_tpDraftsman->ID()));
-	HS.weaponID = 0;														//	P.w_u16			(0);
-	HS.dir = tLuaHit.m_tDirection;											//	P.w_dir			(tLuaHit.m_tDirection);
-	HS.power = tLuaHit.m_fPower;											//	P.w_float		(tLuaHit.m_fPower);
-	IKinematics		*V = smart_cast<IKinematics*>(object().Visual());		//	IKinematics		*V = smart_cast<IKinematics*>(object().Visual());
-	VERIFY			(V);													//	VERIFY			(V);
-	if (xr_strlen	(tLuaHit.m_caBoneName))									//	if (xr_strlen	(tLuaHit.m_caBoneName))
-		HS.boneID = 		(V->LL_BoneID(tLuaHit.m_caBoneName));			//		P.w_s16		(V->LL_BoneID(tLuaHit.m_caBoneName));
-	else																	//	else
-		HS.boneID = 		(s16(0));										//		P.w_s16		(s16(0));
-	HS.p_in_bone_space = Fvector().set(0,0,0);								//	P.w_vec3		(Fvector().set(0,0,0));
-	HS.impulse = tLuaHit.m_fImpulse;										//	P.w_float		(tLuaHit.m_fImpulse);
-	HS.hit_type = (ALife::EHitType)(tLuaHit.m_tHitType);					//	P.w_u16			(u16(tLuaHit.m_tHitType));
+	HS.GenHeader(GE_HIT, object().ID());
+	HS.ApplyScriptHit(&tLuaHit);
+	if (xr_strlen(tLuaHit.m_caBoneName))
+	{
+		IKinematics* V = smart_cast<IKinematics*>(object().Visual());
+		if (V)
+			HS.boneID = (V->LL_BoneID(tLuaHit.m_caBoneName));
+	}
+	HS.p_in_bone_space = Fvector().set(0, 0, 0);
 	HS.Write_Packet(P);						
 
 	object().u_EventSend(P);
@@ -323,17 +320,32 @@ void CScriptGameObject::RestoreDefaultStartDialog()
 	pDialogManager->RestoreDefaultStartDialog();
 }
 
-void CScriptGameObject::SetActorPosition			(Fvector pos)
+void CScriptGameObject::SetActorPosition(Fvector pos, bool bskip_collision_correct)
 {
 	CActor* actor = smart_cast<CActor*>(&object());
-	if(actor){
+	if (actor)
+	{
+		if (bskip_collision_correct)
+		{
+			Fmatrix F = actor->XFORM();
+			F.c = pos;
+			actor->XFORM().set(F);
+			if (actor->character_physics_support()->movement()->CharacterExist())
+			{
+				actor->character_physics_support()->movement()->SetPosition(F.c);
+				actor->character_physics_support()->movement()->SetVelocity(0.f, 0.f, 0.f);
+			}
+		}
+		else
+		{
 		Fmatrix F = actor->XFORM();
 		F.c = pos;
 		actor->ForceTransform(F);
-//		actor->XFORM().c = pos;
-	}else
-		ai().script_engine().script_log		(ScriptStorage::eLuaMessageTypeError,"ScriptGameObject : attempt to call SetActorPosition method for non-actor object");
-
+		}
+	}
+	else
+		ai().script_engine().script_log(ScriptStorage::eLuaMessageTypeError,
+		                                "ScriptGameObject : attempt to call SetActorPosition method for non-actor object");
 }
 
 void CScriptGameObject::SetNpcPosition			(Fvector pos)
@@ -347,19 +359,39 @@ void CScriptGameObject::SetNpcPosition			(Fvector pos)
 			obj->destroy_anim_mov_ctrl();
 		obj->ForceTransform(F);
 		//		actor->XFORM().c = pos;
-	}else
-		ai().script_engine().script_log		(ScriptStorage::eLuaMessageTypeError,"ScriptGameObject : attempt to call SetActorPosition method for non-CCustomMonster object");
-
+	}
+	else
+		ai().script_engine().script_log(ScriptStorage::eLuaMessageTypeError,
+		                                "ScriptGameObject : attempt to call SetActorPosition method for non-CCustomMonster object");
 }
 
-void CScriptGameObject::SetActorDirection		(float dir)
+// demonized: add pitch for set actor direction
+void CScriptGameObject::SetActorDirection(float dir, float pitch, float roll)
 {
 	CActor* actor = smart_cast<CActor*>(&object());
-	if(actor){
-		actor->cam_Active()->Set(dir,0,0);
+	if (actor)
+	{
+		actor->cam_Active()->Set(dir, pitch, roll);
 //		actor->XFORM().setXYZ(0,dir,0);
 	}else
-		ai().script_engine().script_log		(ScriptStorage::eLuaMessageTypeError,"ScriptGameObject : attempt to call SetActorDirection method for non-actor object");
+		ai().script_engine().script_log(ScriptStorage::eLuaMessageTypeError,
+			"ScriptGameObject : attempt to call SetActorDirection method for non-actor object");
+}
+
+void CScriptGameObject::SetActorDirection(float dir, float pitch)
+{
+	SetActorDirection(dir, pitch, 0);
+}
+
+void CScriptGameObject::SetActorDirection(float dir)
+{
+	SetActorDirection(dir, 0, 0);
+}
+
+// HPB vector input
+void CScriptGameObject::SetActorDirection(const Fvector& dir)
+{
+	SetActorDirection(dir.x, dir.y, dir.z);
 }
 
 void CScriptGameObject::DisableHitMarks			(bool disable)
@@ -388,10 +420,12 @@ Fvector CScriptGameObject::GetMovementSpeed		()	const
 	CActor* actor = smart_cast<CActor*>(&object());
 	if(!actor)
 	{
-		ai().script_engine().script_log		(ScriptStorage::eLuaMessageTypeError,"ScriptGameObject : attempt to call GetMovementSpeed method for non-actor object");
+		ai().script_engine().script_log(ScriptStorage::eLuaMessageTypeError,
+		                                "ScriptGameObject : attempt to call GetMovementSpeed method for non-actor object");
 		NODEFAULT;
 	}
-	return actor->GetMovementSpeed();
+	//return actor->GetMovementSpeed();
+	return actor->character_physics_support()->movement()->GetVelocity();
 }
 
 CHolderCustom* CScriptGameObject::get_current_holder()
@@ -524,20 +558,98 @@ void CScriptGameObject::ResetBoneProtections(LPCSTR imm_sect, LPCSTR bone_sect)
 	stalker->ResetBoneProtections(imm_sect,bone_sect);
 }
 
-void CScriptGameObject::set_visual_name(LPCSTR visual)
-{
-	object().cNameVisual_set(visual);
+#include "stalker_animation_manager.h"
+#include "CharacterPhysicsSupport.h"
+#include "PhysicsShellHolder.h"
 
-	/*
-	CAI_Stalker* stalker = smart_cast<CAI_Stalker*>(&object());
-	if (!stalker)
+void CScriptGameObject::set_visual_name(LPCSTR visual, bool bForce)
+{
+	if (strcmp(visual, object().cNameVisual().c_str()) == 0)
 		return;
 
+	NET_Packet P;
+	object().u_EventGen(P, GE_CHANGE_VISUAL, object().ID());
+	P.w_stringZ(visual);
+	object().u_EventSend(P);
+
+	CActor* actor = smart_cast<CActor*>(&object());
+	if (actor)
+	{
+		actor->ChangeVisual(visual);
+		return;
+	}
+
+	CAI_Stalker* stalker = smart_cast<CAI_Stalker*>(&object());
+	if (stalker)
+	{
+		stalker->ChangeVisual(visual);
+
+		IKinematicsAnimated* V = smart_cast<IKinematicsAnimated*>(stalker->Visual());
+		if (V)
+		{
+			if (!stalker->g_Alive())
+			{
+				stalker->m_pPhysics_support->in_Die(false);
+			}
+			else
+			{
+				stalker->CStepManager::reload(stalker->cNameSect().c_str());
+			}
+
+			stalker->CDamageManager::reload(*stalker->cNameSect(), "damage", pSettings);
 	stalker->ResetBoneProtections(NULL,NULL);
-	*/
+			stalker->reattach_items();
+			stalker->m_pPhysics_support->in_ChangeVisual();
+			stalker->animation().reload();
+		}
+
+		return;
+	}
+
+	object().cNameVisual_set(visual);
+	object().Visual()->dcast_PKinematics()->CalculateBones_Invalidate();
+	object().Visual()->dcast_PKinematics()->CalculateBones(TRUE);
+}
+
+float CScriptGameObject::get_current_weight()
+{
+	CInventoryOwner* inv_owner = smart_cast<CInventoryOwner*>(&object());
+
+	if (inv_owner)
+		return inv_owner->inventory().TotalWeight();
+
+	return 0;
+}
+
+float CScriptGameObject::get_max_weight()
+{
+	CInventoryOwner* inv_owner = smart_cast<CInventoryOwner*>(&object());
+
+	if (inv_owner)
+		return inv_owner->inventory().GetMaxWeight();
+
+	return 0;
 }
 
 LPCSTR CScriptGameObject::get_visual_name() const
 {
 	return object().cNameVisual().c_str();
+}
+#include <Inventory.h>
+#include <Weapon.h>
+#include <xr_level_controller.h>
+
+void CScriptGameObject::reload_weapon()
+{
+	CActor* act = smart_cast<CActor*>(&object());
+	if (act)
+	{
+		PIItem it = act->inventory().ActiveItem();
+		if (it)
+		{
+			CWeapon* wpn = it->cast_weapon();
+			if (wpn)
+				wpn->Action(kWPN_RELOAD, CMD_START);
+		}
+	}
 }

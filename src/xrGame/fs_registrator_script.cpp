@@ -25,15 +25,29 @@ void rescan_path_script(CLocatorAPI* fs, LPCSTR initial)
 {
 	fs->get_path(initial)->m_Flags.set(FS_Path::flNeedRescan, TRUE);
 }
+
 //-Alundaio
 
-class FS_file_list{
+void rescan_pathes_script(CLocatorAPI* fs)
+{
+	fs->rescan_pathes();
+}
+
+class FS_file_list
+{
 	xr_vector<LPSTR>*	m_p;
 public :
-				FS_file_list	(xr_vector<LPSTR>* p):m_p(p)	{ }
+	FS_file_list(xr_vector<LPSTR>* p): m_p(p)
+	{
+	}
+
 	u32			Size			()								{ return m_p->size();}
 	LPCSTR		GetAt			(u32 idx)						{ return m_p->at(idx);}
-	void		Free			()								{ FS.file_list_close(m_p);};
+
+	void Free()
+	{
+		FS.file_list_close(m_p);
+	};
 };
 
 struct FS_item
@@ -222,6 +236,8 @@ void fs_registrator::script_register(lua_State *L)
 			.def("rescan_path", &rescan_path_script)
 			//-Alundaio
 			
+		.def("rescan_pathes", &rescan_pathes_script)
+
 			.def("file_delete",							(void	(CLocatorAPI::*)(LPCSTR,LPCSTR)) (&CLocatorAPI::file_delete))
 			.def("file_delete",							(void	(CLocatorAPI::*)(LPCSTR)) (&CLocatorAPI::file_delete))
 

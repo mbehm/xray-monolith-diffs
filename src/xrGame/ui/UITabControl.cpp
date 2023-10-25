@@ -92,6 +92,9 @@ void CUITabControl::RemoveAll()
 
 void CUITabControl::SendMessage(CUIWindow *pWnd, s16 msg, void *pData)
 {
+	if (!GetAcceleratorsMode())
+		return;
+
 	if (TAB_CHANGED == msg)
 	{
 		for (u32 i = 0; i < m_TabsArr.size(); ++i)
@@ -148,6 +151,7 @@ void CUITabControl::OnTabChange(const shared_str& sCur, const shared_str& sPrev)
 
 	tb_cur->SendMessage						(tb_cur, TAB_CHANGED, NULL);	
 
+	if (GetAcceleratorsMode())
 	GetMessageTarget()->SendMessage			(this, TAB_CHANGED, NULL);
 }
 

@@ -13,9 +13,13 @@
 # include <malloc.h>
 #endif // DEBUG
 
+#include<fstream>
+#include <iostream>
+#include <string>
+
 XRCORE_API xrCore Core;
-XRCORE_API u32 build_id;
-XRCORE_API LPCSTR build_date;
+extern XRCORE_API u32 build_id;
+extern XRCORE_API LPCSTR build_date;
 
 namespace CPU
 {
@@ -27,6 +31,8 @@ static u32 init_counter = 0;
 //extern char g_application_path[256];
 
 //. extern xr_vector<shared_str>* LogFile;
+
+extern int get_modded_exes_version();
 
 void xrCore::_initialize(LPCSTR _ApplicationName, LogCallback cb, BOOL init_fs, LPCSTR fs_fname)
 {
@@ -90,10 +96,45 @@ void xrCore::_initialize(LPCSTR _ApplicationName, LogCallback cb, BOOL init_fs, 
 
         rtc_initialize();
 
+		time_t _time = time(NULL);
+		tm* time = localtime(&_time);
+		april1 = time ? (time->tm_mday == 1 && time->tm_mon == 3) : false;
+
         xr_FS = xr_new<CLocatorAPI>();
 
         xr_EFS = xr_new<EFS_Utils>();
         //. R_ASSERT (co_res==S_OK);
+
+		//Load cmd line from file if it exists
+		std::ifstream cmdlineTxt;
+		char path_A[MAX_PATH];
+		strcpy(path_A, Core.ApplicationPath);
+		strcat(path_A, "\\..\\commandline.txt");
+		cmdlineTxt.open(path_A);
+		
+		if (!cmdlineTxt)
+		{
+			cmdlineTxt.close();
+			strcpy(path_A, Core.WorkingPath);
+			strcat(path_A, "\\commandline.txt");
+			cmdlineTxt.open(path_A);
+		}
+
+		if (cmdlineTxt)
+		{
+			Msg("Found commandline file!");
+			std::string line;
+			char temp[2048];
+			sprintf(temp, Params);
+			strcat(temp, " ");
+			while (std::getline(cmdlineTxt, line))
+			{
+				strcat(temp, line.c_str());
+				strcat(temp, " ");
+			}
+			Params = xr_strdup(temp);
+		}
+		cmdlineTxt.close();
     }
     if (init_fs)
     {
@@ -116,6 +157,9 @@ void xrCore::_initialize(LPCSTR _ApplicationName, LogCallback cb, BOOL init_fs, 
 #endif
         FS._initialize(flags, 0, fs_fname);
         Msg("'%s' build %d, %s\n", "xrCore", build_id, build_date);
+
+		// demonized: Print modded exes version
+		Msg("Modded exes version %d\n", get_modded_exes_version());
         EFS._initialize();
 #ifdef DEBUG
 #ifndef _EDITOR
@@ -160,7 +204,8 @@ void xrCore::_destroy()
 #ifdef _EDITOR
 BOOL WINAPI DllEntryPoint(HINSTANCE hinstDLL, DWORD ul_reason_for_call, LPVOID lpvReserved)
 #else
-BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD ul_reason_for_call, LPVOID lpvReserved)
+//BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD ul_reason_for_call, LPVOID lpvReserved)
+BOOL DllMainXrCore(HANDLE hinstDLL, DWORD ul_reason_for_call, LPVOID lpvReserved)
 #endif
 {
     switch (ul_reason_for_call)

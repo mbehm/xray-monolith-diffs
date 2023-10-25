@@ -118,6 +118,10 @@ void CPHObject::Collide()
 	if(CPHCollideValidator::DoCollideStatic(*this)) CollideStatic(dSpacedGeom(),this);
 	m_flags.set(st_dirty,FALSE);
 }
+
+#include "PHCharacter.h"
+extern u32 g_dead_body_collision;
+
 void	CPHObject::		CollideDynamics					()
 {
 	g_SpatialSpacePhysic->q_box				(ph_world->r_spatial,0,STYPE_PHYSIC,spatial.sphere.P,AABB);
@@ -125,7 +129,26 @@ void	CPHObject::		CollideDynamics					()
 	qResultIt i=result.begin(),e=result.end();
 	for(;i!=e;++i)	{
 		CPHObject* obj2=static_cast<CPHObject*>(*i);
+
 		if(!obj2 || obj2==this || !obj2->m_flags.test(st_dirty))		continue;
+
+		// Dead Body Collision
+		if (obj2->m_flags.test(is_deadbody))
+		{
+			CPHCharacter* achar = smart_cast<CPHCharacter*>(this);
+
+			if (g_dead_body_collision == 2 || (g_dead_body_collision == 1 && achar && achar->CastActorCharacter()))
+			{
+				if (obj2->collide_class_bits().test(CPHCollideValidator::cbNCClassCharacter))
+					obj2->collide_class_bits().set(CPHCollideValidator::cbNCClassCharacter, FALSE);
+			}
+			else
+			{
+				if (!obj2->collide_class_bits().test(CPHCollideValidator::cbNCClassCharacter))
+					obj2->collide_class_bits().set(CPHCollideValidator::cbNCClassCharacter, TRUE);
+			}
+		}
+
 		if(CPHCollideValidator::DoCollide(*this,*obj2)) NearCallback(this,obj2,dSpacedGeom(),obj2->dSpacedGeom());
 	}
 }

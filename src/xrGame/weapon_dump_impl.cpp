@@ -1,5 +1,6 @@
 #include "stdafx.h"
 #include "Weapon.h"
+#include "player_hud.h"
 
 void CWeapon::DumpActiveParams(shared_str const & section_name, CInifile & dst_ini) const
 {

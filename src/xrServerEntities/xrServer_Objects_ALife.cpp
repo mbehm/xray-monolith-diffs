@@ -900,7 +900,7 @@ CSE_ALifeLevelChanger::CSE_ALifeLevelChanger(LPCSTR caSection) : CSE_ALifeSpaceR
 	m_bSilentMode				= FALSE;
 }
 
-CSE_ALifeLevelChanger::~CSE_ALifeLevelChanger()\
+CSE_ALifeLevelChanger::~CSE_ALifeLevelChanger()
 {
 #ifdef XRSE_FACTORY_EXPORTS
     fp_data.dec					();

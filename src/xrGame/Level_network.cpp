@@ -21,7 +21,7 @@
 #include "../xrNetServer/NET_AuthCheck.h"
 
 #include "../xrphysics/physicscommon.h"
-ENGINE_API bool g_dedicated_server;
+extern ENGINE_API bool g_dedicated_server;
 
 const int max_objects_size			= 2*1024;
 const int max_objects_size_in_save	= 8*1024;
@@ -99,7 +99,9 @@ void CLevel::remove_objects	()
 #endif // DEBUG
 	if(!g_dedicated_server)
 	{
+#ifdef DEBUG
 		VERIFY										(client_spawn_manager().registry().empty());
+#endif
 		client_spawn_manager().clear			();
 	}
 

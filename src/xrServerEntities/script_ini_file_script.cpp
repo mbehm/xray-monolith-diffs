@@ -86,6 +86,39 @@ CScriptIniFile *create_ini_file	(LPCSTR ini_string)
 }
 #pragma warning(pop)
 
+// demonized: get modded exes version
+int get_modded_exes_version() {
+	LPSTR month_id[12] =
+	{
+		"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+	};
+
+	LPCSTR build_date = __DATE__;
+
+	int days;
+	int months = 0;
+	int years;
+	string16 month;
+	string256 buffer;
+	xr_strcpy(buffer, build_date);
+	sscanf(buffer, "%s %d %d", month, &days, &years);
+
+	for (int i = 0; i < 12; i++)
+	{
+		if (_stricmp(month_id[i], month))
+			continue;
+
+		months = i;
+		break;
+	}
+
+	months++;
+
+	// Convert the parsed date to the desired integer format
+	int result = years * 10000 + months * 100 + days;
+	return result;
+}
+
 #pragma optimize("s",on)
 void CScriptIniFile::script_register(lua_State *L)
 {
@@ -95,6 +128,7 @@ void CScriptIniFile::script_register(lua_State *L)
 			.def(constructor<LPCSTR>())
 			//Alundaio: Extend script ini file
 #ifdef INI_FILE_EXTENDED_EXPORTS
+		.def(constructor<IReader*, LPCSTR>())
             .def(constructor<LPCSTR,BOOL,BOOL,BOOL,LPCSTR>())
 			.def("w_bool",&CScriptIniFile::w_bool)
 			.def("w_color", &CScriptIniFile::w_color)
@@ -133,6 +167,7 @@ void CScriptIniFile::script_register(lua_State *L)
 			.def("r_s32",			&CScriptIniFile::r_s32)
 			.def("r_float",			&CScriptIniFile::r_float)
 			.def("r_vector",		&CScriptIniFile::r_fvector3)
+		.def("close", &CScriptIniFile::close)
 			.def("r_line",			&::r_line, out_value(_4) + out_value(_5)),
 
 		def("system_ini",			&get_system_ini),
@@ -144,6 +179,9 @@ void CScriptIniFile::script_register(lua_State *L)
 #ifdef XRGAME_EXPORTS
 		def("game_ini",				&get_game_ini),
 #endif // XRGAME_EXPORTS
-		def("create_ini_file",		&create_ini_file,	adopt(result))
+		def("create_ini_file", &create_ini_file, adopt(result)),
+
+		// demonized: get modded exes version
+		def("get_modded_exes_version", &get_modded_exes_version)
 	];
 }

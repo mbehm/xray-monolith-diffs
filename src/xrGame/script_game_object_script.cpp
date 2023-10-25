@@ -117,10 +117,13 @@ void CScriptGameObject::script_register(lua_State *L)
 #endif
 #ifdef EXTENDED_WEAPON_CALLBACKS
 				//weapon
+			value("weapon_fired", int(GameObject::eOnWeaponFired)),
 				value("weapon_jammed",				int(GameObject::eOnWeaponJammed)),
 				value("weapon_zoom_in",				int(GameObject::eOnWeaponZoomIn)),
 				value("weapon_zoom_out",			int(GameObject::eOnWeaponZoomOut)),
 				value("weapon_magazine_empty",		int(GameObject::eOnWeaponMagazineEmpty)),
+			value("weapon_lowered", int(GameObject::eOnWeaponLowered)),
+			value("weapon_raised", int(GameObject::eOnWeaponRaised)),
 #endif
 #ifdef EXTENDED_ITEM_CALLBACKS
 				// inventory
@@ -129,6 +132,7 @@ void CScriptGameObject::script_register(lua_State *L)
 				value("item_to_ruck", int(GameObject::eItemToRuck)),
 #endif
 				//-AVO
+			value("on_foot_step", int(GameObject::eOnFootStep)),
                 
                 value("map_location_added",			int(GameObject::eMapLocationAdded))
             ],

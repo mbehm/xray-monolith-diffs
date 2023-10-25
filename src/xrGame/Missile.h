@@ -45,8 +45,8 @@ public:
 
 	virtual bool 			Action						(u16 cmd, u32 flags);
 
-	virtual void 			State						(u32 state);
-	virtual void 			OnStateSwitch				(u32 S);
+	virtual void State(u32 state, u32 old_state);
+	virtual void OnStateSwitch(u32 S, u32 oldState);
 	virtual bool			GetBriefInfo				(II_BriefInfo& info);
 
 protected:
@@ -74,6 +74,8 @@ protected:
 	Fmatrix					m_throw_matrix;
 
 	CMissile				*m_fake_missile;
+
+	u32 dwUpdateSounds_Frame;
 
 	//параметры броска
 	

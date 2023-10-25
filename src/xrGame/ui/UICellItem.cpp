@@ -53,8 +53,14 @@ CUICellItem::~CUICellItem()
 
 void CUICellItem::init()
 {
-	CUIXml	uiXml;
+	static CUIXml uiXml;
+	static bool is_xml_ready = false;
+
+	if (!is_xml_ready)
+	{
 	uiXml.Load( CONFIG_PATH, UI_PATH, "actor_menu_item.xml" );
+		is_xml_ready = true;
+	}
 	
 	m_text					= xr_new<CUIStatic>();
 	m_text->SetAutoDelete	( true );
@@ -224,7 +230,7 @@ void CUICellItem::UpdateConditionProgressBar()
 				{
 					u8 remaining_uses = eitm->GetRemainingUses();
 
-					if (max_uses < 8)
+					if (max_uses < 10)
 					{
 						m_pConditionState->ShowBackground(false);
 					}
@@ -233,13 +239,13 @@ void CUICellItem::UpdateConditionProgressBar()
 					{
 						cond = 0.f;
 					}
-					else if ( max_uses > 8 )
+					else if (max_uses > 10)
 					{
 						cond = ( float )remaining_uses / ( float )max_uses;
 					}
 					else
 					{
-						cond = (( float )remaining_uses * 0.125f ) - 0.0625f;
+						cond = ((float)remaining_uses * 0.1f) - 0.05f;
 					}
 
 					m_pConditionState->m_bUseGradient = false;

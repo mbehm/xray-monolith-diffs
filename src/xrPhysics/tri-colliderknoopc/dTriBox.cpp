@@ -620,12 +620,11 @@ prc=c;
  //done: ;
 
 ////////////////////////////////////////////////////////////// end (from geom.cpp dCollideBP)
-
 	}
-else 
-	if(code<=9)
+	else if (code <= 9)
+	{
+		switch ((code - 1) % 3)
 {
-	switch((code-1)%3){
 	case 0:
 	pos[0]=v0[0];
 	pos[1]=v0[1];

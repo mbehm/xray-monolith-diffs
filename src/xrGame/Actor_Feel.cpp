@@ -17,6 +17,7 @@
 #include "Level.h"
 #include "clsid_game.h"
 #include "hudmanager.h"
+#include "ui\UIPdaWnd.h"
 
 #define PICKUP_INFO_COLOR 0xFFDDDDDD
 
@@ -115,25 +116,43 @@ BOOL CActor::CanPickItem(const CFrustum& frustum, const Fvector& from, CObject* 
 	return !bOverlaped;
 }
 
-void CActor::PickupModeUpdate()
+CActor::pickup_result_t CActor::PickupModeUpdate()
 {
-	if(!m_bPickupMode)				return; // kUSE key pressed
-	if(!IsGameTypeSingle())			return;
+	if (!m_bPickupMode) return {true, false}; // kUSE key pressed
+	if (!IsGameTypeSingle()) return {true, false};
 
 	//подбирание объекта
-	if(	m_pObjectWeLookingAt									&& 
-		m_pObjectWeLookingAt->cast_inventory_item()				&& 
-		m_pObjectWeLookingAt->cast_inventory_item()->Useful()	&&
-		m_pUsableObject											&& 
-		!m_pUsableObject->nonscript_usable()					&&
-		!Level().m_feel_deny.is_object_denied(m_pObjectWeLookingAt) )
+	bool callback_handled = false;
+	if (m_pObjectWeLookingAt && m_pObjectWeLookingAt->cast_inventory_item() &&
+		m_pObjectWeLookingAt->cast_inventory_item()->Useful() && m_pUsableObject &&
+		m_pUsableObject->nonscript_usable() && !Level().m_feel_deny.is_object_denied(m_pObjectWeLookingAt))
 	{
+		//Tronex: ability to prevent item picking up if the export returns false
+		luabind::functor<bool> func;
+		if (ai().script_engine().functor("bind_stalker_ext.actor_on_item_before_pickup", func))
+		{
+			callback_handled = true;
+			bool allow_pickup = func(m_pObjectWeLookingAt->lua_game_object());
+			if (!allow_pickup)
+				return {false, callback_handled};
+		}
+		
 		m_pUsableObject->use(this);
 		Game().SendPickUpEvent(ID(), m_pObjectWeLookingAt->ID());
 	}
 
 	feel_touch_update	(Position(), m_fPickupInfoRadius);
 	
+	if (!CurrentGameUI()->GetPdaMenu().IsShown())
+		DrawPickupItems();
+	else
+		m_bDelayDrawPickupItems = true;
+
+	return {true, callback_handled};
+}
+
+void CActor::DrawPickupItems()
+{
 	CFrustum frustum;
 	frustum.CreateFromMatrix(Device.mFullTransform, FRUSTUM_P_LRTB|FRUSTUM_P_FAR);
 
@@ -145,14 +164,14 @@ void CActor::PickupModeUpdate()
 }
 
 #include "../xrEngine/CameraBase.h"
-BOOL	g_b_COD_PickUpMode = TRUE;
-void	CActor::PickupModeUpdate_COD	()
+
+void CActor::PickupModeUpdate_COD(pickup_result_t pickup_result)
 {
-	if (Level().CurrentViewEntity() != this || !g_b_COD_PickUpMode) return;
+	if (Level().CurrentViewEntity() != this) return;
 		
-	if (!g_Alive() || eacFirstEye != cam_active) 
+	if (!g_Alive() || eacFirstEye != cam_active || !psDeviceFlags2.test(rsCODPickup))
 	{
-		CurrentGameUI()->UIMainIngameWnd->SetPickUpItem(NULL);
+		CurrentGameUI()->UIMainIngameWnd->SetPickUpItem(nullptr);
 		return;
 	};
 	
@@ -219,11 +238,27 @@ void	CActor::PickupModeUpdate_COD	()
 
 	if (pNearestItem && m_bPickupMode)
 	{
+		//Tronex: ability to prevent item picking up if the export returns false
+		if (!pickup_result.callback_handled)
+		{
+			luabind::functor<bool> func;
+			if (ai().script_engine().functor("bind_stalker_ext.actor_on_item_before_pickup", func))
+			{
+				bool allow_pickup = func(pNearestItem->cast_game_object()->lua_game_object());
+				pickup_result = { allow_pickup, true };
+			}
+		}
+
+		if (!pickup_result.allow_pickup)
+			return;
+
 		CUsableScriptObject*	pUsableObject = smart_cast<CUsableScriptObject*>(pNearestItem);
 		if(pUsableObject && (!m_pUsableObject))
 			pUsableObject->use(this);
 
-		//подбирание объекта
+		if (!psActorFlags.test(AF_MULTI_ITEM_PICKUP))
+			m_bPickupMode = false;
+
 		Game().SendPickUpEvent(ID(), pNearestItem->object().ID());
 	}
 };
@@ -309,8 +344,6 @@ void CActor::feel_sound_new(CObject* who, int type, CSound_UserDataPtr user_data
 		m_snd_noise = _max(m_snd_noise, power);
 }
 
-//Alundaio: Put this behind define so that it can be disabled
-#ifdef	ACTOR_FEEL_GRENADE
 void CActor::Feel_Grenade_Update( float rad )
 {
 	if ( !IsGameTypeSingle() )
@@ -349,5 +382,3 @@ void CActor::Feel_Grenade_Update( float rad )
 
 	HUD().Update_GrenadeView( pos_actor );
 }
-#endif
-

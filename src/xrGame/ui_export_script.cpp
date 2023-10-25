@@ -71,9 +71,9 @@ void UIRegistrator::script_register(lua_State *L)
 			.def("GetCDKey",				&CMainMenu::GetCDKeyFromRegistry)
 			.def("GetPlayerName",			&CMainMenu::GetPlayerName)
 			.def("GetDemoInfo",				&CMainMenu::GetDemoInfo)
-			.def("GetLoginMngr",			&CMainMenu::GetLoginMngr)
-			.def("GetAccountMngr",			&CMainMenu::GetAccountMngr)
-			.def("GetProfileStore",			&CMainMenu::GetProfileStore)
+		//.def("GetLoginMngr",			&CMainMenu::GetLoginMngr)
+		//.def("GetAccountMngr",			&CMainMenu::GetAccountMngr)
+		//.def("GetProfileStore",			&CMainMenu::GetProfileStore)
 	];
 
 	module(L,"main_menu")

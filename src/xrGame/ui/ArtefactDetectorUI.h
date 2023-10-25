@@ -10,11 +10,16 @@ class CEliteDetector;
 class CUIXml;
 class CLAItem;
 
-class CUIArtefactDetectorBase
+class CUICustomDeviceBase
 {
 public:
-	virtual			~CUIArtefactDetectorBase	()	{};
-	virtual void	update						()	{};
+	virtual ~CUICustomDeviceBase()
+	{
+	};
+
+	virtual void update()
+	{
+	};
 };
 
 class CUIDetectorWave :public CUIFrameLineWnd
@@ -30,9 +35,9 @@ public:
 	virtual void	Update				();
 };
 
-class CUIArtefactDetectorSimple :public CUIArtefactDetectorBase
+class CUIArtefactDetectorSimple : public CUICustomDeviceBase
 {
-	typedef CUIArtefactDetectorBase	inherited;
+	typedef CUICustomDeviceBase inherited;
 
 	CSimpleDetector*	m_parent;
 	u16					m_flash_bone;
@@ -52,9 +57,9 @@ public:
 	void				construct					(CSimpleDetector* p);
 };
 
-class CUIArtefactDetectorElite :public CUIArtefactDetectorBase, public CUIWindow
+class CUIArtefactDetectorElite : public CUICustomDeviceBase, public CUIWindow
 {
-	typedef CUIArtefactDetectorBase	inherited;
+	typedef CUICustomDeviceBase inherited;
 
 	CUIWindow*			m_wrk_area;
 	
@@ -81,9 +86,9 @@ public:
 };
 
 
-class CUIArtefactDetectorAdv :public CUIArtefactDetectorBase
+class CUIArtefactDetectorAdv : public CUICustomDeviceBase
 {
-	typedef CUIArtefactDetectorBase	inherited;
+	typedef CUICustomDeviceBase inherited;
 
 	CAdvancedDetector*		m_parent;
 	Fvector					m_target_dir;

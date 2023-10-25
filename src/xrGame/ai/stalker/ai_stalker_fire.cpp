@@ -52,6 +52,8 @@
 #include "../../inventory.h"
 
 #include "../../trajectories.h"
+#include "script_hit.h"
+#include "../../xrServerEntities/script_engine.h"
 
 using namespace StalkerSpace;
 using namespace luabind;
@@ -66,6 +68,9 @@ static u32	 const FIRE_MAKE_SENSE_INTERVAL	= 10000;
 
 static float const min_throw_distance		= 10.f;
 
+float g_dispersion_base = 1.0f;
+float g_dispersion_factor = 1.0f;
+
 float CAI_Stalker::GetWeaponAccuracy	() const
 {
 	float				base = PI/180.f;
@@ -73,30 +78,60 @@ float CAI_Stalker::GetWeaponAccuracy	() const
 	//влияние ранга на меткость
 	base				*= m_fRankDisperison;
 
-	if (!movement().path_completed()) {
+	if (!movement().path_completed())
+	{
 		if (movement().movement_type() == eMovementTypeWalk)
+		{
 			if (movement().body_state() == eBodyStateStand)
-				return		(base*m_disp_walk_stand);
-			else
-				return		(base*m_disp_walk_crouch);
+			{
+				return base * (m_disp_walk_stand * g_dispersion_factor + g_dispersion_base);
+			}
 		else
-			if (movement().movement_type() == eMovementTypeRun)
+			{
+				return base * (m_disp_walk_crouch * g_dispersion_factor + g_dispersion_base);
+			}
+		}
+		else if (movement().movement_type() == eMovementTypeRun)
+		{
 				if (movement().body_state() == eBodyStateStand)
-					return	(base*m_disp_run_stand);
+			{
+				return base * (m_disp_run_stand * g_dispersion_factor + g_dispersion_base);
+			}
 				else
-					return	(base*m_disp_run_crouch);
+			{
+				return base * (m_disp_run_crouch * g_dispersion_factor + g_dispersion_base);
+			}
+		}
 	}
 	
+	CWeapon* W = smart_cast<CWeapon*>(inventory().ActiveItem());
+	bool hasScope = W && W->IsScopeAttached();
+	
 	if (movement().body_state() == eBodyStateStand)
-		if (zoom_state())
-			return			(base*m_disp_stand_stand);
+	{
+		if (zoom_state() && hasScope)
+		{
+			return base * (m_disp_stand_stand_zoom * g_dispersion_factor + g_dispersion_base);
+		}
 		else
-			return			(base*m_disp_stand_stand_zoom);
+		{
+			return base * (m_disp_stand_stand * g_dispersion_factor + g_dispersion_base);
+		}
+	}
+	else if (movement().body_state() == eBodyStateCrouch)
+	{
+		if (zoom_state() && hasScope)
+		{
+			return base * (m_disp_stand_crouch_zoom * g_dispersion_factor + g_dispersion_base);
+		}
 	else
-		if (zoom_state())
-			return			(base*m_disp_stand_crouch);
+		{
+			return base * (m_disp_stand_crouch * g_dispersion_factor + g_dispersion_base);
+		}
+	}
 		else
-			return			(base*m_disp_stand_crouch_zoom);
+		return base * (m_disp_run_stand * g_dispersion_factor + g_dispersion_base); // fallback to worst aim if state could not determined, this should never happen (tm)
+
 }
 
 void CAI_Stalker::g_fireParams(const CHudItem* pHudItem, Fvector& P, Fvector& D)
@@ -226,6 +261,10 @@ void CAI_Stalker::Hit(SHit* pHDS)
 	
 	float hit_power = HDS.power * m_fRankImmunity;
 
+	if (strstr(Core.Params, "-dbgbullet"))
+		Msg("CAI_Stalker::Hit hit_type=%d | hit_power(%f)*m_fRankImmunity(%f) = %f", (u32)HDS.hit_type, HDS.power,
+		    m_fRankImmunity, hit_power);
+
 	if(m_boneHitProtection && HDS.hit_type == ALife::eHitTypeFireWound)
 	{
 		float BoneArmor = m_boneHitProtection->getBoneArmor(HDS.bone());
@@ -234,17 +273,24 @@ void CAI_Stalker::Hit(SHit* pHDS)
 		{
 			if(ap > BoneArmor)
 			{
-				float d_hit_power = (ap - BoneArmor) / ap;
-				if(d_hit_power < m_boneHitProtection->m_fHitFracNpc)
-					d_hit_power = m_boneHitProtection->m_fHitFracNpc;
+				float d_hit_power = (ap - BoneArmor) / (ap * m_boneHitProtection->APScale);
+				clamp(d_hit_power, m_boneHitProtection->m_fHitFracNpc, 1.0f);
 
 				hit_power *= d_hit_power;
 				VERIFY(hit_power>=0.0f);
+
+				if (strstr(Core.Params, "-dbgbullet"))
+					Msg("CAI_Stalker::Hit AP(%f) > BoneArmor(%f) [HitFracNpc=%f] modified hit_power=%f", ap, BoneArmor,
+					    m_boneHitProtection->m_fHitFracNpc, hit_power);
 			}
 			else
 			{
 				hit_power *= m_boneHitProtection->m_fHitFracNpc;
-				HDS.add_wound = false;
+				//HDS.add_wound = false;
+
+				if (strstr(Core.Params, "-dbgbullet"))
+					Msg("CAI_Stalker::Hit AP(%f) > BoneArmor(%f) [HitFracNpc=%f] modified hit_power=%f", ap, BoneArmor,
+					    m_boneHitProtection->m_fHitFracNpc, hit_power);
 			}
 		}
 
@@ -327,6 +373,17 @@ void CAI_Stalker::Hit(SHit* pHDS)
 
 	if ( g_Alive() && ( !m_hit_callback || m_hit_callback( &HDS ) ) )
 	{
+		CScriptHit tLuaHit(&HDS);
+
+		luabind::functor<bool>	funct;
+		if (ai().script_engine().functor("_G.CAI_Stalker__BeforeHitCallback", funct))
+		{
+			if (!funct(this->lua_game_object(), &tLuaHit, HDS.boneID))
+				return;
+		}
+
+		HDS.ApplyScriptHit(&tLuaHit);
+
 		float const damage_factor	= invulnerable() ? 0.f : 100.f;
 		memory().hit().add			( damage_factor*HDS.damage(), HDS.direction(), HDS.who, HDS.boneID );
 	}
@@ -378,9 +435,8 @@ void CAI_Stalker::update_best_item_info	()
 
 void CAI_Stalker::update_best_item_info_impl()
 {
-
 	luabind::functor<CScriptGameObject*> funct;
-	if (ai().script_engine().functor("ai_stalker.update_best_weapon", funct))
+	if (ai().script_engine().functor("_g.update_best_weapon", funct))
 	{
 		CGameObject* cur_itm = smart_cast<CGameObject*>(m_best_item_to_kill);
 		CScriptGameObject* GO = funct(this->lua_game_object(),cur_itm ? cur_itm->lua_game_object() : NULL);
@@ -1077,7 +1133,7 @@ void CAI_Stalker::update_throw_params		()
 
 	check_throw_trajectory	(time);
 	
-	m_throw_velocity.mul(::Random.randF(.99f,1.01f));
+	m_throw_velocity.mul(::Random.randF(.75f, 1.25f));
 }
 
 void CAI_Stalker::on_throw_completed		()

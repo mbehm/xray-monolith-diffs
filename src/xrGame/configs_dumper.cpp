@@ -127,9 +127,12 @@ void configs_dumper::write_configs()
 			m_yield_cb(i);
 			++i;
 		}
-	} else
+		}
+		else
+		{
+			while (m_ltx_configs.dump_one(m_dump_result))
 	{
-		while (m_ltx_configs.dump_one(m_dump_result)) {};
+			};
 	}
 	CInifile			active_params_dumper(NULL, FALSE, FALSE, FALSE);
 	active_objects_t	active_objects(

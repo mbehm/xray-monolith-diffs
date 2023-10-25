@@ -17,9 +17,13 @@
 #include "phdebug.h"
 #endif
 
+#include "Flashlight.h"
+#include "Inventory.h"
+#include "map_manager.h"
+
 extern CUIGameCustom*	CurrentGameUI()
 {
-    return HUD().GetGameUI();
+	return g_hud ? HUD().GetGameUI() : nullptr;
 }
 
 CFontManager::CFontManager()
@@ -64,7 +68,7 @@ void CFontManager::InitializeFonts()
 
 LPCSTR CFontManager::GetFontTexName(LPCSTR section)
 {
-    static char* tex_names[] = {"texture800", "texture", "texture1600"};
+	static char* tex_names[] = {"texture800", "texture", "texture1600", "texture2160"};
     int def_idx = 1;//default 1024x768
     int idx = def_idx;
 #if 0
@@ -78,7 +82,8 @@ LPCSTR CFontManager::GetFontTexName(LPCSTR section)
 
     if (h <= 600)		idx = 0;
     else if (h < 1024)	idx = 1;
-    else 			idx = 2;
+	else if (h < 1440) idx = 2;
+	else idx = 3;
 #endif
 
     while (idx >= 0)
@@ -218,6 +223,12 @@ void CHUDManager::Render_Actor_Shadow() // added by KD
     if (!A) return;
     if (A->active_cam() != eacFirstEye) return; // KD: we need to render actor shadow only in first eye cam mode because
     // in other modes actor model already in scene graph and renders well
+
+	//Alun: Due to glitchy shadows this is forced
+	CFlashlight* flashlight = smart_cast<CFlashlight*>(A->inventory().ItemFromSlot(DETECTOR_SLOT));
+	if (flashlight && flashlight->torch_active())
+		return;
+
     ::Render->set_Object(O->H_Root());
     O->renderable_Render();
 }
@@ -335,6 +346,7 @@ void CHUDManager::SetGrenadeMarkType(LPCSTR tex_name)
 
 #include "ui\UIMainInGameWnd.h"
 extern CUIXml*			pWpnScopeXml;
+extern CUIXml* g_uiSpotXml;
 
 void CHUDManager::Load()
 {
@@ -353,11 +365,19 @@ void CHUDManager::OnScreenResolutionChanged()
     pUIGame->HideShownDialogs();
 
     xr_delete(pWpnScopeXml);
+	xr_delete(g_uiSpotXml);
 
     pUIGame->UnLoad();
+
+	Level().MapManager().ReloadSpots();
+
     pUIGame->Load();
 
     pUIGame->OnConnected();
+
+	luabind::functor<bool> funct;
+	if (ai().script_engine().functor("_G.CHUDManager_OnScreenResolutionChanged", funct))
+		funct();
 }
 
 void CHUDManager::OnDisconnected()

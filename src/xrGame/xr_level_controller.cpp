@@ -104,6 +104,18 @@ _action  actions[]		= {
 	{ "custom13", kCUSTOM13, _sp },
 	{ "custom14", kCUSTOM14, _sp },
 	{ "custom15", kCUSTOM15, _sp },
+	{"custom16", kCUSTOM16, _sp },
+	{"custom17", kCUSTOM17, _sp },
+	{"custom18", kCUSTOM18, _sp },
+	{"custom19", kCUSTOM19, _sp },
+	{"custom20", kCUSTOM20, _sp },
+	{"custom21", kCUSTOM21, _sp },
+	{"custom22", kCUSTOM22, _sp },
+	{"custom23", kCUSTOM23, _sp },
+	{"custom24", kCUSTOM24, _sp },
+	{"custom25", kCUSTOM25, _sp },
+	{"safemode", kSAFEMODE, _both},
+	{"freelook", kFREELOOK, _both},
 	{ "cam_autoaim", kCAM_AUTOAIM, _sp },
 	{ NULL, 				kLASTACTION				,_both}		
 };															

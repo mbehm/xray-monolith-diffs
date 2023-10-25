@@ -42,7 +42,7 @@ protected:
 	CDB::MODEL*							geom_ENV;
 
 	// Containers
-	xr_vector<CSoundRender_Source*>		s_sources;
+	xr_unordered_map<xr_string, CSoundRender_Source*> s_sources;
 	xr_vector<CSoundRender_Emitter*>	s_emitters;
 	u32									s_emitters_u;			// emitter update marker
 	xr_vector<CSoundRender_Target*>		s_targets;
@@ -118,9 +118,10 @@ public:
     virtual BOOL						i_locked 				(){return bLocked;}
 
 	virtual void						object_relcase			( CObject* obj );
+	void i_create_all_sources();
 
 	virtual float						get_occlusion_to		( const Fvector& hear_pt, const Fvector& snd_pt, float dispersion=0.2f );
-	float								get_occlusion			( Fvector& P, float R, Fvector* occ );
+	float get_occlusion(Fvector& P, float R, Fvector* occ) override;
 	CSoundRender_Environment*			get_environment			( const Fvector& P );
 
 	void								env_load				();

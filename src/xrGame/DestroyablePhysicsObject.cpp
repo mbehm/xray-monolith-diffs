@@ -51,6 +51,8 @@ void CDestroyablePhysicsObject::net_Destroy()
 BOOL CDestroyablePhysicsObject::net_Spawn(CSE_Abstract* DC)
 {
 	BOOL res=inherited::net_Spawn(DC);
+	if (!res) return FALSE;
+
 	IKinematics		*K=smart_cast<IKinematics*>(Visual());
 	CInifile* ini=K->LL_UserData();
 	//R_ASSERT2(ini->section_exist("destroyed"),"destroyable_object must have -destroyed- section in model user data");
@@ -95,9 +97,12 @@ void	CDestroyablePhysicsObject::Hit					(SHit* pHDS)
 		if(CPHDestroyable::CanDestroy())Destroy();
 	}
 }
+
 void CDestroyablePhysicsObject::Destroy()
 {
+#ifdef DEBUG
 	VERIFY(!physics_world()->Processing());
+#endif
 	const CGameObject *who_object = smart_cast<const CGameObject*>(FatalHit().initiator());
 	callback(GameObject::eDeath)(lua_game_object(),who_object  ? who_object->lua_game_object() : 0);
 	CPHDestroyable::Destroy(ID(),"physic_destroyable_object");
@@ -117,11 +122,14 @@ void CDestroyablePhysicsObject::Destroy()
 
 		if(fsimilar(_abs(m.j.dotproduct(hdir)),1.f,EPS_L))
 		{
-			do {
+			do
+			{
 				hdir.random_dir();
-			} while(fsimilar(_abs(m.j.dotproduct(hdir)),1.f,EPS_L));
 		}
-		m.i.crossproduct(m.j,hdir);m.i.normalize();
+			while (fsimilar(_abs(m.j.dotproduct(hdir)), 1.f, EPS_L));
+		}
+		m.i.crossproduct(m.j, hdir);
+		m.i.normalize();
 		m.k.crossproduct(m.i,m.j);
 			StartParticles(m_destroy_particles,m,ID());
 	}

@@ -559,7 +559,7 @@ void CUIMainIngameWnd::AnimateContacts(bool b_snd)
 {
 	UIZoneMap->Counter_ResetClrAnimation();
 
-	if(b_snd)
+	if (b_snd && !UIZoneMap->disabled)
 		HUD_SOUND_ITEM::PlaySound	(m_contactSnd, Fvector().set(0,0,0), 0, true );
 
 }
@@ -587,6 +587,14 @@ void CUIMainIngameWnd::UpdatePickUpItem	()
 
 	int m_iXPos			= pSettings->r_u32(sect_name, "inv_grid_x");
 	int m_iYPos			= pSettings->r_u32(sect_name, "inv_grid_y");
+
+	if (pSettings->line_exist(sect_name.c_str(), "icons_texture"))
+	{
+		LPCSTR icons_texture = pSettings->r_string(sect_name.c_str(), "icons_texture");
+		UIPickUpItemIcon->SetShader(InventoryUtilities::GetCustomIconTextureShader(icons_texture));
+	}
+	else
+		UIPickUpItemIcon->SetShader(GetEquipmentIconsShader());
 
 	float scale_x = m_iPickUpItemIconWidth/
 		float(m_iGridWidth*INV_GRID_WIDTH);
@@ -859,6 +867,13 @@ void CUIMainIngameWnd::UpdateQuickSlots()
 				wnd->Show(true);
 
 				CUIStatic* main_slot = m_quick_slots_icons[i];
+
+				if (pSettings->line_exist(item_name.c_str(), "icons_texture"))
+				{
+					LPCSTR icons_texture = pSettings->r_string(item_name.c_str(), "icons_texture");
+					main_slot->SetShader(InventoryUtilities::GetCustomIconTextureShader(icons_texture));
+				}
+				else
 				main_slot->SetShader(InventoryUtilities::GetEquipmentIconsShader());
 				Frect texture_rect;
 				texture_rect.x1	= pSettings->r_float(item_name, "inv_grid_x")		*INV_GRID_WIDTH;

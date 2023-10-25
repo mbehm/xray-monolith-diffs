@@ -154,7 +154,7 @@ BOOL CAviPlayerCustom::Load(char* fname)
     m_biOutFormat.biSizeImage = m_dwWidth * m_dwHeight * 4;
 
     // Найти подходящий декомпрессор
-    m_aviIC = ICLocate(ICTYPE_VIDEO, NULL, &m_biInFormat, &m_biOutFormat, \
+	m_aviIC = ICLocate(ICTYPE_VIDEO, NULL, &m_biInFormat, &m_biOutFormat,
                        // ICMODE_DECOMPRESS
                        ICMODE_FASTDECOMPRESS
                       );
@@ -199,7 +199,7 @@ BOOL CAviPlayerCustom::Load(char* fname)
     MMCKINFO mmckinfoSubchunk;
     ZeroMemory(&mmckinfoSubchunk, sizeof(mmckinfoSubchunk));
     mmckinfoSubchunk.fccType = mmioFOURCC('m', 'o', 'v', 'i');
-    if (MMSYSERR_NOERROR != (res = mmioDescend(hmmioFile, &mmckinfoSubchunk, NULL, MMIO_FINDLIST)) \
+	if (MMSYSERR_NOERROR != (res = mmioDescend(hmmioFile, &mmckinfoSubchunk, NULL, MMIO_FINDLIST))
             || mmckinfoSubchunk.cksize <= 4)
     {
 
@@ -240,7 +240,7 @@ BOOL CAviPlayerCustom::Load(char* fname)
     ZeroMemory(&mmckinfoSubchunk, sizeof(mmckinfoSubchunk));
     mmckinfoSubchunk.fccType = mmioFOURCC('i', 'd', 'x', '1');
 
-    if (MMSYSERR_NOERROR != (res = mmioDescend(hmmioFile, &mmckinfoSubchunk, NULL, MMIO_FINDCHUNK)) \
+	if (MMSYSERR_NOERROR != (res = mmioDescend(hmmioFile, &mmckinfoSubchunk, NULL, MMIO_FINDCHUNK))
             || mmckinfoSubchunk.cksize <= 4)
     {
         xr_free(m_pMovieData);

@@ -53,6 +53,10 @@ void CALifeMonsterDetailPathManager::target					(const GameGraph::_GRAPH_ID &gam
 
 void CALifeMonsterDetailPathManager::target					(const CALifeSmartTerrainTask &task)
 {
+	if (&task == NULL)
+	{
+		return;
+	}
 	target							(task.game_vertex_id(),task.level_vertex_id(),task.position());
 }
 

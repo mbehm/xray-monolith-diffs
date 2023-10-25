@@ -212,9 +212,9 @@ void xrServer::Update	()
 		return;								//diabling server when demo is playing
 
 	NET_Packet		Packet;
-
+#ifdef DEBUG
 	VERIFY						(verify_entities());
-
+#endif
 	ProceedDelayedPackets();
 	// game update
 	game->ProcessDelayedEvent();
@@ -244,8 +244,9 @@ void xrServer::Update	()
 
 
 	if (game->sv_force_sync)	Perform_game_export();
-
+#ifdef DEBUG
 	VERIFY						(verify_entities());
+#endif
 	//-----------------------------------------------------
 	
 	PerformCheckClientsForMaxPing	();
@@ -360,7 +361,9 @@ void xrServer::SendUpdatesToAll()
 		g_sv_SendUpdate = 0;
 #endif			
 		if (game->sv_force_sync)	Perform_game_export();
+#ifdef DEBUG
 		VERIFY						(verify_entities());
+#endif
 		m_last_update_time			= Device.dwTimeGlobal;
 	}
 	if (m_file_transfers)
@@ -382,8 +385,9 @@ u32 xrServer::OnDelayedMessage	(NET_Packet& P, ClientID sender)			// Non-Zero me
 	P.r_begin				(type);
 
 	//csPlayers.Enter			();
-
+#ifdef DEBUG
 	VERIFY							(verify_entities());
+#endif
 	xrClientData* CL				= ID_to_client(sender);
 	//R_ASSERT2						(CL, make_string("packet type [%d]",type).c_str());
 
@@ -431,10 +435,12 @@ u32 xrServer::OnDelayedMessage	(NET_Packet& P, ClientID sender)			// Non-Zero me
 		case M_FILE_TRANSFER:
 		{
 			m_file_transfers->on_message(&P, sender);
-		}break;
 	}
+		break;
+	}
+#ifdef DEBUG
 	VERIFY							(verify_entities());
-
+#endif
 	//csPlayers.Leave					();
 	return 0;
 }
@@ -452,8 +458,9 @@ u32 xrServer::OnMessage	(NET_Packet& P, ClientID sender)			// Non-Zero means bro
 {
 	u16			type;
 	P.r_begin	(type);
-
+#ifdef DEBUG
 	VERIFY							(verify_entities());
+#endif
 	xrClientData* CL				= ID_to_client(sender);
 
 	switch (type)
@@ -461,20 +468,28 @@ u32 xrServer::OnMessage	(NET_Packet& P, ClientID sender)			// Non-Zero means bro
 	case M_UPDATE:	
 		{
 			Process_update			(P,sender);						// No broadcast
+#ifdef DEBUG
 			VERIFY					(verify_entities());
-		}break;
+#endif
+		}
+		break;
 	case M_SPAWN:	
 		{
 			if (CL->flags.bLocal)
 				Process_spawn		(P,sender);	
-
+#ifdef DEBUG
 			VERIFY					(verify_entities());
-		}break;
+#endif
+		}
+		break;
 	case M_EVENT:	
 		{
 			Process_event			(P,sender);
+#ifdef DEBUG
 			VERIFY					(verify_entities());
-		}break;
+#endif
+		}
+		break;
 	case M_EVENT_PACK:
 		{
 			NET_Packet	tmpP;
@@ -500,8 +515,11 @@ u32 xrServer::OnMessage	(NET_Packet& P, ClientID sender)			// Non-Zero means bro
 			//-------------------------------------------------------------------
 			if (SV_Client) 
 				SendTo	(SV_Client->ID, P, net_flags(TRUE, TRUE));
+#ifdef DEBUG
 			VERIFY					(verify_entities());
-		}break;
+#endif
+		}
+		break;
 	case M_MOVE_PLAYERS_RESPOND:
 		{
 			xrClientData* CL		= ID_to_client	(sender);
@@ -515,53 +533,80 @@ u32 xrServer::OnMessage	(NET_Packet& P, ClientID sender)			// Non-Zero means bro
 			xrClientData* CL		= ID_to_client	(sender);
 			if (CL)	CL->net_Ready	= TRUE;
 			if (SV_Client) SendTo	(SV_Client->ID, P, net_flags(TRUE, TRUE));
+#ifdef DEBUG
 			VERIFY					(verify_entities());
-		}break;
+#endif
+		}
+		break;
 	case M_GAMEMESSAGE:
 		{
 			SendBroadcast			(BroadcastCID,P,net_flags(TRUE,TRUE));
+#ifdef DEBUG
 			VERIFY					(verify_entities());
-		}break;
+#endif
+		}
+		break;
 	case M_CLIENTREADY:
 		{
 			game->OnPlayerConnectFinished(sender);
 			//game->signal_Syncronize	();
+#ifdef DEBUG
 			VERIFY					(verify_entities());
-		}break;
+#endif
+		}
+		break;
 	case M_SWITCH_DISTANCE:
 		{
 			game->switch_distance	(P,sender);
+#ifdef DEBUG
 			VERIFY					(verify_entities());
-		}break;
+#endif
+		}
+		break;
 	case M_CHANGE_LEVEL:
 		{
 			if (game->change_level(P,sender))
 			{
 				SendBroadcast		(BroadcastCID,P,net_flags(TRUE,TRUE));
 			}
+#ifdef DEBUG
 			VERIFY					(verify_entities());
-		}break;
+#endif
+		}
+		break;
 	case M_SAVE_GAME:
 		{
 			game->save_game			(P,sender);
+#ifdef DEBUG
 			VERIFY					(verify_entities());
-		}break;
+#endif
+		}
+		break;
 	case M_LOAD_GAME:
 		{
 			game->load_game			(P,sender);
 			SendBroadcast			(BroadcastCID,P,net_flags(TRUE,TRUE));
+#ifdef DEBUG
 			VERIFY					(verify_entities());
-		}break;
+#endif
+		}
+		break;
 	case M_RELOAD_GAME:
 		{
 			SendBroadcast			(BroadcastCID,P,net_flags(TRUE,TRUE));
+#ifdef DEBUG
 			VERIFY					(verify_entities());
-		}break;
+#endif
+		}
+		break;
 	case M_SAVE_PACKET:
 		{
 			Process_save			(P,sender);
+#ifdef DEBUG
 			VERIFY					(verify_entities());
-		}break;
+#endif
+		}
+		break;
 	case M_CLIENT_REQUEST_CONNECTION_DATA:
 		{
 			AddDelayedPacket(P, sender);
@@ -680,11 +725,12 @@ u32 xrServer::OnMessage	(NET_Packet& P, ClientID sender)			// Non-Zero means bro
 	case M_SECURE_MESSAGE:
 		{
 			OnSecureMessage(P, CL);
-		}break;
 	}
-
+		break;
+	}
+#ifdef DEBUG
 	VERIFY							(verify_entities());
-
+#endif
 	return							IPureServer::OnMessage(P, sender);
 }
 

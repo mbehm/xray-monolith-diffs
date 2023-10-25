@@ -56,6 +56,13 @@ public:
 	static float				sympathy			(CHARACTER_COMMUNITY_INDEX);
 	
 	static void					DeleteIdToIndexData	();
+
+	static void Reset()
+	{
+		m_relation_table.clear();
+		m_sympathy_table.clear();
+	}
+
 private:
 	typedef CIni_Table<CHARACTER_GOODWILL, CHARACTER_COMMUNITY> GOODWILL_TABLE;
 	friend GOODWILL_TABLE;

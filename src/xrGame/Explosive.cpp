@@ -84,14 +84,7 @@ void CExplosive::LightDestroy()
 	m_pLight.destroy		();
 }
 
-CExplosive::~CExplosive(void) 
-{
-#ifdef LAYERED_SND_SHOOT
-
-#else
-	sndExplode.destroy		();
-#endif
-}
+CExplosive::~CExplosive(void){}
 
 void CExplosive::Load(LPCSTR section) 
 {
@@ -127,13 +120,7 @@ void CExplosive::Load(CInifile const *ini,LPCSTR section)
 	//трассы для разлета осколков
 	m_fFragmentSpeed			= ini->r_float	(section,"fragment_speed"				);
 
-	//Alundaio: LAYERED_SND_SHOOT
-#ifdef LAYERED_SND_SHOOT
 	m_layered_sounds.LoadSound(ini,section, "snd_explode", "sndExplode", false, m_eSoundExplode);
-#else
-	LPCSTR	snd_name		= ini->r_string(section,"snd_explode");
-	sndExplode.create		(snd_name, st_Effect,m_eSoundExplode);
-#endif
 
 	m_fExplodeDurationMax	= ini->r_float(section, "explode_duration");
 
@@ -340,14 +327,16 @@ void CExplosive::Explode()
 		DBG_DrawPoint(pos,0.3f,D3DCOLOR_XRGB(255,0,0));
 	}
 #endif
+	
+	// Interactive Grass FX
+	extern Fvector4 ps_ssfx_int_grass_params_2;
+	g_pGamePersistent->GrassBendersAddExplosion(cast_game_object()->ID(), pos, Fvector().set(0, -99, 0), 1.33f, ps_ssfx_int_grass_params_2.y, ps_ssfx_int_grass_params_2.x, m_fBlastRadius * 2.0f);
+	
 //	Msg("---------CExplosive Explode [%d] frame[%d]",cast_game_object()->ID(), Device.dwFrame);
 	OnBeforeExplosion();
 	//играем звук взрыва
-#ifdef LAYERED_SND_SHOOT
+
 	m_layered_sounds.PlaySound("sndExplode", pos, smart_cast<CObject*>(this), false, false, (u8)-1);
-#else
-	Sound->play_at_pos(sndExplode, 0, pos, false);
-#endif
 	
 	//показываем эффекты
 

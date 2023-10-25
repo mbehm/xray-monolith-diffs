@@ -52,8 +52,10 @@ bool  CDialogScriptHelper::CheckInfo(const CInventoryOwner* pOwner) const
 		}
 	}
 
-	for(i=0; i<m_DontHasInfo.size(); i++) {
-		if (Actor()->HasInfo(m_DontHasInfo[i])) {
+	for (u32 i = 0; i < m_DontHasInfo.size(); i++)
+	{
+		if (Actor()->HasInfo(m_DontHasInfo[i]))
+		{
 #ifdef DEBUG
 			if(psAI_Flags.test(aiDialogs) )
 				Msg("----rejected: [%s] dont has info %s", pOwner->Name(), *m_DontHasInfo[i]);
@@ -72,7 +74,7 @@ void  CDialogScriptHelper::TransferInfo	(const CInventoryOwner* pOwner) const
 	for(u32 i=0; i<m_GiveInfo.size(); ++i)
 		Actor()->TransferInfo(m_GiveInfo[i], true);
 
-	for(i=0; i<m_DisableInfo.size(); ++i)
+	for (u32 i = 0; i < m_DisableInfo.size(); ++i)
 		Actor()->TransferInfo(m_DisableInfo[i], false);
 }
 

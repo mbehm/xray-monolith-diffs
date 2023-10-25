@@ -22,7 +22,7 @@ static LogCallback LogCB = 0;
 
 void FlushLog()
 {
-    if (!no_log)
+	if (!no_log && LogFile != nullptr)
     {
         logCS.Enter();
         IWriter* f = FS.w_open(logFName);
@@ -54,8 +54,32 @@ void AddOne(const char* split)
     // DUMP_PHASE;
     {
         shared_str temp = shared_str(split);
+		static shared_str last_str;
+		static int items_count;
+
+		if (last_str.equal(temp))
+		{
+			xr_string tmp = temp.c_str();
+
+			if (items_count == 0)
+				items_count = 2;
+			else
+				items_count++;
+
+			tmp += " [";
+			tmp += std::to_string(items_count).c_str();
+			tmp += "]";
+
+			LogFile->erase(LogFile->end()-1);
+			LogFile->push_back(shared_str(tmp.c_str()));
+		}
+		else
+		{
         // DUMP_PHASE;
         LogFile->push_back(temp);
+			last_str = temp;
+			items_count = 0;
+		}
     }
 
     //exec CallBack
@@ -202,6 +226,10 @@ void CreateLog(BOOL nl)
         FS.update_path(logFName, "$logs$", log_file_name);
     if (!no_log)
     {
+		//Alun: Backup existing log
+		xr_string backup_logFName = EFS.ChangeFileExt(logFName, ".bkp");
+		FS.file_rename(logFName, backup_logFName.c_str(), true);
+		//-Alun
         IWriter* f = FS.w_open(logFName);
         if (f == NULL)
         {

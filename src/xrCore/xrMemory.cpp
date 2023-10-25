@@ -81,6 +81,7 @@ void xrMemory::_initialize(BOOL bDebug)
     }
 
 #ifndef M_BORLAND
+#ifndef PURE_ALLOC
     if (!strstr(Core.Params, "-pure_alloc"))
     {
         // initialize POOLs
@@ -92,6 +93,7 @@ void xrMemory::_initialize(BOOL bDebug)
             element += mem_pools_ebase;
         }
     }
+#endif // PURE_ALLOC
 #endif // M_BORLAND
 
 #ifdef DEBUG_MEMORY_MANAGER
@@ -143,6 +145,7 @@ void xrMemory::_destroy()
 
 void xrMemory::mem_compact()
 {
+#ifdef DEBUG_MEMORY_MANAGER
     RegFlushKey(HKEY_CLASSES_ROOT);
     RegFlushKey(HKEY_CURRENT_USER);
     if (g_allow_heap_min)
@@ -152,6 +155,7 @@ void xrMemory::mem_compact()
     if (g_pSharedMemoryContainer) g_pSharedMemoryContainer->clean();
     if (strstr(Core.Params, "-swap_on_compact"))
         SetProcessWorkingSetSize(GetCurrentProcess(), size_t(-1), size_t(-1));
+#endif
 }
 
 #ifdef DEBUG_MEMORY_MANAGER

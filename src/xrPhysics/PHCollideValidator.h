@@ -7,9 +7,10 @@
 typedef u32	CLClassBits;
 typedef u32 CLBits;
 class CPHObject;
+
 class CPHCollideValidator
 {
-
+public:
 	enum ETypeFlags 
 	{
 		cbNCGroupObject		=	1<<0,
@@ -25,9 +26,8 @@ class CPHCollideValidator
 		cbClassAnimated		=	1<<10,//класс анимированного физического объекта
 		cbNCClassAnimated	=	1<<11,//свойство игнорирования класса анимированного физического объекта
 		cbNone				=	1<<12
-
 	};
-public:
+
 static		CGID			RegisterGroup				()														;
 static		CGID			LastGroupRegistred			()														;
 static	IC const	CGID			&GetGroup					(const CPHObject& obj)		{return obj.collide_bits();}

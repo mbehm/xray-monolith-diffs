@@ -81,6 +81,13 @@ void _draw_cam_pos(CGameFont* pFont)
 
 void CStats::Show()
 {
+	static u32 dw_lastframe;
+
+	if (dw_lastframe == Device.dwTimeGlobal)
+		return;
+
+	dw_lastframe = Device.dwTimeGlobal;
+
     // Stop timers
     {
         EngineTOTAL.FrameEnd();

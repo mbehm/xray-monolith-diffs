@@ -67,6 +67,20 @@ XRCORE_API xrDebug Debug;
 
 static bool error_after_dialog = false;
 
+namespace crash_saving
+{
+    void (*save_impl)() = nullptr;
+	BOOL enabled = TRUE;
+
+    void save()
+    {
+        if (enabled && save_impl != nullptr)
+        {
+            (*save_impl)();
+        }
+    }
+}
+
 //extern void BuildStackTrace();
 //extern char g_stackTrace[100][4096];
 //extern int g_stackTraceCount;
@@ -188,8 +202,12 @@ void xrDebug::do_exit(const std::string& message)
 
 #ifdef NO_BUG_TRAP
 //AVO: simplified function
-void xrDebug::backend(const char* expression, const char* description, const char* argument0, const char* argument1, const char* file, int line, const char* function, bool& ignore_always)
+void xrDebug::backend(const char* expression, const char* description, const char* argument0, const char* argument1,
+                      const char* file, int line, const char* function, bool& ignore_always)
 {
+    // we save first
+    crash_saving::save();
+    
     static xrCriticalSection CS
 #ifdef PROFILE_CRITICAL_SECTIONS
         (MUTEX_PROFILE_ID(xrDebug::backend))
@@ -214,7 +232,7 @@ void xrDebug::backend(const char* expression, const char* description, const cha
     ShowCursor(true);
     ShowWindow(GetActiveWindow(), SW_FORCEMINIMIZE);
     MessageBox(
-        GetTopWindow(NULL),
+		NULL,
         assertion_info,
         "Fatal Error",
         MB_OK | MB_ICONERROR | MB_SYSTEMMODAL
@@ -371,29 +389,42 @@ void xrDebug::fail(const char* e1, const char* e2, const char* e3, const char* e
     backend(e1, e2, e3, e4, file, line, function, ignore_always);
 }
 
+bool ignore_verify = true;
+
 //AVO: print, dont crash
 void xrDebug::soft_fail(LPCSTR e1, LPCSTR file, int line, LPCSTR function)
 {
+	if (!ignore_verify)
     Msg("! VERIFY_FAILED: %s[%d] {%s}  %s", file, line, function, e1);
 }
+
 void xrDebug::soft_fail(LPCSTR e1, const std::string &e2, LPCSTR file, int line, LPCSTR function)
 {
+	if (!ignore_verify)
     Msg("! VERIFY_FAILED: %s[%d] {%s}  %s %s", file, line, function, e1, e2.c_str());
 }
+
 void xrDebug::soft_fail(LPCSTR e1, LPCSTR e2, LPCSTR file, int line, LPCSTR function)
 {
+	if (!ignore_verify)
     Msg("! VERIFY_FAILED: %s[%d] {%s}  %s %s", file, line, function, e1, e2);
 }
+
 void xrDebug::soft_fail(LPCSTR e1, LPCSTR e2, LPCSTR e3, LPCSTR file, int line, LPCSTR function)
 {
+	if (!ignore_verify)
     Msg("! VERIFY_FAILED: %s[%d] {%s}  %s %s %s", file, line, function, e1, e2, e3);
 }
+
 void xrDebug::soft_fail(LPCSTR e1, LPCSTR e2, LPCSTR e3, LPCSTR e4, LPCSTR file, int line, LPCSTR function)
 {
+	if (!ignore_verify)
     Msg("! VERIFY_FAILED: %s[%d] {%s}  %s %s %s %s", file, line, function, e1, e2, e3, e4);
 }
+
 void xrDebug::soft_fail(LPCSTR e1, LPCSTR e2, LPCSTR e3, LPCSTR e4, LPCSTR e5, LPCSTR file, int line, LPCSTR function)
 {
+	if (!ignore_verify)
     Msg("! VERIFY_FAILED: %s[%d] {%s}  %s %s %s %s %s", file, line, function, e1, e2, e3, e4, e5);
 }
 //-AVO
@@ -417,6 +448,8 @@ XRCORE_API full_memory_stats_callback_type g_full_memory_stats_callback = 0;
 
 int out_of_memory_handler(size_t size)
 {
+	Msg("* [x-ray]: OOM requesting %lld bytes", size);
+
     if (g_full_memory_stats_callback)
         g_full_memory_stats_callback();
     else
@@ -750,13 +783,17 @@ LONG WINAPI UnhandledFilter(_EXCEPTION_POINTERS* pExceptionInfo)
 #endif //-DEBUG
     }
 
-    FlushLog();
-
     if (pExceptionInfo->ExceptionRecord)
     {
         Msg("at address 0x%p", pExceptionInfo->ExceptionRecord->ExceptionAddress);
     }
     //return EXCEPTION_CONTINUE_EXECUTION;
+
+	FlushLog();
+
+# ifdef USE_OWN_MINI_DUMP
+	save_mini_dump(pExceptionInfo);
+# endif // USE_OWN_MINI_DUMP
 
     ShowCursor(true);
     ShowWindow(GetActiveWindow(), SW_FORCEMINIMIZE);
@@ -884,7 +921,7 @@ void xrDebug::_initialize (const bool& dedicated)
 #else
 typedef int(__cdecl* _PNH)(size_t);
 _CRTIMP int __cdecl _set_new_mode(int);
-_CRTIMP _PNH __cdecl _set_new_handler(_PNH);
+//_CRTIMP _PNH __cdecl _set_new_handler(_PNH);
 
 #ifdef LEGACY_CODE
 #ifndef USE_BUG_TRAP

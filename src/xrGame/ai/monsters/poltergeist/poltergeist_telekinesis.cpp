@@ -4,6 +4,8 @@
 #include "../../../level.h"
 #include "../../../actor.h"
 #include "../../../../xrPhysics/icolisiondamageinfo.h"
+#include "inventory_item.h"
+
 CPolterTele::CPolterTele(CPoltergeist *polter) : inherited (polter),m_pmt_object_collision_damage(0.5f)
 {
 }
@@ -47,6 +49,9 @@ void CPolterTele::update_schedule()
 {
 	inherited::update_schedule();
 
+	if (!m_object->g_Alive() || m_object->get_actor_ignore())
+		return;
+
 	Fvector const actor_pos				=	Actor()->Position();
 	float const dist2actor				=	actor_pos.distance_to(m_object->Position());
 
@@ -56,12 +61,11 @@ void CPolterTele::update_schedule()
 	if ( m_object->get_current_detection_level() < m_object->get_detection_success_level() )
 		return;
 
-	if ( m_object->get_actor_ignore() )
-		return;
-
-	switch (m_state) {
+	switch (m_state)
+	{
 	case eStartRaiseObjects:	
-		if (m_time + m_time_next < time()) {
+		if (m_time + m_time_next < time())
+		{
 			if (!tele_raise_objects())
 				m_state	= eRaisingObjects;
 			
@@ -179,9 +183,11 @@ void CPolterTele::tele_find_objects(xr_vector<CObject*> &objects, const Fvector 
 	m_nearest.clear_not_free		();
 	Level().ObjectSpace.GetNearest	(m_nearest, pos, m_pmt_radius, NULL);
 
-	for (u32 i=0;i<m_nearest.size();i++) {
+	for (u32 i = 0; i < m_nearest.size(); i++)
+	{
 		CPhysicsShellHolder *obj			= smart_cast<CPhysicsShellHolder *>(m_nearest[i]);
 		CCustomMonster		*custom_monster	= smart_cast<CCustomMonster *>(m_nearest[i]);
+		CInventoryItem* itm = smart_cast<CInventoryItem*>(m_nearest[i]);
 		if (!obj || 
 			!obj->PPhysicsShell() || 
 			!obj->PPhysicsShell()->isActive()|| 
@@ -191,7 +197,9 @@ void CPolterTele::tele_find_objects(xr_vector<CObject*> &objects, const Fvector 
 			(obj->m_pPhysicsShell->getMass() > m_pmt_object_max_mass) || 
 			(obj == m_object) || 
 			m_object->CTelekinesis::is_active_object(obj) || 
-			!obj->m_pPhysicsShell->get_ApplyByGravity()) continue;
+			!obj->m_pPhysicsShell->get_ApplyByGravity() ||
+			(itm && itm->IsQuestItem()))
+			continue;
 
 		
 		Fvector center;

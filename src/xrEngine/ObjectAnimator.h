@@ -10,8 +10,6 @@ class ENGINE_API CObjectAnimator
 private:
     DEFINE_VECTOR(COMotion*, MotionVec, MotionIt);
 protected:
-    bool bLoop;
-
     shared_str m_Name;
 
     Fmatrix m_XFORM;
@@ -38,6 +36,8 @@ public:
     IC BOOL IsPlaying() { return m_MParam.bPlay; }
 
     IC const Fmatrix& XFORM() { return m_XFORM; }
+	const SAnimParams& anim_param() { return m_MParam; }
+	bool bLoop;
     float GetLength();
     // Update
     void Update(float dt);

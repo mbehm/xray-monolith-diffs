@@ -28,6 +28,8 @@ public:
 	void					SetTaskState					(const shared_str& id, ETaskState state);
 	void					SetTaskState					(CGameTask* t, ETaskState state);
 
+	void RPC_UpdateTaskName();
+
 	void		__stdcall	UpdateTasks						();
 
 	CGameTask*				ActiveTask						();

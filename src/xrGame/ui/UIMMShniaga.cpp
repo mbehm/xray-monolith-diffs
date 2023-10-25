@@ -14,7 +14,6 @@
 #include "../saved_game_wrapper.h"
 #include "../login_manager.h"
 #include "MainMenu.h"
-#include "../gamespy/GameSpy_Full.h"
 
 extern string_path g_last_saved_game;
 
@@ -94,7 +93,10 @@ void CUIMMShniaga::InitShniaga(CUIXml& xml_doc, LPCSTR path)
     ShowMain				();
 
 	m_sound->Init(xml_doc, "menu_sound");
+	if (!g_pGameLevel || !g_pGameLevel->bReady)
+	{
 	m_sound->music_Play();
+}
 }
 
 void CUIMMShniaga::OnDeviceReset()
@@ -316,11 +318,10 @@ void CUIMMShniaga::Update()
 		Fvector2 pos = m_shniaga->GetWndPos();
 		pos.y = this->pos(m_origin, m_destination, Device.dwTimeContinual - m_start_time);
 		m_shniaga->SetWndPos(pos);		
-	}else
+	}
+	else
 		ProcessEvent(E_Stop);
 
-	if (m_start_time > Device.dwTimeContinual - m_run_time*10/100)
-		ProcessEvent(E_Finilize);
 
 	ProcessEvent(E_Update);
 		
@@ -350,7 +351,10 @@ void CUIMMShniaga::OnBtnClick(){
 	else if (0 == xr_strcmp("btn_new_back", m_selected->WindowName()))
 		ShowMain();
 	else
+	{
 		GetMessageTarget()->SendMessage(m_selected, BUTTON_CLICKED);
+		ProcessEvent(E_Finilize);
+	}
 }
 
 #include <dinput.h>
@@ -467,8 +471,13 @@ void CUIMMShniaga::ProcessEvent(EVENT ev)
 				m_shniaga->SetWndPos(pos);		
 
                 m_flags.set(fl_MovingStoped, TRUE);
-			}	break;
-		case E_Update:		m_sound->music_Update();
+		}
+		break;
+	case E_Update:
+		if (!g_pGameLevel || !g_pGameLevel->bReady)
+		{
+			m_sound->music_Update();
+		}
 			break;
 									
 	}

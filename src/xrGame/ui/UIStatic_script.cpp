@@ -28,9 +28,16 @@ void CUIStatic::script_register(lua_State *L)
 		.def("GetStretchTexture", &CUIStatic::GetStretchTexture)
 		.def("TextControl",			&CUIStatic::TextItemControl)
 		.def("InitTexture",			&CUIStatic::InitTexture )
+		.def("InitTextureEx", &CUIStatic::InitTextureEx)
 		.def("SetTextureRect",		&CUIStatic::SetTextureRect_script)
 		.def("SetStretchTexture",	&CUIStatic::SetStretchTexture)
-		.def("GetTextureRect",		&CUIStatic::GetTextureRect_script),
+		.def("GetTextureRect", &CUIStatic::GetTextureRect_script)
+		.def("EnableHeading", &CUIStatic::EnableHeading)
+		.def("GetHeading", &CUIStatic::GetHeading)
+		.def("SetHeading", &CUIStatic::SetHeading)
+		.def("SetConstHeading", &CUIStatic::SetConstHeading)
+		.def("GetConstHeading", &CUIStatic::GetConstHeading)
+		,
 
 		class_<CUITextWnd, CUIWindow>("CUITextWnd")
 		.def(						constructor<>())

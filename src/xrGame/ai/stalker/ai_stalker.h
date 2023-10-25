@@ -157,6 +157,10 @@ public:
 										CAI_Stalker					();
 	virtual								~CAI_Stalker				();
 
+	// demonized: add enabling pathfinding and damage by anomalies flags
+	bool m_enable_anomalies_pathfinding = false;
+	bool m_enable_anomalies_damage = false;
+
 public:
 	virtual	CCharacterPhysicsSupport*	character_physics_support	()						{return m_pPhysics_support;}
 	virtual	const CCharacterPhysicsSupport*	character_physics_support() const 			{return m_pPhysics_support;}
@@ -213,6 +217,9 @@ public:
 	virtual	void						PHHit								(SHit &H);
 	virtual bool						feel_vision_isRelevant				(CObject* who);
 	virtual float						Radius								() const;
+
+	virtual void ChangeVisual(shared_str NewVisual);
+
 #ifdef DEBUG
 	virtual void						OnHUDDraw							(CCustomHUD* hud);
 	virtual void						OnRender							();

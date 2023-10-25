@@ -51,15 +51,20 @@
 #include "xrPhysics/console_vars.h"
 #include "../xrEngine/device.h"
 
+#include "UIGameCustom.h"
+#include "ui/UIPdaWnd.h"
+#include "UICursor.h"
+#include "debug_renderer.h"
+#include "LevelDebugScript.h"
+
 #ifdef DEBUG
 #include "level_debug.h"
 #include "ai/stalker/ai_stalker.h"
-#include "debug_renderer.h"
 #include "PhysicObject.h"
 #include "PHDebug.h"
 #include "debug_text_tree.h"
 #endif
-ENGINE_API bool g_dedicated_server;
+extern ENGINE_API bool g_dedicated_server;
 //AVO: used by SPAWN_ANTIFREEZE (by alpet)
 #ifdef SPAWN_ANTIFREEZE
 ENGINE_API BOOL	g_bootComplete;
@@ -92,6 +97,74 @@ u16	GetSpawnInfo(NET_Packet &P, u16 &parent_id)
 #endif
 //-AVO
 
+namespace crash_saving {
+	extern void(*save_impl)();
+	static bool g_isSaving = false;
+	int saveCountMax = 10;
+
+	void _save_impl()
+	{
+		if (g_isSaving) return;
+		if (saveCountMax <= 0) return;
+
+		int saveCount = -1;
+		g_isSaving = true;
+		NET_Packet net_packet;
+		net_packet.w_begin(M_SAVE_GAME);
+
+		std::string path = "fatal_ctd_save_";
+		std::string path_mask(path);
+		std::string path_ext = ".scop";
+		path_mask.append("*").append(path_ext);
+
+		FS_FileSet fset_temp;
+		FS.file_list(fset_temp, "$game_saves$", FS_ListFiles | FS_RootOnly, path_mask.c_str());
+
+		std::vector<FS_File> fset(fset_temp.begin(), fset_temp.end());
+		struct {
+			bool operator()(FS_File& a, FS_File& b) {
+				return a.time_write > b.time_write;
+			}
+		} sortFilesDesc;
+		std::sort(fset.begin(), fset.end(), sortFilesDesc);
+
+		//Msg("save mask %s", path_mask.c_str());
+
+		for (auto &file : fset)
+		{
+			string128 name;
+			xr_strcpy(name, sizeof(name), file.name.c_str());
+			std::string name_string(name);
+			name_string.erase(name_string.length() - path_ext.length());
+
+			//Msg("found save file %s, save_name %s", name, name_string.c_str());
+
+			try {
+				//Msg("save number %s", name_string.substr(path.length()).c_str());
+				int name_count = std::stoi(name_string.substr(path.length()));
+				saveCount = name_count;
+				break;
+			} catch (...) {
+				Msg("!error getting save number from %s", name);
+			}
+		}
+
+		saveCount++;
+		if (saveCount >= saveCountMax) {
+			saveCount = 0;
+		}
+
+		path.append(std::to_string(saveCount));
+		net_packet.w_stringZ(path.c_str());
+		net_packet.w_u8(1);
+		CLevel& level = Level();
+		if (&level != nullptr)
+		{
+			level.Send(net_packet, net_flags(1));
+		}
+
+	}
+}
 
 CLevel::CLevel() :
 IPureClient(Device.GetTimerGlobal())
@@ -137,12 +210,14 @@ IPureClient(Device.GetTimerGlobal())
     g_player_hud = xr_new<player_hud>();
     g_player_hud->load_default();
     Msg("%s", Core.Params);
+	crash_saving::save_impl = crash_saving::_save_impl; // CLevel ready, we can save now
 }
 
 extern CAI_Space *g_ai_space;
 
 CLevel::~CLevel()
 {
+	crash_saving::save_impl = nullptr; // CLevel not available, disable crash save
     xr_delete(g_player_hud);
     delete_data(hud_zones_list);
     hud_zones_list = nullptr;
@@ -176,9 +251,8 @@ CLevel::~CLevel()
     xr_delete(m_seniority_hierarchy_holder);
     xr_delete(m_client_spawn_manager);
     xr_delete(m_autosave_manager);
-#ifdef DEBUG
     xr_delete(m_debug_renderer);
-#endif
+	delete_data(m_debug_render_queue);
     if (!g_dedicated_server)
         ai().script_engine().remove_script_process(ScriptEngine::eScriptProcessorLevel);
     xr_delete(game);
@@ -688,7 +762,8 @@ void CLevel::OnFrame()
     }
 }
 
-int psLUA_GCSTEP = 10;
+int psLUA_GCSTEP = 100;
+
 void CLevel::script_gc()
 {
     lua_gc(ai().script_engine().lua(), LUA_GCSTEP, psLUA_GCSTEP);
@@ -703,17 +778,81 @@ extern Flags32 dbg_net_Draw_Flags;
 #endif
 
 extern void draw_wnds_rects();
+extern bool use_reshade;
+extern void render_reshade_effects();
 
 void CLevel::OnRender()
 {
+	// PDA
+	if (game && CurrentGameUI() && &CurrentGameUI()->GetPdaMenu() != nullptr)
+	{
+		CUIPdaWnd* pda = &CurrentGameUI()->GetPdaMenu();
+		if (psActorFlags.test(AF_3D_PDA) && pda->IsShown())
+		{
+			pda->Draw();
+			CUICursor* cursor = &UI().GetUICursor();
+
+			if (cursor)
+			{
+				static bool need_reset;
+				bool is_top = CurrentGameUI()->TopInputReceiver() == pda;
+
+				if (pda->IsEnabled() && is_top && !Console->bVisible)
+				{
+					if (need_reset)
+					{
+						need_reset = false;
+						pda->ResetCursor();
+					}
+
+					Frect &pda_border = pda->m_cursor_box;
+					Fvector2 cursor_pos = cursor->GetCursorPosition();
+
+					if (!pda_border.in(cursor_pos))
+					{
+						clamp(cursor_pos.x, pda_border.left, pda_border.right);
+						clamp(cursor_pos.y, pda_border.top, pda_border.bottom);
+						cursor->SetUICursorPosition(cursor_pos);
+					}
+
+					Fvector2 cursor_pos_dif;
+					cursor_pos_dif.set(cursor_pos);
+					cursor_pos_dif.sub(pda->last_cursor_pos);
+					pda->last_cursor_pos.set(cursor_pos);
+					pda->MouseMovement(cursor_pos_dif.x, cursor_pos_dif.y);
+				}
+				else
+					need_reset = true;
+
+				if (is_top)
+					cursor->OnRender();
+			}
+			Render->RenderToTarget(Render->rtPDA);
+		}
+
+		if (Actor() && Actor()->m_bDelayDrawPickupItems)
+		{
+			Actor()->m_bDelayDrawPickupItems = false;
+			Actor()->DrawPickupItems();
+		}
+	}
+
     inherited::OnRender();
     if (!game)
         return;
     Game().OnRender();
-    //Device.Statistic->TEST1.Begin();
     BulletManager().Render();
-    //Device.Statistic->TEST1.End();
+
+	if (Device.m_SecondViewport.IsSVPFrame())
+		Render->RenderToTarget(Render->rtSVP);
+
+	if (use_reshade)
+		render_reshade_effects();
+
     HUD().RenderUI();
+
+	ScriptDebugRender();
+
 #ifdef DEBUG
     draw_wnds_rects();
     physics_world()->OnRender();
@@ -786,7 +925,7 @@ void CLevel::OnRender()
         UI().Font().pFontStat->SetHeight(8.0f);
     }
 #endif
-
+	debug_renderer().render();
 #ifdef DEBUG
     if (bDebug)
     {
@@ -794,7 +933,6 @@ void CLevel::OnRender()
         DBG().draw_text();
         DBG().draw_level_info();
     }
-    debug_renderer().render();
     DBG().draw_debug_text();
     if (psAI_Flags.is(aiVision))
     {
@@ -820,6 +958,28 @@ void CLevel::OnRender()
         }
     }
 #endif
+}
+
+void CLevel::ScriptDebugRender()
+{
+	if (!m_debug_render_queue.size())
+		return;
+
+	bool hasVisibleObj = false;
+	xr_map<u16, DBG_ScriptObject*>::iterator it = m_debug_render_queue.begin();
+	xr_map<u16, DBG_ScriptObject*>::iterator it_e = m_debug_render_queue.end();
+	for (; it != it_e; ++it)
+	{
+		DBG_ScriptObject* obj = (*it).second;
+		if (obj->m_visible) {
+			hasVisibleObj = true;
+			obj->Render();
+		}
+	}
+
+	// demonized: fix of showing console window when there are no visible gizmos 
+	if (hasVisibleObj)
+		DRender->OnFrameEnd();
 }
 
 void CLevel::OnEvent(EVENT E, u64 P1, u64 /**P2/**/)
@@ -1065,7 +1225,7 @@ void CLevel::GetGameDateTime(u32& year, u32& month, u32& day, u32& hours, u32& m
 
 float CLevel::GetGameTimeFactor()
 {
-    return (game->GetGameTimeFactor());
+	return (game ? game->GetGameTimeFactor() : 1.0f);
 }
 
 void CLevel::SetGameTimeFactor(const float fTimeFactor)
@@ -1105,12 +1265,14 @@ void CLevel::OnAlifeSimulatorUnLoaded()
 {
     MapManager().ResetStorage();
     GameTaskManager().ResetStorage();
+	delete_data(m_debug_render_queue);
 }
 
 void CLevel::OnAlifeSimulatorLoaded()
 {
     MapManager().ResetStorage();
     GameTaskManager().ResetStorage();
+	delete_data(m_debug_render_queue);
 }
 
 void CLevel::OnSessionTerminate(LPCSTR reason)

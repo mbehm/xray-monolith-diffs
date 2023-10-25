@@ -49,6 +49,23 @@ enum
 ENGINE_API extern u32 psCurrentVidMode[];
 ENGINE_API extern u32 psCurrentBPP;
 ENGINE_API extern Flags32 psDeviceFlags;
+extern Flags32 psDeviceFlags2;
+
+enum
+{
+	rsClearModels = (1 << 0),
+	rsPrecompiledShaders = (1 << 1),
+	rsGrassShadow = (1 << 2),
+	rsNoScale = (1 << 3),
+	rsFxaa = (1 << 4),
+	rsDiscord = (1 << 5),
+	rsKeypress = (1 << 6),
+	rsCODPickup = (1 << 7),
+	rsFeelGrenade = (1 << 8),
+	rsOptShadowGeom = (1 << 9),
+	rsAimSway = (1 << 10),
+	rsAlwaysActive = (1 << 11),
+};
 
 // game path definition
 #define _game_data_ "$game_data$"

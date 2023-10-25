@@ -18,6 +18,7 @@ ELightAnimLibrary LALib;
 CLAItem::CLAItem()
 {
     fFPS = 15.f;
+	def_fFPS = fFPS;
     iFrameCount = 1;
 }
 
@@ -31,6 +32,7 @@ void CLAItem::Load(IReader& F)
     R_ASSERT(F.find_chunk(CHUNK_ITEM_COMMON));
     F.r_stringZ(cName);
     fFPS = F.r_float();
+	def_fFPS = fFPS;
     iFrameCount = F.r_u32();
 
     int key_cnt, key;
@@ -216,7 +218,8 @@ void ELightAnimLibrary::Unload()
     Items.clear();
 }
 
-__declspec(dllexport) void ELightAnimLibrary::Load()
+//__declspec(dllexport)
+void ELightAnimLibrary::Load()
 {
     string_path fn;
     FS.update_path(fn, _game_data_, "lanims.xr");

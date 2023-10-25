@@ -257,6 +257,9 @@ void CConsole::OnRender()
         return;
     }
 
+	if (psDeviceFlags.test(rsCameraPos) || psDeviceFlags.test(rsStatistic) || Device.Statistic->errors.size())
+		Device.Statistic->Show();
+
     if (!m_hShader_back)
     {
         m_hShader_back = xr_new< FactoryPtr<IUIShader> >();
@@ -575,10 +578,6 @@ void CConsole::ExecuteCommand(LPCSTR cmd_str, bool record_cmd)
     xr_strcpy(edt, str_size + 1, cmd_str);
     edt[str_size] = 0;
 
-    scroll_delta = 0;
-    reset_cmd_history_idx();
-    reset_selected_tip();
-
     text_editor::remove_spaces(edt);
     if (edt[0] == 0)
     {
@@ -586,6 +585,10 @@ void CConsole::ExecuteCommand(LPCSTR cmd_str, bool record_cmd)
     }
     if (record_cmd)
     {
+		scroll_delta = 0;
+		reset_cmd_history_idx();
+		reset_selected_tip();
+
         char c[2];
         c[0] = mark2;
         c[1] = 0;

@@ -1,3 +1,4 @@
+#include <unordered_set>
 #include "pch_script.h"
 #include "../xrEngine/xr_ioconsole.h"
 #include "../xrEngine/xr_ioc_cmd.h"
@@ -41,22 +42,27 @@
 #include "saved_game_wrapper.h"
 #include "level_graph.h"
 //#include "../xrEngine/resourcemanager.h"
-#include "../xrEngine/doug_lea_memory_allocator.h"
+//#include "../xrEngine/doug_lea_memory_allocator.h"
 #include "cameralook.h"
 #include "character_hit_animations_params.h"
 #include "inventory_upgrade_manager.h"
 
-#include "GameSpy/GameSpy_Full.h"
-#include "GameSpy/GameSpy_Patching.h"
-
 #include "ai_debug_variables.h"
 #include "../xrphysics/console_vars.h"
+
+#include "..\xrCore\LocatorAPI.h"
 #ifdef DEBUG
 #	include "PHDebug.h"
 #	include "ui/UIDebugFonts.h"
 #	include "game_graph.h"
 #	include "CharacterPhysicsSupport.h"
 #endif // DEBUG
+
+
+#include "..\..\xrEngine\x_ray.h"
+
+#include "NewZoomFlag.h"
+float n_zoom_step_count = 3.0f;
 
 string_path		g_last_saved_game;
 
@@ -72,9 +78,11 @@ extern	u64		g_qwStartGameTime;
 extern	u64		g_qwEStartGameTime;
 
 ENGINE_API
-extern	float	psHUD_FOV;
+extern float psHUD_FOV_def;
 extern	float	psSqueezeVelocity;
 extern	int		psLUA_GCSTEP;
+
+float g_end_modif = 0.f;
 
 extern	int		x_m_x;
 extern	int		x_m_z;
@@ -90,7 +98,9 @@ extern	ESingleGameDifficulty g_SingleGameDifficulty;
 extern	BOOL	g_show_wnd_rect2;
 //-----------------------------------------------------------
 extern	float	g_fTimeFactor;
-extern	BOOL	b_toggle_weapon_aim;
+extern float f_weapon_deterioration;
+extern float f_power_loss_bias;
+extern float f_power_loss_factor;
 //extern  BOOL	g_old_style_ui_hud;
 
 extern float	g_smart_cover_factor;
@@ -99,11 +109,36 @@ extern float	g_smart_cover_animation_speed_factor;
 
 extern	BOOL	g_ai_use_old_vision;
 float			g_aim_predict_time = 0.40f;
-int				g_keypress_on_start = 1;
+float g_head_bob_factor = 1.00f;
+float streff;
 
 extern BOOL		g_ai_die_in_anomaly; //Alundaio
 
+//demonized: new console vars
+extern BOOL firstPersonDeath;
+extern BOOL pseudogiantCanDamageObjects;
+extern BOOL use_english_text_for_missing_translations;
+namespace crash_saving {
+	extern BOOL enabled;
+	extern int saveCountMax;
+}
+extern BOOL pda_map_zoom_in_to_mouse;
+extern BOOL pda_map_zoom_out_to_mouse;
+extern BOOL mouseWheelChangeWeapon;
+extern BOOL mouseWheelInvertZoom;
+extern BOOL monsterStuckFix;
+
 ENGINE_API extern float	g_console_sensitive;
+
+u32 g_dead_body_collision = 1;
+
+xr_token dead_body_collision_tokens[] =
+{
+	{ "full", 2 },
+	{ "actor_only", 1 },
+	{ "off", 0 },
+	{ 0, 0 }
+};
 
 void register_mp_console_commands();
 //-----------------------------------------------------------
@@ -144,7 +179,7 @@ CUIOptConCom g_OptConCom;
 
 #ifndef PURE_ALLOC
 //#	ifndef USE_MEMORY_MONITOR
-#		define SEVERAL_ALLOCATORS
+//#		define SEVERAL_ALLOCATORS
 //#	endif // USE_MEMORY_MONITOR
 #endif // PURE_ALLOC
 
@@ -153,10 +188,11 @@ extern		u32 game_lua_memory_usage();
 #endif // SEVERAL_ALLOCATORS
 
 typedef void(*full_memory_stats_callback_type) ();
-XRCORE_API full_memory_stats_callback_type g_full_memory_stats_callback;
+extern XRCORE_API full_memory_stats_callback_type g_full_memory_stats_callback;
 
 static void full_memory_stats()
 {
+	Msg("* [x-ray]: Full Memory Stats");
 	Memory.mem_compact();
 	size_t	_process_heap = ::Memory.mem_usage();
 #ifdef SEVERAL_ALLOCATORS
@@ -410,6 +446,7 @@ public:
 };
 
 //-----------------------------------------------------------------------
+std::unordered_set<CDemoRecord*> pDemoRecords;
 class CCC_DemoRecord : public IConsole_Command
 {
 public:
@@ -431,7 +468,55 @@ public:
 		string_path		fn;
 		FS.update_path(fn, "$game_saves$", fn_);
 
-		g_pGameLevel->Cameras().AddCamEffector(xr_new<CDemoRecord>(fn));
+		auto pDemoRecord = xr_new<CDemoRecord>(fn, &pDemoRecords);
+		g_pGameLevel->Cameras().AddCamEffector(pDemoRecord);
+	}
+};
+
+class CCC_DemoRecordBlockedInput : public IConsole_Command
+{
+public:
+
+	CCC_DemoRecordBlockedInput(LPCSTR N) : IConsole_Command(N)
+	{
+	};
+
+	virtual void Execute(LPCSTR args)
+	{
+#ifndef	DEBUG
+		//if (GameID() != eGameIDSingle)
+		//{
+		//	Msg("For this game type Demo Record is disabled.");
+		//	return;
+		//};
+#endif
+		Console->Hide();
+
+		LPSTR fn_;
+		STRCONCAT(fn_, args, ".xrdemo");
+		string_path fn;
+		FS.update_path(fn, "$game_saves$", fn_);
+
+		auto pDemoRecord = xr_new<CDemoRecord>(fn, &pDemoRecords, TRUE);
+		g_pGameLevel->Cameras().AddCamEffector(pDemoRecord);
+	}
+};
+
+class CCC_DemoRecordStop : public IConsole_Command
+{
+public:
+
+	CCC_DemoRecordStop(LPCSTR N) : IConsole_Command(N)
+	{
+		bEmptyArgsHandled = true;
+	};
+
+	virtual void Execute(LPCSTR args)
+	{
+		for (auto pDemoRecord : pDemoRecords) {
+			pDemoRecord->StopDemo();
+		}
+		pDemoRecords.clear();
 	}
 };
 
@@ -456,7 +541,37 @@ public:
 	}
 	virtual void	Save(IWriter *F) { ; }
 };
+
 Fvector CCC_DemoRecordSetPos::p = { 0, 0, 0 };
+
+class CCC_DemoRecordSetDir : public CCC_Vector3
+{
+	static Fvector d;
+public:
+
+	CCC_DemoRecordSetDir(LPCSTR N) : CCC_Vector3(N, &d, Fvector().set(-FLT_MAX, -FLT_MAX, -FLT_MAX),
+		Fvector().set(FLT_MAX, FLT_MAX, FLT_MAX))
+	{
+	};
+
+	virtual void Execute(LPCSTR args)
+	{
+#ifndef	DEBUG
+		//if (GameID() != eGameIDSingle)
+		//{
+		//	Msg("For this game type Demo Record is disabled.");
+		//	return;
+		//};
+#endif
+		CDemoRecord::GetGlobalDirection(d);
+		CCC_Vector3::Execute(args);
+		CDemoRecord::SetGlobalDirection(d);
+	}
+
+	virtual void Save(IWriter* F) { ; }
+};
+
+Fvector CCC_DemoRecordSetDir::d = { 0, 0, 0 };
 
 class CCC_DemoPlay : public IConsole_Command
 {
@@ -496,6 +611,57 @@ public:
 		}
 	}
 };
+
+// First Person Death
+extern float offsetH;
+extern float offsetP;
+extern float offsetB;
+extern float offsetX;
+extern float offsetY;
+extern float offsetZ;
+extern float viewportNearOffset;
+extern int firstPersonDeathPositionSmoothing;
+extern int firstPersonDeathDirectionSmoothing;
+
+class CCC_FPDDirectionOffset : public CCC_Vector3
+{
+	static Fvector d;
+public:
+
+	CCC_FPDDirectionOffset(LPCSTR N) : CCC_Vector3(N, &d, Fvector().set(-FLT_MAX, -FLT_MAX, -FLT_MAX),
+		Fvector().set(FLT_MAX, FLT_MAX, FLT_MAX))
+	{
+	};
+
+	virtual void Execute(LPCSTR args)
+	{
+		CCC_Vector3::Execute(args);
+		offsetH = d.x;
+		offsetP = d.y;
+		offsetB = d.z;
+	}
+};
+Fvector CCC_FPDDirectionOffset::d = { 0, 0, 0 };
+
+class CCC_FPDPositionOffset : public CCC_Vector3
+{
+	static Fvector d;
+public:
+
+	CCC_FPDPositionOffset(LPCSTR N) : CCC_Vector3(N, &d, Fvector().set(-FLT_MAX, -FLT_MAX, -FLT_MAX),
+		Fvector().set(FLT_MAX, FLT_MAX, FLT_MAX))
+	{
+	};
+
+	virtual void Execute(LPCSTR args)
+	{
+		CCC_Vector3::Execute(args);
+		offsetX = d.x;
+		offsetY = d.y;
+		offsetZ = d.z;
+	}
+};
+Fvector CCC_FPDPositionOffset::d = { 0, 0, 0 };
 
 // helper functions --------------------------------------------
 
@@ -1401,6 +1567,8 @@ public:
 		float				time_factor = (float)atof(args);
 		clamp(time_factor, EPS, 1000.f);
 		Device.time_factor(time_factor);
+		if (!strstr(Core.Params, "-sound_constant_speed"))
+			psSpeedOfSound = time_factor;
 	}
 	virtual void	Status(TStatus &S)
 	{
@@ -1443,13 +1611,41 @@ public:
 		if (EQ(args, "off") || EQ(args, "0"))
 			bWhatToDo = FALSE;
 
+		if (Device.Paused() && bWhatToDo == TRUE)
+			Device.Pause(FALSE, TRUE, TRUE, "li_pause_key");
+
 		MainMenu()->Activate(bWhatToDo);
+	}
+};
+
+class CCC_DiscordStatus : public CCC_Mask
+{
+public:
+	CCC_DiscordStatus(LPCSTR N, Flags32* V, u32 M) :
+		CCC_Mask(N, V, M){};
+
+	virtual void Execute(LPCSTR args)
+	{
+		if (EQ(args, "on") || EQ(args, "1"))
+		{
+			value->set(mask, TRUE);
+			discord_gameinfo.ex_update = true;
+		}
+		else if (EQ(args, "off") || EQ(args, "0"))
+		{
+			value->set(mask, FALSE);
+			clearDiscordPresence();
+		}
+		else InvalidSyntax();
 	}
 };
 
 struct CCC_StartTimeSingle : public IConsole_Command
 {
-	CCC_StartTimeSingle(LPCSTR N) : IConsole_Command(N) {};
+	CCC_StartTimeSingle(LPCSTR N) : IConsole_Command(N)
+	{
+	};
+
 	virtual void	Execute(LPCSTR args)
 	{
 		u32 year = 1, month = 1, day = 1, hours = 0, mins = 0, secs = 0, milisecs = 0;
@@ -1817,7 +2013,7 @@ public:
 
 		//		GameSpyPatching.CheckForPatch(InformOfNoPatch);
 
-		MainMenu()->GetGS()->GetGameSpyPatching()->CheckForPatch(InformOfNoPatch);
+		//MainMenu()->GetGS()->GetGameSpyPatching()->CheckForPatch(InformOfNoPatch);
 	}
 };
 
@@ -1879,15 +2075,30 @@ public:
 
 void CCC_RegisterCommands()
 {
-	// options
-	g_OptConCom.Init();
+	//Not needed for a singleplayer-only mod
+	//g_OptConCom.Init();
 
 	CMD1(CCC_MemStats, "stat_memory");
 #ifdef DEBUG
 	CMD1(CCC_MemCheckpoint, "stat_memory_checkpoint");
 #endif //#ifdef DEBUG
 	// game
+
+	psActorFlags.set(AF_CROUCH_TOGGLE, FALSE);
+	psActorFlags.set(AF_WALK_TOGGLE, FALSE);
+	psActorFlags.set(AF_SPRINT_TOGGLE, TRUE);
+	psActorFlags.set(AF_LOOKOUT_TOGGLE, FALSE);
+	psActorFlags.set(AF_FREELOOK_TOGGLE, FALSE);
+	psActorFlags.set(AF_SIMPLE_PDA, TRUE);
+	psActorFlags.set(AF_3D_PDA, TRUE);
+
 	CMD3(CCC_Mask, "g_crouch_toggle", &psActorFlags, AF_CROUCH_TOGGLE);
+	CMD3(CCC_Mask, "g_walk_toggle", &psActorFlags, AF_WALK_TOGGLE);
+	CMD3(CCC_Mask, "g_sprint_toggle", &psActorFlags, AF_SPRINT_TOGGLE);
+	CMD3(CCC_Mask, "g_lookout_toggle", &psActorFlags, AF_LOOKOUT_TOGGLE);
+	CMD3(CCC_Mask, "g_freelook_toggle", &psActorFlags, AF_FREELOOK_TOGGLE);
+	CMD3(CCC_Mask, "g_3d_pda", &psActorFlags, AF_3D_PDA);
+	CMD3(CCC_Mask, "g_simple_pda", &psActorFlags, AF_SIMPLE_PDA);
 	CMD1(CCC_GameDifficulty, "g_game_difficulty");
 
 	CMD3(CCC_Mask, "g_backrun", &psActorFlags, AF_RUN_BACKWARD);
@@ -1928,7 +2139,7 @@ void CCC_RegisterCommands()
 	CMD3(CCC_Mask, "hud_crosshair_dist", &psHUD_Flags, HUD_CROSSHAIR_DIST);
 
 	//#ifdef DEBUG
-	CMD4(CCC_Float, "hud_fov", &psHUD_FOV, 0.1f, 1.0f);
+	CMD4(CCC_Float, "hud_fov", &psHUD_FOV_def, 0.1f, 1.0f);
 	CMD4(CCC_Float, "fov", &g_fov, 5.0f, 180.0f);
 	//#endif // DEBUG
 
@@ -1936,7 +2147,10 @@ void CCC_RegisterCommands()
 	//#ifndef MASTER_GOLD
 	CMD1(CCC_DemoPlay, "demo_play");
 	CMD1(CCC_DemoRecord, "demo_record");
+	CMD1(CCC_DemoRecordBlockedInput, "demo_record_blocked_input");
+	CMD1(CCC_DemoRecordStop, "demo_record_stop");
 	CMD1(CCC_DemoRecordSetPos, "demo_set_cam_position");
+	CMD1(CCC_DemoRecordSetDir, "demo_set_cam_direction");
 	//#endif // #ifndef MASTER_GOLD
 
 #ifndef MASTER_GOLD
@@ -2081,17 +2295,21 @@ void CCC_RegisterCommands()
 		CMD3(CCC_Mask, "g_unlimitedammo", &psActorFlags, AF_UNLIMITEDAMMO);
 		CMD1(CCC_Script, "run_script");
 		CMD1(CCC_ScriptCommand, "run_string");
-		CMD1(CCC_TimeFactor, "time_factor");
 		//CMD3(CCC_Mask, "g_no_clip", &psActorFlags, AF_NO_CLIP);
 		CMD1(CCC_PHGravity, "ph_gravity");
+		CMD3(CCC_Mask, "log_missing_ini", &FS.m_Flags, FS.flPrintLTX);
+		CMD3(CCC_Mask, "g_firepos", &psActorFlags, AF_FIREPOS);
+		CMD4(CCC_Float, "g_end_modif", &g_end_modif, 0.f, 10.f);
 	}
 #endif // MASTER_GOLD
 	//#endif // MASTER_GOLD
 	/* AVO: end */
 
+	CMD1(CCC_TimeFactor, "time_factor");
 	CMD3(CCC_Mask, "g_use_tracers", &psActorFlags, AF_USE_TRACERS);
 	CMD3(CCC_Mask, "g_autopickup", &psActorFlags, AF_AUTOPICKUP);
 	CMD3(CCC_Mask, "g_dynamic_music", &psActorFlags, AF_DYNAMIC_MUSIC);
+	psActorFlags.set(AF_IMPORTANT_SAVE, TRUE);
 	CMD3(CCC_Mask, "g_important_save", &psActorFlags, AF_IMPORTANT_SAVE);
 
 #ifdef DEBUG
@@ -2237,8 +2455,6 @@ void CCC_RegisterCommands()
 #endif
 
 #ifdef DEBUG
-	CMD4(CCC_Integer, "string_table_error_msg", &CStringTable::m_bWriteErrorsToLog, 0, 1);
-
 	CMD1(CCC_DumpInfos, "dump_infos");
 	CMD1(CCC_DumpTasks, "dump_tasks");
 	CMD1(CCC_DumpMap, "dump_map");
@@ -2288,7 +2504,13 @@ void CCC_RegisterCommands()
 	CMD4(CCC_Integer, "dbg_bones_snd_player", &dbg_moving_bones_snd_player, FALSE, TRUE);
 #endif
 	CMD4(CCC_Float, "con_sensitive", &g_console_sensitive, 0.01f, 1.0f);
-	CMD4(CCC_Integer, "wpn_aim_toggle", &b_toggle_weapon_aim, 0, 1);
+
+	psActorFlags.set(AF_AIM_TOGGLE, FALSE);
+	CMD3(CCC_Mask, "wpn_aim_toggle", &psActorFlags, AF_AIM_TOGGLE);
+	CMD4(CCC_Float, "wpn_degradation", &f_weapon_deterioration, 0.1f, 2.0f);
+	CMD4(CCC_Float, "power_loss_bias", &f_power_loss_bias, 0.0f, 1.0f);
+	CMD4(CCC_Float, "power_loss_factor", &f_power_loss_factor, 0.1f, 3.0f);
+
 	//	CMD4(CCC_Integer,	"hud_old_style",			&g_old_style_ui_hud, 0, 1);
 
 #ifdef DEBUG
@@ -2302,7 +2524,13 @@ void CCC_RegisterCommands()
 
 	CMD4(CCC_Integer, "ai_die_in_anomaly", &g_ai_die_in_anomaly, 0, 1); //Alundaio
 
+	CMD4(CCC_Integer, "pseudogiant_can_damage_objects_on_stomp", &pseudogiantCanDamageObjects, 0, 1);
+
 	CMD4(CCC_Float, "ai_aim_predict_time", &g_aim_predict_time, 0.f, 10.f);
+
+	CMD4(CCC_Float, "head_bob_factor", &g_head_bob_factor, 0.f, 2.f);
+
+	CMD3(CCC_Mask, "weapon_sway", &psDeviceFlags2, rsAimSway);
 
 #ifdef DEBUG
 	//extern BOOL g_use_new_ballistics;
@@ -2310,6 +2538,8 @@ void CCC_RegisterCommands()
 	extern float g_bullet_time_factor;
 	CMD4(CCC_Float, "g_bullet_time_factor", &g_bullet_time_factor, 0.f, 10.f);
 #endif
+	// demonized: string_table_error_msg cvar to display missing translations
+	CMD4(CCC_Integer, "string_table_error_msg", &CStringTable::m_bWriteErrorsToLog, 0, 1);
 
 #ifdef DEBUG
 	extern BOOL g_ai_dbg_sight;
@@ -2341,6 +2571,63 @@ void CCC_RegisterCommands()
 	CMD3(CCC_String, "slot_2", g_quick_use_slots[2], 32);
 	CMD3(CCC_String, "slot_3", g_quick_use_slots[3], 32);
 
-	CMD4(CCC_Integer, "keypress_on_start", &g_keypress_on_start, 0, 1);
-	register_mp_console_commands();
+	psDeviceFlags2.set(rsKeypress, TRUE);
+	CMD3(CCC_Mask, "keypress_on_start", &psDeviceFlags2, rsKeypress);
+
+	//Discord
+	psDeviceFlags2.set(rsDiscord, TRUE);
+	CMD3(CCC_DiscordStatus, "discord_status", &psDeviceFlags2, rsDiscord);
+	CMD4(CCC_Float, "discord_update_rate", &discord_update_rate, .5f, 5.f);
+
+	psActorFlags.set(rsCODPickup, TRUE);
+	CMD3(CCC_Mask, "cl_cod_pickup_mode", &psDeviceFlags2, rsCODPickup);
+	psActorFlags.set(AF_MULTI_ITEM_PICKUP, TRUE);
+	CMD3(CCC_Mask, "g_multi_item_pickup", &psActorFlags, AF_MULTI_ITEM_PICKUP);
+
+	CMD3(CCC_Token, "g_dead_body_collision", &g_dead_body_collision, dead_body_collision_tokens);
+	CMD3(CCC_Mask, "g_feel_grenade", &psDeviceFlags2, rsFeelGrenade);
+	CMD3(CCC_Mask, "g_always_active", &psDeviceFlags2, rsAlwaysActive);
+
+	// demonized: use_english_text_for_missing_translations
+	CMD4(CCC_Integer, "use_english_text_for_missing_translations", &use_english_text_for_missing_translations, 0, 1);
+
+	//First Person Death
+	CMD4(CCC_Integer, "first_person_death", &firstPersonDeath, 0, 1);
+	CMD1(CCC_FPDDirectionOffset, "first_person_death_direction_offset");
+	CMD1(CCC_FPDPositionOffset, "first_person_death_position_offset");
+	CMD4(CCC_Integer, "first_person_death_position_smoothing", &firstPersonDeathPositionSmoothing, 1, 30);
+	CMD4(CCC_Integer, "first_person_death_direction_smoothing", &firstPersonDeathDirectionSmoothing, 1, 60);
+	CMD4(CCC_Float, "first_person_death_near_plane_offset", &viewportNearOffset, -0.1, 0.5);
+
+	// PDA commands
+	CMD4(CCC_Integer, "pda_map_zoom_in_to_mouse", &pda_map_zoom_in_to_mouse, 0, 1);
+	CMD4(CCC_Integer, "pda_map_zoom_out_to_mouse", &pda_map_zoom_out_to_mouse, 0, 1);
+
+	// Mouse Wheel
+	CMD4(CCC_Integer, "mouse_wheel_change_weapon", &mouseWheelChangeWeapon, 0, 1);
+	CMD4(CCC_Integer, "mouse_wheel_invert_zoom", &mouseWheelInvertZoom, 0, 1);
+
+	//Toggle crash saving
+	CMD4(CCC_Integer, "crash_save", &crash_saving::enabled, 0, 1);
+	CMD4(CCC_Integer, "crash_save_count", &crash_saving::saveCountMax, 0, 20);
+
+	// Monster Stuck Fix
+	CMD4(CCC_Integer, "monster_stuck_fix", &monsterStuckFix, 0, 1);
+
+	if (strstr(Core.Params, "-dbgdev"))
+		CMD4(CCC_Float, "g_streff", &streff, -10.f, 10.f);
+	//No need for server commands in a singleplayer-only mod
+	//register_mp_console_commands();
+    
+    zoomFlags.set(NEW_ZOOM, FALSE);
+    zoomFlags.set(SDS_ZOOM, TRUE);
+    zoomFlags.set(SDS_SPEED, TRUE);
+    zoomFlags.set(SDS, TRUE);
+
+    CMD3(CCC_Mask, "new_zoom_enable", &zoomFlags, NEW_ZOOM);
+    CMD3(CCC_Mask, "sds_zoom_enable", &zoomFlags, SDS_ZOOM);
+    CMD3(CCC_Mask, "sds_speed_enable", &zoomFlags, SDS_SPEED);
+    CMD3(CCC_Mask, "sds_enable", &zoomFlags, SDS);
+
+    CMD4(CCC_Float, "zoom_step_count", &n_zoom_step_count, 1.0f, 10.0f);
 }

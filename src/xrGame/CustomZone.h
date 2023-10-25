@@ -2,6 +2,7 @@
 
 #include "space_restrictor.h"
 #include "../xrEngine/feel_touch.h"
+#include "script_export_space.h"
 
 class CActor;
 class CLAItem;
@@ -68,6 +69,9 @@ public:
 
 				float	GetMaxPower						()							{return m_fMaxPower;}
 				void	SetMaxPower						(float p)					{m_fMaxPower = p;}
+
+	float GetEffectiveRadius() { return m_fEffectiveRadius; }
+	void SetEffectiveRadius(float p) { m_fEffectiveRadius = p; }
 
 	//вычисление силы хита в зависимости от расстояния до центра зоны
 	//относительный размер силы (от 0 до 1)
@@ -140,6 +144,32 @@ protected:
 	u32					m_TimeShift;
 	u32					m_StartTime;
 
+	float volumetric_distance;
+	float volumetric_intensity;
+	float volumetric_quality;
+
+	// Interactive grass Settings
+	float m_fBlowoutTimeLeft;
+
+	s8 m_BendGrass_idle_anim;
+	float m_BendGrass_idle_radius;
+	float m_BendGrass_idle_speed;
+	float m_BendGrass_idle_str;
+
+	s8 m_BendGrass_whenactive_anim;
+	float m_BendGrass_whenactive_speed;
+	float m_BendGrass_whenactive_str;
+
+	bool m_BendGrass_Blowout;
+	s32 m_BendGrass_Blowout_time;
+	float m_BendGrass_Blowout_speed;
+	float m_BendGrass_Blowout_radius;
+
+	u8 grassbender_id;
+	u32 grassbender_frame;
+
+	void GrassZoneUpdate();
+
 	//массив с временами, сколько каждое состояние должно 
 	//длиться (если 0, то мгновенно -1 - бесконечность, 
 	//-2 - вообще не должно вызываться)
@@ -166,6 +196,8 @@ public:
 				bool		IsEnabled					()	{return m_eZoneState != eZoneStateDisabled; };
 				void		ZoneEnable					();	
 				void		ZoneDisable					();
+	void ChangeIdleParticles(LPCSTR name, bool bIdleLight);
+	void MoveScript(Fvector pos);
 	EZoneState				ZoneState					() {return m_eZoneState;}
 protected:
 
@@ -247,6 +279,7 @@ protected:
 	float					m_fIdleLightRange;
 	float					m_fIdleLightHeight;
 	CLAItem*				m_pIdleLAnim;
+	CLAItem* m_pBlowLAnim;
 
 	void					StartIdleLight				();
 	void					StopIdleLight				();
@@ -325,4 +358,9 @@ public:
 private:
 	virtual bool            light_in_slow_mode () { return true; }
 
+	DECLARE_SCRIPT_REGISTER_FUNCTION
 };
+
+add_to_type_list(CCustomZone)
+#undef script_type_list
+#define script_type_list save_type_list(CCustomZone)

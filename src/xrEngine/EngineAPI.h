@@ -35,8 +35,8 @@ extern "C" {
 class ENGINE_API CEngineAPI
 {
 private:
-    HMODULE hGame;
-    HMODULE hRender;
+	//HMODULE hGame;
+	//HMODULE hRender;
     HMODULE hTuner;
 public:
     BENCH_SEC_SCRAMBLEMEMBER1

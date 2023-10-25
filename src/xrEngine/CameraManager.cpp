@@ -223,6 +223,21 @@ void CCameraManager::RemoveCamEffector(ECamEffectorType type)
         }
 }
 
+// demonized: removecameffector by pointer
+void CCameraManager::RemoveCamEffector(CEffectorCam* ef)
+{
+	for (EffectorCamIt it = m_EffectorsCam.begin(); it != m_EffectorsCam.end(); it++)
+	{
+		CEffectorCam* cam = (*it);
+		if (cam == ef)
+		{
+			OnEffectorReleased(cam);
+			m_EffectorsCam.erase(it);
+			return;
+		}
+	}
+}
+
 CEffectorPP* CCameraManager::GetPPEffector(EEffectorPPType type)
 {
     for (EffectorPPIt it = m_EffectorsPP.begin(); it != m_EffectorsPP.end(); it++)
@@ -232,8 +247,8 @@ CEffectorPP* CCameraManager::GetPPEffector(EEffectorPPType type)
 
 ECamEffectorType CCameraManager::RequestCamEffectorId()
 {
-    for (ECamEffectorType index = (ECamEffectorType)effCustomEffectorStartID;
-         GetCamEffector(index);
+	ECamEffectorType index = (ECamEffectorType)effCustomEffectorStartID;
+	for (; GetCamEffector(index);
          index = (ECamEffectorType)(index + 1))
     {
         ;
@@ -243,8 +258,8 @@ ECamEffectorType CCameraManager::RequestCamEffectorId()
 
 EEffectorPPType CCameraManager::RequestPPEffectorId()
 {
-    for (EEffectorPPType index = (EEffectorPPType)effCustomEffectorStartID;
-         GetPPEffector(index);
+	EEffectorPPType index = (EEffectorPPType)effCustomEffectorStartID;
+	for (; GetPPEffector(index);
          index = (EEffectorPPType)(index + 1))
     {
         ;
@@ -440,7 +455,21 @@ void CCameraManager::ApplyDevice(float _viewport_near)
     // projection
     Device.fFOV = m_cam_info.fFov;
     Device.fASPECT = m_cam_info.fAspect;
-    Device.mProject.build_projection(deg2rad(m_cam_info.fFov), m_cam_info.fAspect, _viewport_near, m_cam_info.fFar);
+	//--#SM+# Begin-- +SecondVP+
+	// Ia?an÷eouâaai FOV äëy âoî?îaî âü?iî?oa [Recalculate scene FOV for SecondVP frame]
+	if (Device.m_SecondViewport.IsSVPFrame())
+	{
+		// Äëy âoî?îaî âü?iî?oa FOV âunoaâëyai çäanü
+		Device.fFOV = g_pGamePersistent->m_pGShaderConstants->hud_params.y;
+
+		// I?aäói?aaäaai ÷oî iu eçiaíeëe íano?îéee eaia?u
+		Device.m_SecondViewport.isCamReady = true;
+	}
+	else
+		Device.m_SecondViewport.isCamReady = false;
+
+	Device.mProject.build_projection(deg2rad(Device.fFOV), m_cam_info.fAspect, _viewport_near, m_cam_info.fFar);
+	//--#SM+# End--
 
     if (g_pGamePersistent && g_pGamePersistent->m_pMainMenu->IsActive())
         ResetPP();

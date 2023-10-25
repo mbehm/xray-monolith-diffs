@@ -112,7 +112,7 @@ void CHelicopter::ExplodeHelicopter ()
 	CExplosive::SetInitiator(ID());
 	CExplosive::GenExplodeEvent(Position(),Fvector().set(0.f,1.f,0.f));
 	m_brokenSound.stop					();
-
+	m_layered_sounds.PlaySound("sndExplode", Position(), this, false);
 }
 
 void CHelicopter::SetDestPosition (Fvector* pos)

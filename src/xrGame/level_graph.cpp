@@ -215,6 +215,12 @@ u32	CLevelGraph::vertex_id				(const Fvector &position) const
 		)
 	);
 
+	if (!valid_vertex_position(position))
+	{
+		Msg("{@} --- Invalid position for CLevelGraph::vertex_id specified: [%f][%f][%f]", VPUSH(position));
+		return (u32(-1));
+	}
+
 	CPosition			_vertex_position = vertex_position(position);
 	CVertex				*B = m_nodes;
 	CVertex				*E = m_nodes + header().vertex_count();

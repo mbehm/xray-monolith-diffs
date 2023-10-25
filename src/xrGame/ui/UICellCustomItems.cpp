@@ -4,7 +4,7 @@
 #include "../Weapon.h"
 #include "UIDragDropListEx.h"
 #include "UIProgressBar.h"
-
+#include "UIXmlInit.h"
 #define INV_GRID_WIDTHF			50.0f
 #define INV_GRID_HEIGHTF		50.0f
 
@@ -27,6 +27,12 @@ CUIInventoryCellItem::CUIInventoryCellItem(CInventoryItem* itm)
 {
 	m_pData											= (void*)itm;
 
+	if (pSettings->line_exist(itm->m_section_id.c_str(), "icons_texture"))
+	{
+		LPCSTR icons_texture = pSettings->r_string(itm->m_section_id.c_str(), "icons_texture");
+		inherited::SetShader(InventoryUtilities::GetCustomIconTextureShader(icons_texture));
+	}
+	else
 	inherited::SetShader							(InventoryUtilities::GetEquipmentIconsShader());
 
 	m_grid_size.set									(itm->GetInvGridRect().rb);
@@ -68,6 +74,14 @@ CUIInventoryCellItem::CUIInventoryCellItem(CInventoryItem* itm)
 		field = strconcat(sizeof(buf), buf, std::to_string(itrNum).c_str(), "icon_layer");
 	}
 	//-Alundaio
+
+	LPCSTR condbar = READ_IF_EXISTS(pSettings, r_string, itm->m_section_id, "condition_bar", NULL);
+	if (condbar)
+	{
+		CUIXml uiXml;
+		uiXml.Load(CONFIG_PATH, UI_PATH, "actor_menu_item.xml");
+		CUIXmlInit::InitProgressBar(uiXml, condbar, 0, m_pConditionState);
+	}
 }
 
 void CUIInventoryCellItem::OnAfterChild(CUIDragDropListEx* parent_list)
@@ -79,6 +93,7 @@ void CUIInventoryCellItem::OnAfterChild(CUIDragDropListEx* parent_list)
 	}
 }
 
+#include <eatable_item.h>
 
 bool CUIInventoryCellItem::EqualTo(CUICellItem* itm)
 {
@@ -99,6 +114,11 @@ bool CUIInventoryCellItem::EqualTo(CUICellItem* itm)
 	{
 		return false;
 	}
+	CEatableItem* eatable_item_1 = object()->cast_eatable_item();
+	CEatableItem* eatable_item_2 = ci->object()->cast_eatable_item();
+	if (eatable_item_1 && eatable_item_2 && ((eatable_item_1->GetRemainingUses() != eatable_item_1->GetMaxUses()) || (
+		eatable_item_2->GetRemainingUses() != eatable_item_2->GetMaxUses())))
+		return false;
 	return true;
 }
 
@@ -119,6 +139,13 @@ CUIDragItem* CUIInventoryCellItem::CreateDragItem()
 	{
 		s = xr_new<CUIStatic>(); 
 		s->SetAutoDelete(true);
+
+		if (pSettings->line_exist((*it)->m_name, "icons_texture"))
+		{
+			LPCSTR icons_texture = pSettings->r_string((*it)->m_name, "icons_texture");
+			s->SetShader(InventoryUtilities::GetCustomIconTextureShader(icons_texture));
+		}
+		else
 		s->SetShader(InventoryUtilities::GetEquipmentIconsShader());
 		InitLayer(s, (*it)->m_name, (*it)->offset, false, (*it)->m_scale);
 		s->SetTextureColor(i->wnd()->GetTextureColor());
@@ -183,6 +210,13 @@ CUIStatic* CUIInventoryCellItem::InitLayer(CUIStatic* s, LPCSTR section, Fvector
 		s = xr_new<CUIStatic>();
 		s->SetAutoDelete(true);
 		AttachChild(s);
+
+		if (pSettings->line_exist(section, "icons_texture"))
+		{
+			LPCSTR icons_texture = pSettings->r_string(section, "icons_texture");
+			s->SetShader(InventoryUtilities::GetCustomIconTextureShader(icons_texture));
+		}
+		else
 		s->SetShader(InventoryUtilities::GetEquipmentIconsShader());
 		s->SetTextureColor(GetTextureColor());
 	}

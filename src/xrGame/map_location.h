@@ -59,12 +59,15 @@ protected:
 		shared_str			m_LevelName;
 		bool				m_Actuality;
 	};
+
 	SCachedValues			m_cached;
 private:
-							CMapLocation					(const CMapLocation&){R_ASSERT(0);} //disable copy ctor
+	CMapLocation(const CMapLocation&)
+	{
+		R_ASSERT(0);
+	} //disable copy ctor
 
 protected :
-	void					LoadSpot						(LPCSTR type, bool bReload); 
 	void					UpdateSpot						(CUICustomMap* map, CMapSpot* sp );
 	void					UpdateSpotPointer				(CUICustomMap* map, CMapSpotPointer* sp );
 	void					CalcLevelName					();
@@ -108,6 +111,9 @@ public:
 	virtual void			load							(IReader &stream);
 
 	shared_str				m_owner_task_id;
+
+	void LoadSpot(LPCSTR type, bool bReload);
+	LPCSTR spot_type;
 
 #ifdef DEBUG
 	virtual void			Dump							(){};

@@ -1,4 +1,4 @@
-#include "pch_script.h"
+﻿#include "pch_script.h"
 #include "UIWpnParams.h"
 #include "UIXmlInit.h"
 #include "../level.h"
@@ -69,8 +69,12 @@ CUIWpnParams::CUIWpnParams()
 	AttachChild(&m_textAmmoCount2);
 	AttachChild(&m_textAmmoTypes);
 	AttachChild(&m_textAmmoUsedType);
-	AttachChild(&m_stAmmoType1);
-	AttachChild(&m_stAmmoType2);
+	//AttachChild(&m_stAmmoType1);
+	//AttachChild(&m_stAmmoType2);
+	AttachChild(&m_textAccuracy_inc);
+	AttachChild(&m_textDamage_inc);
+	AttachChild(&m_textHandling_inc);
+	AttachChild(&m_textRPM_inc);
 }
 
 CUIWpnParams::~CUIWpnParams()
@@ -105,10 +109,35 @@ void CUIWpnParams::InitFromXml(CUIXml& xml_doc)
 		CUIXmlInit::InitTextWnd			(xml_doc, "wpn_params:cap_ammo_count2",		0, &m_textAmmoCount2);
 		CUIXmlInit::InitTextWnd			(xml_doc, "wpn_params:cap_ammo_types",		0, &m_textAmmoTypes);
 		CUIXmlInit::InitTextWnd			(xml_doc, "wpn_params:cap_ammo_used_type",	0, &m_textAmmoUsedType);
-		CUIXmlInit::InitStatic			(xml_doc, "wpn_params:static_ammo_type1",	0, &m_stAmmoType1);
-		CUIXmlInit::InitStatic			(xml_doc, "wpn_params:static_ammo_type2",	0, &m_stAmmoType2);
-	}
+		//CUIXmlInit::InitStatic			(xml_doc, "wpn_params:static_ammo_type1",	0, &m_stAmmoType1);
+		//CUIXmlInit::InitStatic			(xml_doc, "wpn_params:static_ammo_type2",	0, &m_stAmmoType2);
 
+		CUIXmlInit::InitTextWnd(xml_doc, "wpn_params:cap_accuracy_inc", 0, &m_textAccuracy_inc);
+		CUIXmlInit::InitTextWnd(xml_doc, "wpn_params:cap_damage_inc", 0, &m_textDamage_inc);
+		CUIXmlInit::InitTextWnd(xml_doc, "wpn_params:cap_handling_inc", 0, &m_textHandling_inc);
+		CUIXmlInit::InitTextWnd(xml_doc, "wpn_params:cap_rpm_inc", 0, &m_textRPM_inc);
+
+		// Выводим иконки дл� любого кол-ва типов патронов, опи�анных в XML --#SM+#--
+		bool bAmmoTypeExistInXML = false;
+		string128 str;
+		u8 iCnt = 0;
+		do //--> Считываем кол-во �лотов под иконки патронов в XML
+		{
+			iCnt++;
+			xr_sprintf(str, sizeof(str), "wpn_params:static_ammo_type%d", iCnt);
+
+			bAmmoTypeExistInXML = xml_doc.NavigateToNode(str, 0) != nullptr;
+			if (bAmmoTypeExistInXML)
+			{
+				CUIStatic* pStAmmoType = new CUIStatic();
+				AttachChild(pStAmmoType);
+				CUIXmlInit::InitStatic(xml_doc, str, 0, pStAmmoType);
+
+				m_vecStAmmoTypes.push_back(pStAmmoType);
+			}
+		}
+		while (bAmmoTypeExistInXML);
+	}
 }
 
 void CUIWpnParams::SetInfo( CInventoryItem* slot_wpn, CInventoryItem& cur_wpn )
@@ -144,9 +173,30 @@ void CUIWpnParams::SetInfo( CInventoryItem* slot_wpn, CInventoryItem& cur_wpn )
 		slot_rpm    = iFloor(g_lua_wpn_params->m_functorRPM( slot_section, str_upgrades )*53.0f)/53.0f;
 		slot_accur  = iFloor(g_lua_wpn_params->m_functorAccuracy( slot_section, str_upgrades )*53.0f)/53.0f;
 		slot_hand   = iFloor(g_lua_wpn_params->m_functorHandling( slot_section, str_upgrades )*53.0f)/53.0f;
-		slot_damage = ( GameID() == eGameIDSingle ) ?
-			iFloor(g_lua_wpn_params->m_functorDamage( slot_section, str_upgrades )*53.0f)/53.0f
+		slot_damage = (GameID() == eGameIDSingle)
+			              ? iFloor(g_lua_wpn_params->m_functorDamage(slot_section, str_upgrades) * 53.0f) / 53.0f
 			: iFloor(g_lua_wpn_params->m_functorDamageMP( slot_section, str_upgrades )*53.0f)/53.0f;
+
+		string128 str_value;
+		float adj_value = cur_accur - slot_accur;
+		xr_sprintf(str_value, sizeof(str_value), adj_value >= 0 ? "+%.1f%%" : "%.1f%%", adj_value);
+		m_textAccuracy_inc.SetText(str_value);
+		adj_value = cur_damage - slot_damage;
+		xr_sprintf(str_value, sizeof(str_value), adj_value >= 0 ? "+%.1f%%" : "%.1f%%", adj_value);
+		m_textDamage_inc.SetText(str_value);
+		adj_value = cur_hand - slot_hand;
+		xr_sprintf(str_value, sizeof(str_value), adj_value >= 0 ? "+%.1f%%" : "%.1f%%", adj_value);
+		m_textHandling_inc.SetText(str_value);
+		adj_value = cur_rpm - slot_rpm;
+		xr_sprintf(str_value, sizeof(str_value), adj_value >= 0 ? "+%.1f%%" : "%.1f%%", adj_value);
+		m_textRPM_inc.SetText(str_value);
+	}
+	else
+	{
+		m_textAccuracy_inc.SetText("");
+		m_textDamage_inc.SetText("");
+		m_textHandling_inc.SetText("");
+		m_textRPM_inc.SetText("");
 	}
 	
 	m_progressAccuracy.SetTwoPos( cur_accur,  slot_accur );
@@ -190,35 +240,55 @@ void CUIWpnParams::SetInfo( CInventoryItem* slot_wpn, CInventoryItem& cur_wpn )
 		xr_sprintf(str, sizeof(str), "%s", pSettings->r_string(ammo_types[0].c_str(), "inv_name_short"));
 		m_textAmmoUsedType.SetTextST(str);
 
-		m_stAmmoType1.SetShader(InventoryUtilities::GetEquipmentIconsShader());
-		Frect				tex_rect;
-		tex_rect.x1			= float(pSettings->r_u32(ammo_types[0].c_str(), "inv_grid_x") * INV_GRID_WIDTH);
-		tex_rect.y1			= float(pSettings->r_u32(ammo_types[0].c_str(), "inv_grid_y") * INV_GRID_HEIGHT);
-		tex_rect.x2			= float(pSettings->r_u32(ammo_types[0].c_str(), "inv_grid_width") * INV_GRID_WIDTH );
-		tex_rect.y2			= float(pSettings->r_u32(ammo_types[0].c_str(), "inv_grid_height") * INV_GRID_HEIGHT);
-		tex_rect.rb.add		(tex_rect.lt);
-		m_stAmmoType1.SetTextureRect(tex_rect);
-		m_stAmmoType1.TextureOn();
-		m_stAmmoType1.SetStretchTexture(true);
-		m_stAmmoType1.SetWndSize(Fvector2().set((tex_rect.x2-tex_rect.x1)*UI().get_current_kx(), tex_rect.y2-tex_rect.y1));
+		int counter = 0;
+		xr_vector<shared_str> good_ammo;
 
-		m_stAmmoType2.SetShader(InventoryUtilities::GetEquipmentIconsShader());
-		if(ammo_types.size()==1)
+		xr_vector<shared_str>::iterator it = ammo_types.begin();
+		for (; it != ammo_types.end();)
 		{
+			if (ammo_types[counter] != NULL && !strstr(ammo_types[counter].c_str(), "_bad") && !strstr(
+				ammo_types[counter].c_str(), "_verybad"))
+				good_ammo.push_back(ammo_types[counter].c_str());
+
+			it++;
+			counter++;
+		}
+
+		// Выводим иконки патронов --#SM+#--
+		for (u8 i = 0; i < m_vecStAmmoTypes.size(); i++)
+		{
+			CUIStatic& StAmmoType = *m_vecStAmmoTypes[i];
+
+			StAmmoType.SetShader(InventoryUtilities::GetEquipmentIconsShader());
+
+			Frect tex_rect;
+			if (i >= good_ammo.size())
+		{
+				//--> Мы превы�или кол-во типов патронов у текущего оружи� - �крываем лишнюю иконку
 			tex_rect.set(0,0,1,1);
 		}
 		else
 		{
-			tex_rect.x1			= float(pSettings->r_u32(ammo_types[1].c_str(), "inv_grid_x") * INV_GRID_WIDTH);
-			tex_rect.y1			= float(pSettings->r_u32(ammo_types[1].c_str(), "inv_grid_y") * INV_GRID_HEIGHT);
-			tex_rect.x2			= float(pSettings->r_u32(ammo_types[1].c_str(), "inv_grid_width") * INV_GRID_WIDTH );
-			tex_rect.y2			= float(pSettings->r_u32(ammo_types[1].c_str(), "inv_grid_height") * INV_GRID_HEIGHT);
+				if (pSettings->line_exist(good_ammo[i].c_str(), "icons_texture"))
+				{
+					LPCSTR icons_texture = pSettings->r_string(good_ammo[i].c_str(), "icons_texture");
+					StAmmoType.SetShader(InventoryUtilities::GetCustomIconTextureShader(icons_texture));
+				}
+
+				//--> Иначе отри�овываем её
+				tex_rect.x1 = float(pSettings->r_u32(good_ammo[i].c_str(), "inv_grid_x") * INV_GRID_WIDTH);
+				tex_rect.y1 = float(pSettings->r_u32(good_ammo[i].c_str(), "inv_grid_y") * INV_GRID_HEIGHT);
+				tex_rect.x2 = float(pSettings->r_u32(good_ammo[i].c_str(), "inv_grid_width") * INV_GRID_WIDTH);
+				tex_rect.y2 = float(pSettings->r_u32(good_ammo[i].c_str(), "inv_grid_height") * INV_GRID_HEIGHT);
 			tex_rect.rb.add		(tex_rect.lt);
 		}
-		m_stAmmoType2.SetTextureRect(tex_rect);
-		m_stAmmoType2.TextureOn();
-		m_stAmmoType2.SetStretchTexture(true);
-		m_stAmmoType2.SetWndSize(Fvector2().set((tex_rect.x2-tex_rect.x1)*UI().get_current_kx(), tex_rect.y2-tex_rect.y1));
+
+			StAmmoType.SetTextureRect(tex_rect);
+			StAmmoType.TextureOn();
+			StAmmoType.SetStretchTexture(true);
+			StAmmoType.SetWndSize(
+				Fvector2().set((tex_rect.x2 - tex_rect.x1) * UI().get_current_kx(), tex_rect.y2 - tex_rect.y1));
+		}
 	}
 }
 

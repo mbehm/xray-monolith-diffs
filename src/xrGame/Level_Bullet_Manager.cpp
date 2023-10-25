@@ -12,6 +12,7 @@
 #include "game_cl_base_weapon_usage_statistic.h"
 #include "game_cl_mp.h"
 #include "reward_event_generator.h"
+#include "material_manager.h"
 
 #include "../Include/xrRender/UIRender.h"
 #include "../Include/xrRender/Kinematics.h"
@@ -41,6 +42,7 @@ SBullet::~SBullet()
 {
 }
 
+u32 SBullet::bulletCount = 0;
 
 void SBullet::Init(const Fvector& position,
 				   const Fvector& direction,
@@ -58,6 +60,7 @@ void SBullet::Init(const Fvector& position,
 {
 	flags._storage			= 0;
 	bullet_pos 				= position;
+	starting_speed *= cartridge.param_s.kBulletSpeed;
 	speed = max_speed		= starting_speed;
 	VERIFY					(speed > 0.f);
 
@@ -105,6 +108,37 @@ void SBullet::Init(const Fvector& position,
 
 	targetID				= 0;	
 	density_mode			= 0;
+
+	catridgeSection = cartridge.m_ammoSect.c_str();
+	bulletId = bulletCount++;
+}
+
+// demonized: construct bullet table for Lua
+void populateBulletTable (
+	luabind::object& table,
+	const Fvector& position,
+	const Fvector& direction,
+	float speed,
+	float fly_dist,
+	LPCSTR catridgeSection,
+	u32 bulletId,
+	u16 weaponId,
+	u16 parentId,
+	u16 targetId,
+	LPCSTR materialName,
+	float life_time
+) {
+	table["position"] = position;
+	table["direction"] = direction;
+	table["speed"] = speed;
+	table["distance"] = fly_dist;
+	table["section"] = catridgeSection;
+	table["bullet_id"] = bulletId;
+	table["weapon_id"] = weaponId;
+	table["parent_id"] = parentId;
+	table["target_id"] = targetId;
+	table["material"] = materialName;
+	table["life_time"] = life_time;
 }
 
 
@@ -215,16 +249,41 @@ void CBulletManager::AddBullet(const Fvector& position,
 							   bool AimBullet,
 							   int iShotNum)
 {
+#ifdef DEBUG
 	VERIFY						( m_thread_id == GetCurrentThreadId() );
+#endif
 
 	VERIFY						(u16(-1)!=cartridge.bullet_material_idx);
 //	u32 CurID					= Level().CurrentControlEntity()->ID();
 //	u32 OwnerID					= sender_id;
 	m_Bullets.push_back			(SBullet());
 	SBullet& bullet				= m_Bullets.back();
-	bullet.Init					(position, direction, starting_speed, power, /*power_critical,*/ impulse, sender_id, sendersweapon_id, e_hit_type, maximum_distance, cartridge, air_resistance_factor, SendHit, iShotNum);
+	bullet.Init(position, direction, starting_speed, power, /*power_critical,*/ impulse, sender_id, sendersweapon_id,
+	            e_hit_type, maximum_distance, cartridge, air_resistance_factor, SendHit, iShotNum);
 //	bullet.frame_num			= Device.dwFrame;
 	bullet.flags.aim_bullet		= AimBullet;
+
+	// demonized - bullet on init callback
+	luabind::functor<void> funct;
+	if (ai().script_engine().functor("_G.CBulletOnInit", funct)) {
+		luabind::object table = luabind::newtable(ai().script_engine().lua());
+		populateBulletTable(
+			table,
+			position,
+			direction,
+			starting_speed,
+			0,
+			bullet.catridgeSection,
+			bullet.bulletId,
+			bullet.weapon_id,
+			bullet.parent_id,
+			65535,
+			NULL,
+			bullet.life_time
+		);
+		funct(table);
+	}
+
 	if (!IsGameTypeSingle())
 	{
 		if (SendHit)
@@ -795,6 +854,13 @@ bool CBulletManager::trajectory_check_error	(
 	bullet.start_velocity	= Fvector().mul(bullet.dir, bullet.speed);
 	bullet.born_time		+= iFloor(data.collide_time*1000.f);
 	bullet.life_time		= 0.f;
+
+	// Add RQ range to the bullet fly dist
+	for (auto i = storage.r_begin(); i != storage.r_end();) {
+		bullet.fly_dist += i->range;
+		break;
+	}
+	
 	return					(false);
 }
 
@@ -825,6 +891,41 @@ static bool try_update_bullet				(SBullet& bullet, Fvector const& gravity, float
 	bullet.bullet_pos			= new_position;
 	bullet.dir					= Fvector(new_velocity).normalize_safe();
 	bullet.life_time			= time;
+
+	// demonized: bullet on update callback
+	luabind::functor<void> funct;
+	if (ai().script_engine().functor("_G.CBulletOnUpdate", funct)) {
+		luabind::object table = luabind::newtable(ai().script_engine().lua());
+		populateBulletTable(
+			table,
+			bullet.bullet_pos,
+			bullet.dir,
+			bullet.speed,
+			bullet.fly_dist,
+			bullet.catridgeSection,
+			bullet.bulletId,
+			bullet.weapon_id,
+			bullet.parent_id,
+			65535,
+			NULL,
+			bullet.life_time
+		);
+		funct(table);
+
+		/*
+		luabind::object output = funct(table);
+
+		if (output && output.type() == LUA_TTABLE) {
+			bullet.bullet_pos = luabind::object_cast<Fvector>(table["position"]);
+			bullet.dir = luabind::object_cast<Fvector>(table["direction"]);
+			bullet.speed = luabind::object_cast<float>(table["speed"]);
+			bullet.fly_dist = luabind::object_cast<float>(table["distance"]);
+			bullet.weapon_id = luabind::object_cast<u16>(table["weapon_id"]);
+			bullet.parent_id = luabind::object_cast<u16>(table["parent_id"]);
+		}
+		*/
+	}
+
 	return						(true);
 }
 
@@ -1045,17 +1146,65 @@ void CBulletManager::CommitEvents			()	// @ the start of frame
 	if (m_Events.size() > 1000)
 		Msg			("! too many bullets during single frame: %d", m_Events.size());
 
-	for (u32 _it=0; _it<m_Events.size(); _it++)	{
+	for (u32 _it = 0; _it < m_Events.size(); _it++)
+	{
 		_event&		E	= m_Events[_it];
+		SBullet* bullet = &E.bullet;
+		Fvector& end_point = E.point;
+		SGameMtl* mt = GMLib.GetMaterialByIdx(E.tgt_material);
 		switch (E.Type)
 		{
 		case EVENT_HIT:
 			{
+				// demonized: bullet on impact callback
+				luabind::functor<void> funct;
+				if (ai().script_engine().functor("_G.CBulletOnImpact", funct)) {
+					luabind::object table = luabind::newtable(ai().script_engine().lua());
+					populateBulletTable(
+						table,
+						!fis_zero(end_point.x) && !fis_zero(end_point.y) && !fis_zero(end_point.z) ? end_point : bullet->bullet_pos,
+						bullet->dir,
+						bullet->speed,
+						bullet->fly_dist + E.R.range,
+						bullet->catridgeSection,
+						bullet->bulletId,
+						bullet->weapon_id,
+						bullet->parent_id,
+						E.dynamic && E.R.O ? E.R.O->ID() : 65535,
+						mt ? mt->m_Name.c_str() : NULL,
+						bullet->life_time
+					);
+					funct(table);
+				}
+
 				if (E.dynamic)	DynamicObjectHit	(E);
 				else			StaticObjectHit		(E);
-			}break;
+			}
+
+			break;
 		case EVENT_REMOVE:
 			{
+				// demonized: bullet on remove callback
+				luabind::functor<void> funct;
+				if (ai().script_engine().functor("_G.CBulletOnRemove", funct)) {
+					luabind::object table = luabind::newtable(ai().script_engine().lua());
+					populateBulletTable(
+						table,
+						!fis_zero(end_point.x) && !fis_zero(end_point.y) && !fis_zero(end_point.z) ? end_point : bullet->bullet_pos,
+						bullet->dir,
+						bullet->speed,
+						bullet->fly_dist,
+						bullet->catridgeSection,
+						bullet->bulletId,
+						bullet->weapon_id,
+						bullet->parent_id,
+						65535,
+						NULL,
+						bullet->life_time
+					);
+					funct(table);
+				}
+
 				if (E.bullet.flags.allow_sendhit && GameID() != eGameIDSingle)
 					Game().m_WeaponUsageStatistic->OnBullet_Remove(&E.bullet);
 				m_Bullets[E.tgt_material] = m_Bullets.back();

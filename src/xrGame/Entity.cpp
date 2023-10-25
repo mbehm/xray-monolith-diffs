@@ -163,13 +163,21 @@ BOOL CEntity::net_Spawn(CSE_Abstract* DC)
     {
         SetfHealth(E->get_health());
 
-        R_ASSERT2(!((E->get_killer_id() != ALife::_OBJECT_ID(-1)) && g_Alive()), make_string("server entity [%s][%d] has an killer [%d] and not dead",
-            E->name_replace(), E->ID, E->get_killer_id()).c_str());
+		//R_ASSERT2(!((E->get_killer_id() != ALife::_OBJECT_ID(-1)) && g_Alive()),
+		//          make_string("server entity [%s][%d] has an killer [%d] and not dead",
+		//	          E->name_replace(), E->ID, E->get_killer_id()).c_str());
 
         m_killer_id = E->get_killer_id();
-        if (m_killer_id == ID())
+
+		if ((m_killer_id != ALife::_OBJECT_ID(-1)) && g_Alive())
+		{
+			Msg("!server entity [%s][%d] has a killer [%d] and is not dead", E->name_replace(), E->ID, E->get_killer_id());
             m_killer_id = ALife::_OBJECT_ID(-1);
     }
+		
+		//if (m_killer_id == ID())
+		//	m_killer_id = ALife::_OBJECT_ID(-1);
+	}
     else
         SetfHealth(1.0f);
 
@@ -211,7 +219,7 @@ BOOL CEntity::net_Spawn(CSE_Abstract* DC)
     if (!g_Alive())
     {
         m_level_death_time = Device.dwTimeGlobal;
-        m_game_death_time = E->m_game_death_time;;
+		m_game_death_time = E->m_game_death_time;
     }
 
     if (!inherited::net_Spawn(DC))
@@ -254,7 +262,7 @@ void CEntity::KillEntity(u16 whoID, BOOL bypass_actor_check /*AVO: added for act
 #ifdef ACTOR_BEFORE_DEATH_CALLBACK
     if (IsGameTypeSingle() && (this->ID() == Actor()->ID()) && (bypass_actor_check != TRUE))
     {
-		Actor()->use_HolderEx(NULL,true);
+		Actor()->use_HolderEx(NULL, false);
         Actor()->callback(GameObject::eActorBeforeDeath)(whoID);
         return;
     }
@@ -387,3 +395,24 @@ void CEntity::ChangeTeam(int team, int squad, int group)
     Level().seniority_holder().team(g_Team()).squad(g_Squad()).group(g_Group()).register_member(this);
     on_after_change_team();
 }
+
+//--DSR-- HeatVision_start
+u32 clampU(u32 x, u32 a, u32 b) {
+	if (x < a) return a;
+	else if (x > b) return b;
+	return x;
+}
+
+float CEntity::GetHotness() {
+	if (AlreadyDie() || !g_Alive())
+		return 1.0f - (float)clampU(Device.dwTimeGlobal - m_level_death_time, 0, 20000) / 20000.0f;
+	return 1.0f;
+}
+
+void CEntity::OnChangeVisual()
+{
+	inherited::OnChangeVisual();
+	if (renderable.visual != 0)
+		renderable.visual->MarkAsHot(true);
+}
+//--DSR-- HeatVision_end

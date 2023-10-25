@@ -102,6 +102,15 @@ void CInventoryItem::Load(LPCSTR section)
 	m_name				= CStringTable().translate( pSettings->r_string(section, "inv_name") );
 	m_nameShort			= CStringTable().translate( pSettings->r_string(section, "inv_name_short") );
 
+	if (pSettings->line_exist(section, "kind"))
+		m_kind._set(pSettings->r_string(section, "kind"));
+	else
+	{
+		m_kind = NULL;
+		if (FS.m_Flags.test(FS.flPrintLTX))
+			Log("'kind' for section %s doesn't exist!", section);
+	}
+
 	m_weight			= pSettings->r_float(section, "inv_weight");
 	R_ASSERT			(m_weight>=0.f);
 
@@ -130,6 +139,7 @@ void CInventoryItem::Load(LPCSTR section)
 	}
 	m_icon_name					= READ_IF_EXISTS(pSettings, r_string,section,"icon_name",		NULL);
 
+	m_fLowestBatteryCharge = READ_IF_EXISTS(pSettings, r_float, section, "power_critical", .03f);
 }
 
 void  CInventoryItem::ChangeCondition(float fDeltaCondition)
@@ -306,7 +316,7 @@ bool CInventoryItem::Detach(const char* item_section_name, bool b_spawn_item)
 			if (object().H_Parent())
 				D->ID_Parent	=	u16(object().H_Parent()->ID());
 			else
-				D->ID_Parent	= NULL;
+				D->ID_Parent = 0xffff;
 		}
 		D->ID_Phantom		=	0xffff;
 		D->o_Position		=	object().Position();

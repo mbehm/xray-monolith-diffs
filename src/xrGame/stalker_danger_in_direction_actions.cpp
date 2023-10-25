@@ -287,15 +287,21 @@ void CStalkerActionDangerInDirectionDetour::execute								()
 
 	Fvector								position = object().memory().danger().selected()->position();
 
-	if (object().movement().path_completed()) {
-		object().m_ce_angle->setup			(position,10.f,object().ffGetRange(),mem_object.m_object_params.m_level_vertex_id);
-		const CCoverPoint					*point = ai().cover_manager().best_cover(object().Position(),10.f,*object().m_ce_angle,CStalkerMovementRestrictor(m_object,true));
-		if (!point) {
+	if (object().movement().path_completed())
+	{
 			object().m_ce_angle->setup		(position,10.f,object().ffGetRange(),mem_object.m_object_params.m_level_vertex_id);
-			point							= ai().cover_manager().best_cover(object().Position(),30.f,*object().m_ce_angle,CStalkerMovementRestrictor(m_object,true));
+		const CCoverPoint* point = ai().cover_manager().best_cover(object().Position(), 10.f, *object().m_ce_angle,
+		                                                           CStalkerMovementRestrictor(m_object, true));
+		if (!point)
+		{
+			object().m_ce_angle->setup(position, 10.f, object().ffGetRange(),
+			                           mem_object.m_object_params.m_level_vertex_id);
+			point = ai().cover_manager().best_cover(object().Position(), 30.f, *object().m_ce_angle,
+			                                        CStalkerMovementRestrictor(m_object, true));
 		}
 
-		if (point) {
+		if (point)
+		{
 			object().movement().set_level_dest_vertex	(point->level_vertex_id());
 			object().movement().set_desired_position	(&point->position());
 		}

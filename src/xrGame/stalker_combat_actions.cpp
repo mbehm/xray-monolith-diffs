@@ -1190,9 +1190,11 @@ void CStalkerActionCriticalHit::initialize()
 	object().brain().affect_cover(false);
 	object().movement().set_movement_type(eMovementTypeStand);
 
-	if (object().inventory().ActiveItem() && object().best_weapon() && (object().inventory().ActiveItem()->object().ID() == object().best_weapon()->object().ID()))
+	if (object().inventory().ActiveItem() && object().best_weapon() && (object().inventory().ActiveItem()->object().ID()
+		== object().best_weapon()->object().ID()))
 	{
-		if (object().memory().enemy().selected()) {
+		if (object().memory().enemy().selected())
+	{
 			u32									min_queue_size, max_queue_size, min_queue_interval, max_queue_interval;
 			float								distance = object().memory().enemy().selected()->Position().distance_to(object().Position());
 			select_queue_params(distance, min_queue_size, max_queue_size, min_queue_interval, max_queue_interval);

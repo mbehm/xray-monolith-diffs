@@ -54,9 +54,11 @@ public:
 	shared_str				m_NightVisionSect;
 
 	bool					bIsHelmetAvaliable;
+	bool bIsBackpackAvaliable;
 
 	virtual u32				ef_equipment_type		() const;
 	virtual	BOOL			BonePassBullet			(int boneID);
+	float get_HitFracActor() const;
 	const shared_str&		GetFullIconName			() const	{ return m_full_icon_name; }
 	u32						get_artefact_count		() const	{ return m_artefact_count; }
 
@@ -69,4 +71,10 @@ public:
 
 protected:
 	virtual bool			install_upgrade_impl( LPCSTR section, bool test );
+
+	DECLARE_SCRIPT_REGISTER_FUNCTION
 };
+
+add_to_type_list(CCustomOutfit)
+#undef script_type_list
+#define script_type_list save_type_list(CCustomOutfit)

@@ -31,6 +31,11 @@ public:
 
 	float					HitThroughArmor			(float hit_power, s16 element, float ap, bool& add_wound, ALife::EHitType hit_type);
 
+protected:
+	HitImmunity::HitTypeSVec m_HitTypeProtection;
+	SBoneProtections* m_boneProtection;
+	
+public:
 	float					m_fPowerLoss;
 	float					m_fHealthRestoreSpeed;
 	float 					m_fRadiationRestoreSpeed;
@@ -40,12 +45,16 @@ public:
 
 	float					m_fShowNearestEnemiesDistance;
 
+	float get_HitFracActor() const;
 	void					ReloadBonesProtection	();
 	void					AddBonesProtection		(LPCSTR bones_section);
-protected:
-	HitImmunity::HitTypeSVec	m_HitTypeProtection;
-	SBoneProtections*		m_boneProtection;	
 
 protected:
 	virtual bool			install_upgrade_impl	( LPCSTR section, bool test );
+	
+	DECLARE_SCRIPT_REGISTER_FUNCTION
 };
+
+add_to_type_list(CHelmet)
+#undef script_type_list
+#define script_type_list save_type_list(CHelmet)

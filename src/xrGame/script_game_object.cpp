@@ -41,9 +41,12 @@
 #include "physics_shell_scripted.h"
 #include "ai\phantom\phantom.h"
 
+#include "UIGameSP.h"
 #include "uigamecustom.h"
 #include "ui/UIActorMenu.h"
 #include "InventoryBox.h"
+#include "Pda.h"
+#include "player_hud.h"
 
 class CScriptBinderObject;
 
@@ -74,21 +77,36 @@ BIND_FUNCTION10(&object(), CScriptGameObject::Squad, CEntity, g_Squad, int, -1);
 BIND_FUNCTION10(&object(), CScriptGameObject::Group, CEntity, g_Group, int, -1);
 BIND_FUNCTION10(&object(), CScriptGameObject::GetFOV, CEntityAlive, ffGetFov, float, -1);
 BIND_FUNCTION10(&object(), CScriptGameObject::GetRange, CEntityAlive, ffGetRange, float, -1);
+
 BIND_FUNCTION10(&object(), CScriptGameObject::GetHealth, CEntityAlive, conditions().GetHealth, float, -1);
+BIND_FUNCTION01(&object(), CScriptGameObject::SetHealth, CEntityAlive, conditions().SetHealth, float, float);
+BIND_FUNCTION01(&object(), CScriptGameObject::ChangeHealth, CEntityAlive, conditions().ChangeHealth, float, float);
+
 BIND_FUNCTION10(&object(), CScriptGameObject::GetPsyHealth, CEntityAlive, conditions().GetPsyHealth, float, -1);
+BIND_FUNCTION01(&object(), CScriptGameObject::SetPsyHealth, CEntityAlive, conditions().SetPsyHealth, float, float);
+BIND_FUNCTION01(&object(), CScriptGameObject::ChangePsyHealth, CEntityAlive, conditions().ChangePsyHealth, float, float);
+
 BIND_FUNCTION10(&object(), CScriptGameObject::GetPower, CEntityAlive, conditions().GetPower, float, -1);
+BIND_FUNCTION01(&object(), CScriptGameObject::SetPower, CEntityAlive, conditions().SetPower, float, float);
+BIND_FUNCTION01(&object(), CScriptGameObject::ChangePower, CEntityAlive, conditions().ChangePower, float, float);
+
 BIND_FUNCTION10(&object(), CScriptGameObject::GetSatiety, CEntityAlive, conditions().GetSatiety, float, -1);
-BIND_FUNCTION10(&object(), CScriptGameObject::GetRadiation, CEntityAlive, conditions().GetRadiation, float, -1);
-BIND_FUNCTION10(&object(), CScriptGameObject::GetBleeding, CEntityAlive, conditions().BleedingSpeed, float, -1);
-BIND_FUNCTION10(&object(), CScriptGameObject::GetMorale, CEntityAlive, conditions().GetEntityMorale, float, -1);
-BIND_FUNCTION01(&object(), CScriptGameObject::SetHealth, CEntityAlive, conditions().ChangeHealth, float, float);
-BIND_FUNCTION01(&object(), CScriptGameObject::SetPsyHealth, CEntityAlive, conditions().ChangePsyHealth, float, float);
-BIND_FUNCTION01(&object(), CScriptGameObject::SetPower, CEntityAlive, conditions().ChangePower, float, float);
+BIND_FUNCTION01(&object(), CScriptGameObject::SetSatiety, CEntityAlive, conditions().SetSatiety, float, float);
 BIND_FUNCTION01(&object(), CScriptGameObject::ChangeSatiety, CEntityAlive, conditions().ChangeSatiety, float, float);
-BIND_FUNCTION01(&object(), CScriptGameObject::SetRadiation, CEntityAlive, conditions().ChangeRadiation, float, float);
-BIND_FUNCTION01(&object(), CScriptGameObject::SetBleeding, CEntityAlive, conditions().ChangeBleeding, float, float);
-BIND_FUNCTION01(&object(), CScriptGameObject::SetCircumspection, CEntityAlive, conditions().ChangeCircumspection, float, float);
-BIND_FUNCTION01(&object(), CScriptGameObject::SetMorale, CEntityAlive, conditions().ChangeEntityMorale, float, float);
+
+BIND_FUNCTION10(&object(), CScriptGameObject::GetRadiation, CEntityAlive, conditions().GetRadiation, float, -1);
+BIND_FUNCTION01(&object(), CScriptGameObject::SetRadiation, CEntityAlive, conditions().SetRadiation, float, float);
+BIND_FUNCTION01(&object(), CScriptGameObject::ChangeRadiation, CEntityAlive, conditions().ChangeRadiation, float, float);
+
+BIND_FUNCTION10(&object(), CScriptGameObject::GetMorale, CEntityAlive, conditions().GetEntityMorale, float, -1);
+BIND_FUNCTION01(&object(), CScriptGameObject::SetMorale, CEntityAlive, conditions().SetEntityMorale, float, float);
+BIND_FUNCTION01(&object(), CScriptGameObject::ChangeMorale, CEntityAlive, conditions().ChangeEntityMorale, float, float);
+
+BIND_FUNCTION10(&object(), CScriptGameObject::GetBleeding, CEntityAlive, conditions().BleedingSpeed, float, -1);
+BIND_FUNCTION01(&object(), CScriptGameObject::ChangeBleeding, CEntityAlive, conditions().ChangeBleeding, float, float);
+
+BIND_FUNCTION01(&object(), CScriptGameObject::ChangeCircumspection, CEntityAlive, conditions().ChangeCircumspection, float, float);
+
 BIND_FUNCTION02(&object(), CScriptGameObject::SetScriptControl, CScriptEntity, SetScriptControl, bool, LPCSTR, bool, shared_str);
 BIND_FUNCTION10(&object(), CScriptGameObject::GetScriptControl, CScriptEntity, GetScriptControl, bool, false);
 BIND_FUNCTION10(&object(), CScriptGameObject::GetScriptControlName, CScriptEntity, GetScriptControlName, LPCSTR, "");
@@ -159,11 +177,6 @@ const CScriptEntityAction *CScriptGameObject::GetActionByIndex(u32 action_index)
 //////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////
-
-u16 CScriptGameObject::get_bone_id(LPCSTR bone_name) const
-{
-    return object().Visual()->dcast_PKinematics()->LL_BoneID(bone_name);
-}
 
 cphysics_shell_scripted* CScriptGameObject::get_physics_shell() const
 {
@@ -310,17 +323,209 @@ u32 CScriptGameObject::get_current_patrol_point_index()
 //////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////
 
-Fvector	CScriptGameObject::bone_position(LPCSTR bone_name) const
+u16 CScriptGameObject::bone_id(LPCSTR bone_name, bool bHud)
 {
-    u16					bone_id;
+	IKinematics* k = nullptr;
+
+	if (bHud)
+	{
+		CActor* act = smart_cast<CActor*>(&object());
+		CHudItem* itm = smart_cast<CHudItem*>(&object());
+		if (itm && itm->HudItemData())
+			k = itm->HudItemData()->m_model;
+		else if (act)
+			k = g_player_hud->m_model->dcast_PKinematics();
+	} else {
+		k = object().Visual()->dcast_PKinematics();
+	}
+
+	if (!k) return BI_NONE;
+
+	u16 bone_id = BI_NONE;
     if (xr_strlen(bone_name))
-        bone_id = smart_cast<IKinematics*>(object().Visual())->LL_BoneID(bone_name);
-    else
-        bone_id = smart_cast<IKinematics*>(object().Visual())->LL_GetBoneRoot();
+		bone_id = k->LL_BoneID(bone_name);
+
+	return bone_id;
+}
+
+Fvector CScriptGameObject::bone_position(u16 bone_id, bool bHud)
+{
+	//if (bone_id == BI_NONE) return Fvector().set(0, 0, 0);
+
+	IKinematics* k = nullptr;
+	Fmatrix* xform = nullptr;
+
+	if (bHud)
+	{
+		CActor* act = smart_cast<CActor*>(&object());
+		CHudItem* itm = smart_cast<CHudItem*>(&object());
+		if (itm && itm->HudItemData())
+		{
+			k = itm->HudItemData()->m_model;
+			xform = &itm->HudItemData()->m_item_transform;
+		}
+		else if (act)
+		{
+			k = (bone_id > 20) ? g_player_hud->m_model->dcast_PKinematics() : g_player_hud->m_model_2->dcast_PKinematics();
+			xform = (bone_id > 20) ? &g_player_hud->m_transform : &g_player_hud->m_transform_2;
+		}
+	} else {
+		k = object().Visual()->dcast_PKinematics();
+		xform = &object().XFORM();
+	}
+
+	if (!k) return Fvector().set(0, 0, 0);
+
+	// demonized: backwards compatibility with scripts, get root bone if bone_id is BI_NONE
+	if (bone_id == BI_NONE) {
+		if (strstr(Core.Params, "-dbg")) {
+			Msg("![bone_position] Incorrect bone_id provided for %s (%d), fallback to root bone", object().cNameSect_str(), object().ID());
+			ai().script_engine().print_stack();
+		}
+		bone_id = k->LL_GetBoneRoot();
+	}
 
     Fmatrix				matrix;
-    matrix.mul_43(object().XFORM(), smart_cast<IKinematics*>(object().Visual())->LL_GetBoneInstance(bone_id).mTransform);
+	matrix.mul_43(*xform, k->LL_GetTransform(bone_id));
     return				(matrix.c);
+}
+
+Fvector CScriptGameObject::bone_direction(u16 bone_id, bool bHud)
+{
+	//if (bone_id == BI_NONE) return Fvector().set(0, 0, 0);
+
+	IKinematics* k = nullptr;
+	Fmatrix* xform = nullptr;
+
+	if (bHud)
+	{
+		CActor* act = smart_cast<CActor*>(&object());
+		CHudItem* itm = smart_cast<CHudItem*>(&object());
+		if (itm && itm->HudItemData())
+		{
+			k = itm->HudItemData()->m_model;
+			xform = &itm->HudItemData()->m_item_transform;
+		}
+		else if (act)
+		{
+			k = (bone_id > 20) ? g_player_hud->m_model->dcast_PKinematics() : g_player_hud->m_model_2->dcast_PKinematics();
+			xform = (bone_id > 20) ? &g_player_hud->m_transform : &g_player_hud->m_transform_2;
+		}
+	} else {
+		k = object().Visual()->dcast_PKinematics();
+		xform = &object().XFORM();
+	}
+
+	if (!k) return Fvector().set(0, 0, 0);
+
+	// demonized: backwards compatibility with scripts, get root bone if bone_id is BI_NONE
+	if (bone_id == BI_NONE) {
+		if (strstr(Core.Params, "-dbg")) {
+			Msg("![bone_direction] Incorrect bone_id provided for %s (%d), fallback to root bone", object().cNameSect_str(), object().ID());
+			ai().script_engine().print_stack();
+		}
+		bone_id = k->LL_GetBoneRoot();
+	}
+
+	Fmatrix matrix;
+	Fvector res;
+	matrix.mul_43(*xform, k->LL_GetTransform(bone_id));
+	matrix.getHPB(res);
+	return (res);
+}
+
+u16 CScriptGameObject::bone_parent(u16 bone_id, bool bHud)
+{
+	IKinematics* k = nullptr;
+
+	if (bHud)
+	{
+		CActor* act = smart_cast<CActor*>(&object());
+		CHudItem* itm = smart_cast<CHudItem*>(&object());
+		if (itm && itm->HudItemData())
+			k = itm->HudItemData()->m_model;
+		else if (act)
+			k = g_player_hud->m_model->dcast_PKinematics();
+	} else {
+		k = object().Visual()->dcast_PKinematics();
+	}
+
+	if (!k || bone_id == k->LL_GetBoneRoot() || bone_id >= k->LL_BoneCount()) return BI_NONE;
+
+	CBoneData* data = &k->LL_GetData(bone_id);
+	u16 ParentID = data->GetParentID();
+	return ParentID;
+}
+
+LPCSTR CScriptGameObject::bone_name(u16 bone_id, bool bHud)
+{
+	if (bone_id == BI_NONE) return "";
+
+	IKinematics* k = nullptr;
+
+	if (bHud)
+	{
+		CActor* act = smart_cast<CActor*>(&object());
+		CHudItem* itm = smart_cast<CHudItem*>(&object());
+		if (itm && itm->HudItemData())
+			k = itm->HudItemData()->m_model;
+		else if (act)
+			k = g_player_hud->m_model->dcast_PKinematics();
+	} else {
+		k = object().Visual()->dcast_PKinematics();
+	}
+
+	if (!k) return "";
+
+	return (k->LL_BoneName_dbg(bone_id));
+}
+
+void CScriptGameObject::set_bone_visible(u16 bone_id, bool bVisibility, bool bRecursive, bool bHud)
+{
+	if (bone_id == BI_NONE) return;
+
+	IKinematics* k = nullptr;
+
+	if (bHud)
+	{
+		CActor* act = smart_cast<CActor*>(&object());
+		CHudItem* itm = smart_cast<CHudItem*>(&object());
+		if (itm && itm->HudItemData())
+			k = itm->HudItemData()->m_model;
+		else if (act)
+			k = (bone_id > 20) ? g_player_hud->m_model->dcast_PKinematics() : g_player_hud->m_model_2->dcast_PKinematics();
+	} else {
+		k = object().Visual()->dcast_PKinematics();
+	}
+
+	if (!k)
+		return;
+
+	if (bVisibility != !!k->LL_GetBoneVisible(bone_id))
+		k->LL_SetBoneVisible(bone_id, bVisibility, bRecursive);
+}
+
+bool CScriptGameObject::is_bone_visible(u16 bone_id, bool bHud)
+{
+	if (bone_id == BI_NONE) return false;
+
+	IKinematics* k = nullptr;
+
+	if (bHud)
+	{
+		CActor* act = smart_cast<CActor*>(&object());
+		CHudItem* itm = smart_cast<CHudItem*>(&object());
+		if (itm && itm->HudItemData())
+			k = itm->HudItemData()->m_model;
+		else if (act)
+			k = (bone_id > 20) ? g_player_hud->m_model->dcast_PKinematics() : g_player_hud->m_model_2->dcast_PKinematics();
+	} else {
+		k = object().Visual()->dcast_PKinematics();
+	}
+
+	if (!k) return false;
+
+	return !!k->LL_GetBoneVisible(bone_id);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -478,6 +683,42 @@ void CScriptGameObject::SetCondition(float val)
     }
     val -= inventory_item->GetCondition();
     inventory_item->ChangeCondition(val);
+}
+
+float CScriptGameObject::GetPowerCritical() const
+{
+	CInventoryItem* inventory_item = smart_cast<CInventoryItem*>(&object());
+	if (!inventory_item)
+	{
+		ai().script_engine().script_log(ScriptStorage::eLuaMessageTypeError,
+			"CSciptEntity : cannot access class member GetPowerCritical!");
+		return 0.f;
+	}
+	return (inventory_item->GetLowestBatteryCharge());
+}
+
+float CScriptGameObject::GetPsyFactor() const
+{
+	CPda* pda = smart_cast<CPda*>(&object());
+	if (!pda)
+	{
+		ai().script_engine().script_log(ScriptStorage::eLuaMessageTypeError,
+			"CSciptEntity : cannot access class member GetPsyFactor!");
+		return 0.f;
+	}
+	return (pda->m_psy_factor);
+}
+
+void CScriptGameObject::SetPsyFactor(float val)
+{
+	CPda* pda = smart_cast<CPda*>(&object());
+	if (!pda)
+	{
+		ai().script_engine().script_log(ScriptStorage::eLuaMessageTypeError,
+			"CSciptEntity : cannot access class member SetPsyFactor!");
+		return;
+	}
+	pda->m_psy_factor = val;
 }
 
 void CScriptGameObject::eat(CScriptGameObject *item)
@@ -688,33 +929,14 @@ bool CScriptGameObject::Use(CScriptGameObject* obj)
 	CInventoryBox* pBox = smart_cast<CInventoryBox*>(&object());
 	if (pBox)
 	{
-		ActorMenu.SetActor(pActorInv);
-		ActorMenu.SetInvBox(pBox);
-
-		ActorMenu.SetMenuMode(mmDeadBodySearch);
-		ActorMenu.ShowDialog(true);
-
-		return true;
-	} else {
-		CInventoryOwner* pOtherOwner = smart_cast<CInventoryOwner*>(&object());
-		if (!pOtherOwner)
-			return ret;
-
-		/*
-		CEntityAlive* e = smart_cast<CEntityAlive*>(pOtherOwner);
-		if (e && e->g_Alive())
-		{
-			actor->RunTalkDialog(pOtherOwner, false);
+		pGameSP->StartCarBody(pActorInv, pBox);
 			return true;
 		}
-		*/
 
-		ActorMenu.SetActor(pActorInv);
-		ActorMenu.SetPartner(pOtherOwner);
-
-		ActorMenu.SetMenuMode(mmDeadBodySearch);
-		ActorMenu.ShowDialog(true);
-
+	CInventoryOwner* pOtherOwner = smart_cast<CInventoryOwner*>(&object());
+	if (pOtherOwner)
+	{
+		pGameSP->StartCarBody(pActorInv, pOtherOwner);
 		return true;
 	}
 
@@ -735,13 +957,9 @@ void CScriptGameObject::StartTrade(CScriptGameObject* obj)
 	if (!pOtherOwner)
 		return;
 
-	CUIActorMenu& ActorMenu = CurrentGameUI()->GetActorMenu();
-
-	ActorMenu.SetActor(pActorInv);
-	ActorMenu.SetPartner(pOtherOwner);
-
-	ActorMenu.SetMenuMode(mmTrade);
-	ActorMenu.ShowDialog(true);
+	CUIGameSP* pGameSP = smart_cast<CUIGameSP*>(CurrentGameUI());
+	if (pGameSP)
+		pGameSP->StartTrade(pActorInv, pOtherOwner);
 }
 
 void CScriptGameObject::StartUpgrade(CScriptGameObject* obj)
@@ -758,11 +976,25 @@ void CScriptGameObject::StartUpgrade(CScriptGameObject* obj)
 	if (!pOtherOwner)
 		return;
 
-	CUIActorMenu& ActorMenu = CurrentGameUI()->GetActorMenu();
+	CUIGameSP* pGameSP = smart_cast<CUIGameSP*>(CurrentGameUI());
+	if (pGameSP)
+		pGameSP->StartUpgrade(pActorInv, pOtherOwner);
+}
 
-	ActorMenu.SetActor(pActorInv);
-	ActorMenu.SetPartner(pOtherOwner);
+CGameObject& CScriptGameObject::object() const
+{
+#ifdef DEBUG
+    __try {
+        if (m_game_object && m_game_object->lua_game_object() == this)
+            return	(*m_game_object);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {}
 
-	ActorMenu.SetMenuMode(mmUpgrade);
-	ActorMenu.ShowDialog(true);
+    ai().script_engine().script_log(eLuaMessageTypeError, "you are trying to use a destroyed object [%x]", m_game_object);
+    THROW2(m_game_object && m_game_object->lua_game_object() == this, "Probably, you are trying to use a destroyed object!");
+#endif // #ifdef DEBUG
+	static CGameObject* m_game_object_dummy = NULL;
+	if (!m_game_object || m_game_object->lua_game_object() != this)
+		return (*m_game_object_dummy);
+
+	return (*m_game_object);
 }

@@ -201,6 +201,7 @@ void CStateBurerAttackTele<Object>::FindFreeObjects(xr_vector<CObject*> &tpObjec
 		CPhysicsShellHolder *obj			=	smart_cast<CPhysicsShellHolder *>(tpObjects[i]);
 		CCustomMonster		*custom_monster	=	smart_cast<CCustomMonster *>(tpObjects[i]);
 		CGrenade			*grenade		=	smart_cast<CGrenade *>(tpObjects[i]);
+		CInventoryItem* itm = smart_cast<CInventoryItem*>(tpObjects[i]);
 		
 		if (grenade || // grenades are handled by HandleGrenades function
 			!obj || 
@@ -212,7 +213,9 @@ void CStateBurerAttackTele<Object>::FindFreeObjects(xr_vector<CObject*> &tpObjec
 			(obj->m_pPhysicsShell->getMass() > object->m_tele_object_max_mass) || 
 			(obj == object) || 
 			object->CTelekinesis::is_active_object(obj) || 
-			!obj->m_pPhysicsShell->get_ApplyByGravity()) continue;
+			!obj->m_pPhysicsShell->get_ApplyByGravity() ||
+			(itm && itm->IsQuestItem()))
+			continue;
 
 		tele_objects.push_back(obj);
 	}

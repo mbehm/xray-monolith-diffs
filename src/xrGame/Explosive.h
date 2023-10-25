@@ -65,7 +65,7 @@ public:
 			void				SetExplosionSize		(const Fvector &new_size);
 	virtual bool				Useful					() const;
 protected:
-			bool				IsSoundPlaying			(){return !!sndExplode._feedback();}
+	bool IsSoundPlaying() { return !!m_layered_sounds.FindSoundItem("sndExplode", true)->playing(); }
 			bool				IsExploded				(){return !!m_explosion_flags.test(flExploded);}
 public:
 			bool				IsExploding				(){return !!m_explosion_flags.test(flExploding);}
@@ -79,12 +79,7 @@ static		float				TestPassEffect			(const	Fvector	&source_p,	const	Fvector	&dir,f
 			void				LightCreate				();
 			void				LightDestroy			();
 protected:
-
-	//Alundaio: LAYERED_SND_SHOOT
-#ifdef LAYERED_SND_SHOOT
 	HUD_SOUND_COLLECTION_LAYERED m_layered_sounds;
-#endif
-	//-Alundaio
 
 	CWalmarkManager				m_wallmark_manager;
 	//ID персонажа который иницировал действие
@@ -143,7 +138,6 @@ protected:
 	float						m_fFragmentSpeed;
 	
 	//звуки
-	ref_sound					sndExplode;
 	ESoundTypes					m_eSoundExplode;
 
 	//размер отметки на стенах

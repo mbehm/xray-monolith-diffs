@@ -145,7 +145,11 @@ void	CSoundRender_TargetA::fill_parameters()
     A_CHK(alSourcef	(pSource, AL_MAX_DISTANCE, 			m_pEmitter->p_source.max_distance));
 
 	VERIFY2(m_pEmitter,SE->source()->file_name                                       ());
-	A_CHK(alSource3f(pSource, AL_POSITION,	 			m_pEmitter->p_source.position.x,m_pEmitter->p_source.position.y,-m_pEmitter->p_source.position.z));
+	A_CHK(alSource3f(pSource, AL_POSITION, m_pEmitter->p_source.position.x,m_pEmitter->p_source.position.y,-m_pEmitter->
+		p_source.position.z));
+
+	VERIFY2(m_pEmitter, SE->source()->file_name());
+	A_CHK(alSource3f(pSource, AL_VELOCITY, m_pEmitter->p_source.velocity.x, m_pEmitter->p_source.velocity.y, -m_pEmitter->p_source.velocity.z));
 
 	VERIFY2(m_pEmitter,SE->source()->file_name());
     A_CHK(alSourcei	(pSource, AL_SOURCE_RELATIVE,		m_pEmitter->b2D));
@@ -161,10 +165,18 @@ void	CSoundRender_TargetA::fill_parameters()
     }
 
 	VERIFY2(m_pEmitter,SE->source()->file_name());
-    float	_pitch	= m_pEmitter->p_source.freq;			clamp	(_pitch,EPS_L,2.f);
-    if (!fsimilar(_pitch,cache_pitch)){
-        cache_pitch	= _pitch;
-        A_CHK(alSourcef	(pSource, AL_PITCH,				_pitch));
+	float _pitch = m_pEmitter->p_source.freq;
+	clamp(_pitch, EPS_L, 2.f);
+
+	if (!fsimilar(cache_pitch, _pitch * psSpeedOfSound))
+	{
+		cache_pitch = _pitch * psSpeedOfSound;
+
+		// Only update time to stop for non-looped sounds
+		if (!m_pEmitter->iPaused && (m_pEmitter->m_current_state == CSoundRender_Emitter::stStarting || m_pEmitter->m_current_state == CSoundRender_Emitter::stPlaying || m_pEmitter->m_current_state == CSoundRender_Emitter::stSimulating))
+			m_pEmitter->fTimeToStop = SoundRender->fTimer_Value + ((m_pEmitter->get_length_sec() - (SoundRender->fTimer_Value - m_pEmitter->fTimeStarted)) / cache_pitch);
+
+		A_CHK(alSourcef(pSource, AL_PITCH, cache_pitch));
     }
 	VERIFY2(m_pEmitter,SE->source()->file_name());
 }

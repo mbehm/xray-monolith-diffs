@@ -60,12 +60,15 @@ protected:
 public:
 	bool				m_bAbsolutePositioning;
 	float				m_fov;
+	float m_power;
 
 						CAnimatorCamEffector	();
 	virtual				~CAnimatorCamEffector	();
 			void		Start					(LPCSTR fn);
 	virtual BOOL		ProcessCam				(SCamEffectorInfo& info);
 			void		SetCyclic				(bool b)				{m_bCyclic=b;}
+	void SetPower(float p) { m_power = p; }
+	float GetPower() { return m_power; }
 	virtual	BOOL		Valid					();
 			float		GetAnimatorLength		()						{return fLifeTime;};
 

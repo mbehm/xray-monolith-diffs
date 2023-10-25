@@ -22,6 +22,7 @@ CUIZoneMap::CUIZoneMap()
 :m_current_map_idx(u8(-1)),
 visible(true)
 {	
+	disabled = false;
 }
 
 CUIZoneMap::~CUIZoneMap()
@@ -40,7 +41,15 @@ void CUIZoneMap::Init()
 	
 	m_clock_wnd						= UIHelper::CreateStatic(uiXml, "minimap:clock_wnd", &m_background);
 
+	BOOL bRotate = uiXml.ReadAttribInt("minimap:level_frame", 0, "rotate", TRUE);
+	BOOL bRounded = uiXml.ReadAttribInt("minimap:level_frame", 0, "rounded", TRUE);
+	BOOL bAspect = uiXml.ReadAttribInt("minimap:level_frame", 0, "aspect", TRUE);
+	u32 color = xml_init.GetColor(uiXml, "minimap:level_frame", 0, 0xff);
+
 	m_activeMap						= xr_new<CUIMiniMap>();
+	m_activeMap->SetRounded(bRounded);
+	m_activeMap->SetRotate(bRotate);
+	m_activeMap->SetTextureColor(color);
 	m_clipFrame.AttachChild			(m_activeMap);
 	m_activeMap->SetAutoDelete		(true);
 
@@ -56,7 +65,7 @@ void CUIZoneMap::Init()
 	Fvector2 sz_k				= m_clipFrame.GetWndSize();
 	Fvector2 sz					= sz_k;
 	{
-		float k = UI().get_current_kx();
+		float k = bAspect ? UI().get_current_kx() : 1;
 
 		sz.y					*= UI_BASE_HEIGHT*k;
 		sz.x					= sz.y / k;
@@ -104,7 +113,7 @@ void CUIZoneMap::Init()
 
 void CUIZoneMap::Render			()
 {
-	if ( !visible )
+	if (!visible || disabled)
 		return;
 
 	m_clipFrame.Draw	();
@@ -113,6 +122,9 @@ void CUIZoneMap::Render			()
 
 void CUIZoneMap::Update()
 {
+	if (disabled)
+		return;
+
 	CActor* pActor = smart_cast<CActor*>( Level().CurrentViewEntity() );
 	if ( !pActor ) return;
 
@@ -143,6 +155,7 @@ void CUIZoneMap::Update()
 
 void CUIZoneMap::SetHeading		(float angle)
 {
+	if (m_activeMap->Rotate())
 	m_activeMap->SetHeading(angle);
 	m_compass.SetHeading(angle);
 };

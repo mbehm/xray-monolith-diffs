@@ -41,6 +41,7 @@ CEffect_Rain::CEffect_Rain()
     state = stIdle;
 
     snd_Ambient.create("ambient\\rain", st_Effect, sg_Undefined);
+	rain_volume = 0.0f;
 
     // Moced to p_Render constructor
     /*
@@ -60,6 +61,7 @@ CEffect_Rain::CEffect_Rain()
 CEffect_Rain::~CEffect_Rain()
 {
     snd_Ambient.destroy();
+	rain_volume = 0.0f;
 
     // Cleanup
     p_destroy();
@@ -68,7 +70,7 @@ CEffect_Rain::~CEffect_Rain()
 }
 
 // Born
-void CEffect_Rain::Born(Item& dest, float radius)
+void CEffect_Rain::Born(Item& dest, float radius, float speed)
 {
     Fvector axis;
     axis.set(0, -1, 0);
@@ -87,7 +89,7 @@ void CEffect_Rain::Born(Item& dest, float radius)
     dest.D.random_dir(axis, deg2rad(drop_angle));
     dest.P.set(x + view.x - dest.D.x*source_offset, source_offset + view.y, z + view.z - dest.D.z*source_offset);
     // dest.P.set (x+view.x,height+view.y,z+view.z);
-    dest.fSpeed = ::Random.randF(drop_speed_min, drop_speed_max);
+	dest.fSpeed = ::Random.randF(drop_speed_min, drop_speed_max) * speed;
 
     float height = max_distance;
     RenewItem(dest, height, RayPick(dest.P, dest.D, height, collide::rqtBoth));
@@ -153,6 +155,7 @@ void CEffect_Rain::OnFrame()
         float t = Device.fTimeDelta;
         clamp(t, 0.001f, 1.0f);
         hemi_factor = hemi_factor*(1.0f - t) + f*t;
+		rain_hemi = hemi_val;
     }
 #endif
 
@@ -170,6 +173,7 @@ void CEffect_Rain::OnFrame()
         {
             state = stIdle;
             snd_Ambient.stop();
+			rain_volume = 0.0f;
             return;
         }
         break;
@@ -181,7 +185,9 @@ void CEffect_Rain::OnFrame()
         // Fvector sndP;
         // sndP.mad (Device.vCameraPosition,Fvector().set(0,1,0),source_offset);
         // snd_Ambient.set_position(sndP);
-        snd_Ambient.set_volume(_max(0.1f, factor) * hemi_factor);
+		rain_volume = factor * hemi_factor;
+		clamp(rain_volume, .1f, 1.f);
+		snd_Ambient.set_volume(rain_volume);
     }
 }
 

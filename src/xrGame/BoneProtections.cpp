@@ -37,6 +37,7 @@ void SBoneProtections::reload(const shared_str& bone_sect, IKinematics* kinemati
 	m_bones_koeff.clear			();
 
 	m_fHitFracNpc				= READ_IF_EXISTS(pSettings, r_float, bone_sect, "hit_fraction_npc",	0.1f);
+	APScale = READ_IF_EXISTS(pSettings, r_float, bone_sect, "ap_scale", 1.0f);
 
 	m_default.koeff				= 1.0f;
 	m_default.armor				= 0.0f;
@@ -45,27 +46,32 @@ void SBoneProtections::reload(const shared_str& bone_sect, IKinematics* kinemati
 	CInifile::Sect	&protections = pSettings->r_section(bone_sect);
 	for (CInifile::SectCIt i=protections.Data.begin(); protections.Data.end() != i; ++i) 
 	{
-		string256			buffer;
+		if (strstr(i->first.c_str(), "hit_fraction"))
+			continue;
+		if (!xr_strcmp(i->first.c_str(), "ap_scale"))
+			continue;
 
-		BoneProtection	BP;
-
-		BP.koeff			= (float)atof( _GetItem( i->second.c_str(), 0, buffer) );
-		BP.armor			= (float)atof( _GetItem( i->second.c_str(), 1, buffer) );
-		BP.BonePassBullet	= (BOOL) (atof( _GetItem(i->second.c_str(), 2, buffer) )>0.5f); //Alundaio change atoi to atof
+		string256 buffer;
 		
 		if (!xr_strcmp(i->first.c_str(), "default"))
 		{
-			m_default = BP;
+			m_default.koeff = (float)atof(_GetItem(i->second.c_str(), 0, buffer));
+			m_default.armor = (float)atof(_GetItem(i->second.c_str(), 1, buffer));
+			m_default.BonePassBullet = (BOOL)(atof(_GetItem(i->second.c_str(), 2, buffer)) > 0.5f);
 		}
 		else 
 		{
-			if (!xr_strcmp(i->first.c_str(), "hit_fraction")) continue;
-
-			s16	bone_id				= kinematics->LL_BoneID(i->first);
-			R_ASSERT2				(BI_NONE != bone_id, i->first.c_str());			
+			u16 bone_id = kinematics->LL_BoneID(i->first);
+			if (bone_id != BI_NONE)
+			{
+				BoneProtection BP;
+				BP.koeff = (float)atof(_GetItem(i->second.c_str(), 0, buffer));
+				BP.armor = (float)atof(_GetItem(i->second.c_str(), 1, buffer));
+				BP.BonePassBullet = (BOOL)(atof(_GetItem(i->second.c_str(), 2, buffer)) > 0.5f);
 			m_bones_koeff.insert	(mk_pair(bone_id,BP));
 		}
 	}
+}
 }
 
 void SBoneProtections::add(const shared_str& bone_sect, IKinematics* kinematics)
@@ -75,27 +81,31 @@ void SBoneProtections::add(const shared_str& bone_sect, IKinematics* kinematics)
 
 	VERIFY(kinematics);
 	m_fHitFracNpc += READ_IF_EXISTS(pSettings, r_float, bone_sect.c_str(), "hit_fraction_npc", 0.0f);
+	APScale += READ_IF_EXISTS(pSettings, r_float, bone_sect.c_str(), "ap_scale", 0.0f);
 
 	CInifile::Sect	&protections = pSettings->r_section(bone_sect);
 	for(CInifile::SectCIt i=protections.Data.begin(); protections.Data.end()!=i; ++i) 
 	{
-		if(!xr_strcmp(i->first.c_str(), "hit_fraction")) 
+		if (strstr(i->first.c_str(), "hit_fraction"))
+			continue;
+		if (!xr_strcmp(i->first.c_str(), "ap_scale"))
 			continue;
 
 		string256				buffer;
 		if(!xr_strcmp(i->first.c_str(), "default"))
 		{
-			BoneProtection&	BP	= m_default;
-			BP.koeff			+= (float)atof( _GetItem( i->second.c_str(), 0, buffer) );
-			BP.armor			+= (float)atof( _GetItem( i->second.c_str(), 1, buffer) );
+			m_default.koeff += (float)atof(_GetItem(i->second.c_str(), 0, buffer));
+			m_default.armor += (float)atof(_GetItem(i->second.c_str(), 1, buffer));
 		}
 		else 
 		{
-			s16	bone_id			= kinematics->LL_BoneID(i->first);
-			R_ASSERT2			(BI_NONE != bone_id, i->first.c_str());			
+			u16 bone_id = kinematics->LL_BoneID(i->first);
+			if (bone_id != BI_NONE)
+			{
 			BoneProtection&	BP	= m_bones_koeff[bone_id];
 			BP.koeff			+= (float)atof( _GetItem( i->second.c_str(), 0, buffer) );
 			BP.armor			+= (float)atof( _GetItem( i->second.c_str(), 1, buffer) );
 		}
 	}
+}
 }

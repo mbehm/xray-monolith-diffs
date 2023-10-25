@@ -31,8 +31,11 @@ ICF u32 get_pool(size_t size)
 }
 
 #ifdef PURE_ALLOC
-bool g_use_pure_alloc = false;
+const bool g_use_pure_alloc = true;
 #endif // PURE_ALLOC
+
+#define PURE_MEMORY_FILL_ZERO
+#define PURE_MEMORY_ALIGNMENT 1 << 4
 
 void* xrMemory::mem_alloc(size_t size
 # ifdef DEBUG_MEMORY_NAME
@@ -43,22 +46,15 @@ void* xrMemory::mem_alloc(size_t size
     stat_calls++;
 
 #ifdef PURE_ALLOC
-    static bool g_use_pure_alloc_initialized = false;
-    if (!g_use_pure_alloc_initialized)
-    {
-        g_use_pure_alloc_initialized = true;
-        g_use_pure_alloc =
-# ifdef XRCORE_STATIC
-            true
-# else // XRCORE_STATIC
-            !!strstr(GetCommandLine(), "-pure_alloc")
-# endif // XRCORE_STATIC
-            ;
-    }
-
     if (g_use_pure_alloc)
     {
-        void* result = malloc(size);
+		//void* result = malloc(size);
+		void* result = _aligned_malloc(size, PURE_MEMORY_ALIGNMENT);
+#ifdef PURE_MEMORY_FILL_ZERO
+		if (result)
+			memset(result, 0, size);
+#endif // PURE_MEMORY_FILL_ZERO
+
 #ifdef USE_MEMORY_MONITOR
         memory_monitor::monitor_alloc(result, size, _name);
 #endif // USE_MEMORY_MONITOR
@@ -140,7 +136,8 @@ void xrMemory::mem_free(void* P)
 #ifdef PURE_ALLOC
     if (g_use_pure_alloc)
     {
-        free(P);
+		//free(P);
+		_aligned_free(P);
         return;
     }
 #endif // PURE_ALLOC
@@ -181,10 +178,31 @@ void* xrMemory::mem_realloc(void* P, size_t size
                            )
 {
     stat_calls++;
+
+	if (0 == P)
+	{
+		return mem_alloc(size
+# ifdef DEBUG_MEMORY_NAME
+			, _name
+# endif // DEBUG_MEMORY_NAME
+		);
+	}
+
 #ifdef PURE_ALLOC
     if (g_use_pure_alloc)
     {
-        void* result = realloc(P, size);
+#ifdef PURE_MEMORY_FILL_ZERO
+		size_t old_size = P ? _aligned_msize(P, PURE_MEMORY_ALIGNMENT, 0) : 0;
+#endif // PURE_MEMORY_FILL_ZERO
+
+		//void* result = realloc(P, size);
+		void* result = _aligned_realloc(P, size, PURE_MEMORY_ALIGNMENT);
+
+#ifdef PURE_MEMORY_FILL_ZERO
+		if (result && size > old_size)
+			memset((u8*)result + old_size, 0, size - old_size);
+#endif // PURE_MEMORY_FILL_ZERO
+
 # ifdef USE_MEMORY_MONITOR
         memory_monitor::monitor_free(P);
         memory_monitor::monitor_alloc(result, size, _name);
@@ -192,14 +210,6 @@ void* xrMemory::mem_realloc(void* P, size_t size
         return (result);
     }
 #endif // PURE_ALLOC
-    if (0 == P)
-    {
-        return mem_alloc(size
-# ifdef DEBUG_MEMORY_NAME
-                         , _name
-# endif // DEBUG_MEMORY_NAME
-                        );
-    }
 
 #ifdef DEBUG_MEMORY_MANAGER
     if (g_globalCheckAddr == P)

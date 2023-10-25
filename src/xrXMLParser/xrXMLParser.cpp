@@ -3,6 +3,7 @@
 
 #include "xrXMLParser.h"
 
+extern void XMLLuaCallback(CXml &m_xml, LPCSTR xml_string);
 
 XRXMLPARSER_API CXml::CXml()
 	:	m_root			(NULL),
@@ -31,7 +32,51 @@ void ParseFile(LPCSTR path, CMemoryWriter& W, IReader *F, CXml* xml )
 			if (_GetItem	(str,1,inc_name,'"'))
 			{
 				IReader* I 			= NULL;
-				if(inc_name==strstr(inc_name,"ui\\"))
+
+				if (strstr(inc_name, "*.xml"))
+				{
+					FS_FileSet fset;
+					FS.file_list(fset, path, FS_ListFiles, inc_name);
+
+					for (FS_FileSet::iterator it = fset.begin(); it != fset.end(); it++)
+					{
+						LPCSTR file_name = it->name.c_str();
+
+						if (file_name == strstr(file_name, "ui\\"))
+						{
+							shared_str fn = xml->correct_file_name("ui", strchr(file_name, '\\') + 1);
+							string_path buff;
+							strconcat(sizeof(buff), buff, "ui\\", fn.c_str());
+
+							I = FS.r_open(path, buff);
+
+							if (!I)
+							{
+								string1024 str;
+								xr_sprintf(str, "XML file[%s] parsing failed. Can't find include file:[%s]", path, inc_name);
+								R_ASSERT2(false, str);
+							}
+
+							ParseFile(path, W, I, xml);
+							FS.r_close(I);
+						}
+						else
+						{
+							I = FS.r_open(path, it->name.c_str());
+
+							if (!I)
+							{
+								string1024 str;
+								xr_sprintf(str, "XML file[%s] parsing failed. Can't find include file:[%s]", path, inc_name);
+								R_ASSERT2(false, str);
+							}
+
+							ParseFile(path, W, I, xml);
+							FS.r_close(I);
+						}
+					}
+				}
+				else if (inc_name == strstr(inc_name, "ui\\"))
 				{
 					shared_str fn	= xml->correct_file_name("ui", strchr(inc_name,'\\')+1);
 					string_path		buff;
@@ -39,6 +84,8 @@ void ParseFile(LPCSTR path, CMemoryWriter& W, IReader *F, CXml* xml )
 					I 				= FS.r_open(path, buff);
 				}
 
+				if (!strstr(inc_name, "*.xml"))
+				{
 				if(!I)
 					I 	= FS.r_open(path, inc_name);
 
@@ -50,7 +97,9 @@ void ParseFile(LPCSTR path, CMemoryWriter& W, IReader *F, CXml* xml )
 				ParseFile(path, W, I, xml);
 				FS.r_close	(I);
 			}
-		}else
+			}
+		}
+		else
 			W.w_string		(str);
 
 	}
@@ -88,6 +137,21 @@ void CXml::Load(LPCSTR path, LPCSTR  xml_filename)
 	} 
 
 	m_root					= m_Doc.FirstChildElement();
+	XMLLuaCallback(*this, (LPCSTR)W.pointer());
+}
+
+void CXml::LoadFromString(LPCSTR xml_string)
+{
+	ClearInternal();
+	m_Doc.Parse(&m_Doc, xml_string);
+	if (m_Doc.Error())
+	{
+		string1024 str;
+		xr_sprintf(str, "XML file:%s value:%s errDescr:%s", m_xml_file_name, m_Doc.Value(), m_Doc.ErrorDesc());
+		R_ASSERT2(false, str);
+	}
+
+	m_root = m_Doc.FirstChildElement();
 }
 
 XML_NODE* CXml::NavigateToNode(XML_NODE* start_node, LPCSTR  path, int node_index)
@@ -457,7 +521,8 @@ LPCSTR CXml::CheckUniqueAttrib (XML_NODE* start_node, LPCSTR tag_name, LPCSTR at
 }
 #endif
 
-BOOL APIENTRY DllMain( HANDLE hModule, 
+//BOOL APIENTRY DllMain( HANDLE hModule,
+BOOL DllMainIgnore3(HANDLE hModule,
                        u32  ul_reason_for_call, 
                        LPVOID lpReserved
 					 )

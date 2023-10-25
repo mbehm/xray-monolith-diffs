@@ -77,6 +77,7 @@ namespace GameObject
 		eOnWeaponZoomIn,
 		eOnWeaponZoomOut,
 		eOnWeaponJammed,
+		eOnWeaponFired,
 		eOnWeaponMagazineEmpty,
 #endif
         // actor
@@ -89,7 +90,11 @@ namespace GameObject
 		eDetachVehicle,
 		eUseVehicle,
 #endif
+		eOnFootStep,
         //-AVO
+
+		eOnWeaponLowered,
+		eOnWeaponRaised,
 
         eDummy = u32(-1),
     };

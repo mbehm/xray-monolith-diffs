@@ -24,6 +24,7 @@
 #include "../../xrServerEntities/script_engine.h"
 #include "../UIGameSP.h"
 #include "UITalkWnd.h"
+#include "eatable_item.h"
 
 // -------------------------------------------------
 
@@ -80,6 +81,57 @@ bool is_item_in_list(CUIDragDropListEx* pList, PIItem item)
 	return false;
 }
 
+#include "../MPPlayersBag.h"
+
+void CUIActorMenu::FilterActorTradeBagList(int mode)
+{
+	m_pTradeActorBagList->ClearAll(true);
+
+	TIItemContainer ruck_list;
+	ruck_list = m_pActorInvOwner->inventory().m_ruck;
+	std::sort(ruck_list.begin(), ruck_list.end(), InventoryUtilities::GreaterRoomInRuck);
+
+	TIItemContainer::iterator itb = ruck_list.begin();
+	TIItemContainer::iterator ite = ruck_list.end();
+	for (; itb != ite; ++itb)
+	{
+		if (!is_item_in_list(m_pTradeActorList, *itb))
+		{
+			CMPPlayersBag* bag = smart_cast<CMPPlayersBag*>(&(*itb)->object());
+			if (bag)
+				continue;
+
+			PIItem iitm = *itb;
+
+			int kinds = _GetItemCount(m_sort_kinds[mode]);
+
+			if (0 == xr_strcmp(m_sort_kinds[mode], "s_all"))
+			{
+				CUICellItem* itm = create_cell_item(iitm);
+				m_pTradeActorBagList->SetItem(itm);
+				if (m_currMenuMode == mmTrade && m_pPartnerInvOwner)
+					ColorizeItem(itm, !CanMoveToPartner(iitm));
+			}
+			else
+			{
+				for (int i = 0; i < kinds; i++)
+				{
+					string256 kind;
+					_GetItem(m_sort_kinds[mode], i, kind);
+
+					if (iitm->m_kind != NULL && iitm->m_kind.equal(kind))
+					{
+						CUICellItem* itm = create_cell_item(iitm);
+						m_pTradeActorBagList->SetItem(itm);
+						if (m_currMenuMode == mmTrade && m_pPartnerInvOwner)
+							ColorizeItem(itm, !CanMoveToPartner(iitm));
+					}
+				}
+			}
+		}
+	}
+}
+
 void CUIActorMenu::InitPartnerInventoryContents()
 {
 	m_pTradePartnerBagList->ClearAll( true );
@@ -96,6 +148,47 @@ void CUIActorMenu::InitPartnerInventoryContents()
 		{
 			CUICellItem* itm			= create_cell_item( *itb );
 			m_pTradePartnerBagList->SetItem( itm );
+		}
+	}
+	m_trade_partner_inventory_state = m_pPartnerInvOwner->inventory().ModifyFrame();
+}
+
+void CUIActorMenu::FilterTraderList(int mode)
+{
+	m_pTradePartnerBagList->ClearAll(true);
+
+	TIItemContainer items_list;
+	m_pPartnerInvOwner->inventory().AddAvailableItems(items_list, true);
+	std::sort(items_list.begin(), items_list.end(), InventoryUtilities::GreaterRoomInRuck);
+
+	TIItemContainer::iterator itb = items_list.begin();
+	TIItemContainer::iterator ite = items_list.end();
+	for (; itb != ite; ++itb)
+	{
+		if (!is_item_in_list(m_pTradePartnerList, *itb))
+		{
+			PIItem iitm = *itb;
+			int kinds = _GetItemCount(m_sort_kinds[mode]);
+
+			if (0 == xr_strcmp(m_sort_kinds[mode], "s_all"))
+			{
+				CUICellItem* itm = create_cell_item(*itb);
+				m_pTradePartnerBagList->SetItem(itm);
+			}
+			else
+			{
+				for (int i = 0; i < kinds; i++)
+				{
+					string256 kind;
+					_GetItem(m_sort_kinds[mode], i, kind);
+
+					if (iitm->m_kind != NULL && iitm->m_kind.equal(kind))
+					{
+						CUICellItem* itm = create_cell_item(*itb);
+						m_pTradePartnerBagList->SetItem(itm);
+					}
+				}
+			}
 		}
 	}
 	m_trade_partner_inventory_state = m_pPartnerInvOwner->inventory().ModifyFrame();
@@ -240,15 +333,39 @@ bool CUIActorMenu::ToPartnerTradeBag(CUICellItem* itm, bool b_use_cursor_pos)
 	{
 		new_owner						= CUIDragDropListEx::m_drag_item->BackList();
 		VERIFY							(new_owner==m_pTradePartnerBagList);
-	}else
+	}
+	else
 		new_owner						= m_pTradePartnerBagList;
 	
-	CUICellItem* i						= old_owner->RemoveItem(itm, (old_owner==new_owner) );
+	CUICellItem* citm = old_owner->RemoveItem(itm, (old_owner == new_owner));
 
+	if (0 == xr_strcmp(m_sort_kinds[current_sort_mode()], "s_all"))
+	{
 	if(b_use_cursor_pos)
-		new_owner->SetItem				(i,old_owner->GetDragItemPosition());
+			new_owner->SetItem(citm, old_owner->GetDragItemPosition());
 	else
-		new_owner->SetItem				(i);
+			new_owner->SetItem(citm);
+	}
+	else
+	{
+		PIItem iitm = (PIItem)citm->m_pData;
+
+		int kinds = _GetItemCount(m_sort_kinds[current_sort_mode()]);
+
+		for (int i = 0; i < kinds; i++)
+		{
+			string256 kind;
+			_GetItem(m_sort_kinds[current_sort_mode()], i, kind);
+
+			if (iitm->m_kind != NULL && iitm->m_kind.equal(kind))
+			{
+				if (b_use_cursor_pos)
+					new_owner->SetItem(citm, old_owner->GetDragItemPosition());
+				else
+					new_owner->SetItem(citm);
+			}
+		}
+	}
 	
 	return true;
 }
@@ -300,7 +417,8 @@ bool CUIActorMenu::CanMoveToPartner(PIItem pItem)
 		return false;
 	}
 
-	if(pItem->GetCondition()<m_pPartnerInvOwner->trade_parameters().buy_item_condition_factor)
+	bool has_max_uses = pItem->cast_eatable_item() && pItem->cast_eatable_item()->GetMaxUses();
+	if (!has_max_uses && (pItem->GetCondition() < m_pPartnerInvOwner->trade_parameters().buy_item_condition_factor))
 		return false;
 
 	float r1				= CalcItemsWeight( m_pTradeActorList );		// actor
@@ -456,6 +574,25 @@ void CUIActorMenu::OnBtnPerformTradeBuy(CUIWindow* w, void* d)
 	}
 	SetCurrentItem					( NULL );
 
+	if (xr_strcmp(m_sort_kinds[current_sort_mode()], "s_all"))
+	{
+		for (int i = 0; i < m_sort_buttons.size(); i++)
+		{
+			if (0 == xr_strcmp(m_sort_kinds[i], "s_all"))
+			{
+				for (int ii = 0; ii < m_sort_buttons.size(); ii++)
+				{
+					m_sort_buttons.at(ii)->Enable(true);
+				}
+
+				m_sort_buttons.at(i)->Enable(false);
+
+				FilterActorTradeBagList(i);
+			}
+				
+		}
+	}
+
 	UpdateItemsPlace				();
 }
 void CUIActorMenu::OnBtnPerformTradeSell(CUIWindow* w, void* d)
@@ -497,6 +634,24 @@ void CUIActorMenu::OnBtnPerformTradeSell(CUIWindow* w, void* d)
 		}
 	}
 	SetCurrentItem					( NULL );
+
+	if (xr_strcmp(m_sort_kinds[current_sort_mode()], "s_all"))
+	{
+		for (int i = 0; i < m_sort_buttons.size(); i++)
+		{
+			if (0 == xr_strcmp(m_sort_kinds[i], "s_all"))
+			{
+				for (int ii = 0; ii < m_sort_buttons.size(); ii++)
+				{
+					m_sort_buttons.at(ii)->Enable(true);
+				}
+
+				m_sort_buttons.at(i)->Enable(false);
+
+				FilterActorTradeBagList(i);
+			}
+		}
+	}
 
 	UpdateItemsPlace				();
 }
@@ -540,6 +695,15 @@ void CUIActorMenu::DonateCurrentItem(CUICellItem* cell_item)
 	PIItem item = (PIItem)cell_item->m_pData;
 	if (!item)
 		return;
+
+	//Alundaio: 
+	luabind::functor<bool> funct;
+	if (ai().script_engine().functor("actor_menu_inventory.CUIActorMenu_DonateCurrentItem", funct))
+	{
+		if (funct(m_pPartnerInvOwner->cast_game_object()->lua_game_object(), item->object().lua_game_object()) == false)
+			return;
+	}
+	//-Alundaio
 
 	CUICellItem* itm = invlist->RemoveItem(cell_item, false);
 

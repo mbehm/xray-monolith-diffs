@@ -93,11 +93,6 @@ protected:
 	CUICharacterInfo*			m_PartnerCharacterInfo;
 
 	CUIDragDropListEx*			m_pInventoryBeltList;
-	CUIDragDropListEx*			m_pInventoryPistolList;
-	CUIDragDropListEx*			m_pInventoryAutomaticList;
-	CUIDragDropListEx*			m_pInventoryOutfitList;
-	CUIDragDropListEx*			m_pInventoryHelmetList;
-	CUIDragDropListEx*			m_pInventoryDetectorList;
 	CUIDragDropListEx*			m_pInventoryBagList;
 
 	CUIDragDropListEx*			m_pTradeActorBagList;
@@ -108,14 +103,16 @@ protected:
 	CUIDragDropListEx*			m_pTrashList;
 
 	enum						{e_af_count = 5};
+
 	CUIStatic*					m_belt_list_over[e_af_count];
 	CUIStatic*					m_HelmetOver;
+	CUIStatic* m_BackpackOver;
 
-	CUIStatic*					m_InvSlot2Highlight;
-	CUIStatic*					m_InvSlot3Highlight;
-	CUIStatic*					m_HelmetSlotHighlight;
-	CUIStatic*					m_OutfitSlotHighlight;
-	CUIStatic*					m_DetectorSlotHighlight;
+	u8 m_slot_count;
+	CUIStatic* m_pInvSlotHighlight[LAST_SLOT + 1];
+	CUIProgressBar* m_pInvSlotProgress[LAST_SLOT + 1];
+	CUIDragDropListEx* m_pInvList[LAST_SLOT + 1];
+
 	CUIStatic*					m_QuickSlotsHighlight[4];
 	CUIStatic*					m_ArtefactSlotsHighlight[e_af_count];
 
@@ -138,10 +135,6 @@ protected:
 	CUITextWnd*					m_QuickSlot3;
 	CUITextWnd*					m_QuickSlot4;
 	
-	CUIProgressBar*				m_WeaponSlot1_progress;
-	CUIProgressBar*				m_WeaponSlot2_progress;
-	CUIProgressBar*				m_Helmet_progress;
-	CUIProgressBar*				m_Outfit_progress;
 	// bottom ---------------------------------
 	CUIStatic*					m_ActorBottomInfo;
 	CUITextWnd*					m_ActorWeight;
@@ -169,6 +162,7 @@ protected:
 	CUI3tButton*				m_trade_buy_button;
 	CUI3tButton*				m_trade_sell_button;
 	CUI3tButton*				m_takeall_button;
+	CUI3tButton* m_putall_button;
 	CUI3tButton*				m_exit_button;
 //	CUIStatic*					m_clock_value;
 
@@ -188,6 +182,8 @@ public:
 	CInventoryOwner*			GetPartner					() {return m_pPartnerInvOwner;};
 	void						SetInvBox					(CInventoryBox* box);
 	CInventoryBox*				GetInvBox					() {return m_pInvBox;};
+	bool b_sort_hotkeys;
+	void SelectInventoryTab(int tab);
 private:
 	void						PropertiesBoxForSlots		(PIItem item, bool& b_show);
 	void						PropertiesBoxForWeapon		(CUICellItem* cell_item, PIItem item, bool& b_show);
@@ -211,14 +207,21 @@ private:
 protected:			
 	void						Construct					();
 	void						InitCallbacks				();
-
+	void FilterActorBagList(int mode);
 	void						InitCellForSlot				(u16 slot_idx);
 	void						InitInventoryContents		(CUIDragDropListEx* pBagList);
+public:
+	//Item Sorting Tabs
+	xr_vector<CUI3tButton*> m_sort_buttons;
+	xr_vector<LPCSTR> m_sort_kinds;
+	int current_sort_mode();
+protected:
+	void xr_stdcall sort_button_callback(CUIWindow* w, void* d);
+
 	void						ClearAllLists				();
 	void						BindDragDropListEvents		(CUIDragDropListEx* lst);
 	
 	EDDListType					GetListType					(CUIDragDropListEx* l);
-	CUIDragDropListEx*			GetListByType				(EDDListType t);
 	CUIDragDropListEx*			GetSlotList					(u16 slot_idx);
 	bool						CanSetItemToList			(PIItem item, CUIDragDropListEx* l, u16& ret_slot);
 	
@@ -243,6 +246,7 @@ protected:
 	void						DeInitTradeMode				();
 	void						InitUpgradeMode				();
 	void						DeInitUpgradeMode			();
+	void FilterDeadBodyList(int mode);
 	void						InitDeadBodySearchMode		();
 	void						DeInitDeadBodySearchMode	();
 
@@ -302,6 +306,8 @@ protected:
 
 	// trade
 	void						InitPartnerInventoryContents();
+	void FilterTraderList(int mode);
+	void FilterActorTradeBagList(int mode);
 	void						ColorizeItem				(CUICellItem* itm, bool colorize);
 	float						CalcItemsWeight				(CUIDragDropListEx* pList);
 	u32							CalcItemsPrice				(CUIDragDropListEx* pList, CTrade* pTrade, bool bBuying);
@@ -312,6 +318,8 @@ protected:
 public:
 								CUIActorMenu				();
 	virtual						~CUIActorMenu				();
+
+	CUIDragDropListEx* GetListByType(EDDListType t);
 
 	virtual bool				StopAnyMove					();
 	virtual void				SendMessage					(CUIWindow* pWnd, s16 msg, void* pData = NULL);
@@ -343,6 +351,8 @@ public:
 	void		xr_stdcall		OnBtnExitClicked			(CUIWindow* w, void* d);
 	void		xr_stdcall		TakeAllFromPartner			(CUIWindow* w, void* d);
 	void						TakeAllFromInventoryBox		();
+	void xr_stdcall PutAllToPartner(CUIWindow* w, void* d);
+	void PutAllToInventoryBox();
 	void						UpdateConditionProgressBars	();
 
 	IC	UIHint*					get_hint_wnd				() { return m_hint_wnd; }
@@ -353,8 +363,10 @@ public:
 	CUICellItem* CurrentItem();					//Alundaio: Made public
 
 	CScriptGameObject* GetCurrentItemAsGameObject();
+	bool CanRepairItem(PIItem itm);
+	LPCSTR RepairQuestion(PIItem item, bool can_repair);
 	void HighlightSectionInSlot(LPCSTR section, u8 type, u16 slot_id = 0);
-	void HighlightForEachInSlot(luabind::functor<bool> functor, u8 type, u16 slot_id);
+	void HighlightForEachInSlot(const luabind::functor<bool>& functor, u8 type, u16 slot_id);
 
 	//-AxelDominator && Alundaio consumable use condition
 	void DonateCurrentItem(CUICellItem* cell_item); //Alundaio: Donate item via context menu while in trade menu

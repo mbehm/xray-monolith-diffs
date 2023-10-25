@@ -31,7 +31,7 @@ public:
 	virtual			~CWrapperAbstract	();
 	virtual void	setup				(_object_type *object);
 	virtual void	setup				(CScriptGameObject *object);
-	IC		_object_type &object		() const;
+	_object_type& object() const;
 };
 
 class CPropertyStorage;

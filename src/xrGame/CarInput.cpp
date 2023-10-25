@@ -16,6 +16,7 @@
 #include "../Include/xrRender/Kinematics.h"
 #include "level.h"
 #include "CarWeapon.h"
+#include "HUDManager.h"
 
 void	CCar::OnMouseMove(int dx, int dy)
 {
@@ -31,6 +32,16 @@ void	CCar::OnMouseMove(int dx, int dy)
 		float d		= ((psMouseInvert.test(1))?-1:1)*float(dy)*scale*3.f/4.f;
 		C->Move		((d>0)?kUP:kDOWN, _abs(d));
 	}
+	if (m_car_weapon && m_car_weapon->IsActive())
+	{
+		Fvector pos = active_camera->Position();
+		Fvector cam_dir = active_camera->Direction();
+
+		collide::rq_result& RQ = HUD().GetCurrentRayQuery();
+
+		pos.mad(cam_dir, RQ.range>3.f ? RQ.range : 30.f);
+		SetParam(CCarWeapon::eWpnDesiredPos, pos);
+	};
 }
 
 bool CCar::bfAssignMovement(CScriptEntityAction *tpEntityAction)
@@ -123,19 +134,38 @@ void CCar::OnKeyboardPress(int cmd)
 
 	switch (cmd)	
 	{
-	case kCAM_1:	OnCameraChange(ectFirst);	break;
-	case kCAM_2:	OnCameraChange(ectChase);	break;
-	case kCAM_3:	OnCameraChange(ectFree);	break;
-	case kACCEL:	TransmissionUp();			break;
-	case kCROUCH:	TransmissionDown();			break;
-	case kFWD:		PressForward();				break;
-	case kBACK:		PressBack();				break;
-	case kR_STRAFE:	PressRight();				if (OwnerActor()) OwnerActor()->steer_Vehicle(1);	break;
-	case kL_STRAFE:	PressLeft();				if (OwnerActor()) OwnerActor()->steer_Vehicle(-1);break;
-	case kJUMP:		PressBreaks();				break;
-	case kDETECTOR:	SwitchEngine();				break;
-	case kTORCH:	m_lights.SwitchHeadLights();break;
+	case kCAM_1: OnCameraChange(ectFirst);
+		break;
+	case kCAM_2: OnCameraChange(ectChase);
+		break;
+	case kCAM_3: OnCameraChange(ectFree);
+		break;
+	case kACCEL: TransmissionUp();
+		break;
+	case kCROUCH: TransmissionDown();
+		break;
+	case kFWD: PressForward();
+		break;
+	case kBACK: PressBack();
+		break;
+	case kR_STRAFE: PressRight();
+		if (OwnerActor()) OwnerActor()->steer_Vehicle(1);
+		break;
+	case kL_STRAFE: PressLeft();
+		if (OwnerActor()) OwnerActor()->steer_Vehicle(-1);
+		break;
+	case kJUMP: PressBreaks();
+		break;
+	case kDETECTOR: SwitchEngine();
+		break;
+	case kWPN_FUNC:
+		if (HasWeapon())			
+			m_car_weapon->Action(CCarWeapon::eWpnActivate, !m_car_weapon->IsActive()); break;
+		break;
+	case kTORCH: m_lights.SwitchHeadLights();
+		break;
 	case kUSE:									break;
+	case kWPN_FIRE: if (HasWeapon()) m_car_weapon->Action(CCarWeapon::eWpnFire, 1); break;
 	};
 
 }
@@ -146,11 +176,20 @@ void	CCar::OnKeyboardRelease(int cmd)
 	switch (cmd)	
 	{
 	case kACCEL:break;
-	case kFWD:		ReleaseForward();			break;
-	case kBACK:		ReleaseBack();				break;
-	case kL_STRAFE:	ReleaseLeft();				if (OwnerActor()) OwnerActor()->steer_Vehicle(0);	break;
-	case kR_STRAFE:	ReleaseRight();				if (OwnerActor()) OwnerActor()->steer_Vehicle(0);	break;
-	case kJUMP:		ReleaseBreaks();			break;
+	case kFWD: ReleaseForward();
+		break;
+	case kBACK: ReleaseBack();
+		break;
+	case kL_STRAFE: ReleaseLeft();
+		if (OwnerActor()) OwnerActor()->steer_Vehicle(0);
+		break;
+	case kR_STRAFE: ReleaseRight();
+		if (OwnerActor()) OwnerActor()->steer_Vehicle(0);
+		break;
+	case kJUMP: ReleaseBreaks();
+		break;
+	case kWPN_FIRE: if (HasWeapon()) m_car_weapon->Action(CCarWeapon::eWpnFire, 0);
+		break;
 	};
 }
 

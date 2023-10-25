@@ -5,9 +5,11 @@
 //#include "../include/xrapi/xrapi.h"
 
 #ifdef XRSOUND_EXPORTS
-	#define XRSOUND_API __declspec(dllexport)
+#define XRSOUND_API
+//__declspec(dllexport)
 #else
-	#define XRSOUND_API __declspec(dllimport)
+	#define XRSOUND_API
+//__declspec(dllimport)
 #endif
 
 #ifdef __BORLANDC__
@@ -34,10 +36,12 @@ XRSOUND_API extern u32				psSoundModel			;
 XRSOUND_API extern float			psSoundVEffects			;
 XRSOUND_API extern float			psSoundVFactor			;
 XRSOUND_API extern float			psSoundVMusic			;
+XRSOUND_API extern float psSoundVMusicFactor;
 XRSOUND_API extern float			psSoundRolloff			;
 XRSOUND_API extern float			psSoundOcclusionScale	;
 XRSOUND_API extern Flags32			psSoundFlags			;
 XRSOUND_API extern int				psSoundTargets			;
+XRSOUND_API extern float psSpeedOfSound;
 XRSOUND_API extern int				psSoundCacheSizeMB		;
 XRSOUND_API extern xr_token*		snd_devices_token		;
 XRSOUND_API extern u32				snd_device_id			;
@@ -164,17 +168,72 @@ class XRSOUND_API			CSound_environment
 public:
 };
 
+namespace soundSmoothingParams {
+	extern float power;
+	extern int steps;
+	extern float alpha;
+	extern float getAlpha();
+	extern float getTimeDeltaSmoothing();
+	extern float getSmoothedValue(float, float, float);
+};
+
 /// definition (Sound Params)
 class XRSOUND_API			CSound_params
 {
 public:
+	CSound_params() :
+		set(false)
+		{
+			position.set(0.0f, 0.0f, 0.0f);
+			velocity.set(0.0f, 0.0f, 0.0f);
+			accVelocity.set(0.f, 0.f, 0.f);
+		}
+
+private:
+	bool set;
+
+public:
 	Fvector					position;
+	Fvector velocity;  // Cribbledirge.  Added for doppler effect.
+	Fvector curVelocity;  // Current velocity.
+	Fvector prevVelocity;  // Previous velocity.
+	Fvector accVelocity;  // Velocity accumulator (for moving average).
 	float					base_volume;
 	float					volume;
 	float					freq;
 	float					min_distance;
 	float					max_distance;
 	float					max_ai_distance;
+
+	// Functions added by Cribbledirge for doppler effect.
+	IC virtual void update_position(const Fvector& newPosition)
+	{
+		// If the position has been set already, start getting a moving average of the velocity.
+		if (set)
+		{
+			prevVelocity.set(accVelocity);
+			curVelocity.sub(newPosition, position);
+
+			//accVelocity.set(curVelocity.mul(alpha).add(prevVelocity.mul(1.f - alpha)));
+		}
+		else
+		{
+			set = true;
+		}
+		position.set(newPosition);
+	}
+
+	IC virtual void update_velocity(const float dt)
+	{
+		float a = soundSmoothingParams::getTimeDeltaSmoothing();
+		int p = soundSmoothingParams::power;
+		accVelocity.x = soundSmoothingParams::getSmoothedValue(curVelocity.x * p / dt, accVelocity.x, a);
+		accVelocity.y = soundSmoothingParams::getSmoothedValue(curVelocity.y * p / dt, accVelocity.y, a);
+		accVelocity.z = soundSmoothingParams::getSmoothedValue(curVelocity.z * p / dt, accVelocity.z, a);
+		velocity.set(accVelocity);
+
+		//Msg("VELOC: %f", velocity.magnitude());
+	}
 };
 
 /// definition (Sound Interface)
@@ -276,6 +335,7 @@ public:
 	virtual void					statistic				( CSound_stats*  s0, CSound_stats_ext* s1 )												= 0;
 
 	virtual float					get_occlusion_to		( const Fvector& hear_pt, const Fvector& snd_pt, float dispersion=0.2f)					= 0;
+	virtual float get_occlusion(Fvector& P, float R, Fvector* occ) = 0;
 
 	virtual void					object_relcase			( CObject* obj )																		= 0;
 	virtual const Fvector&			listener_position		()																						= 0;

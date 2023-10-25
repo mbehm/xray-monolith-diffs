@@ -10,19 +10,25 @@
 
 IC	const Fvector &CPatrolPoint::position						() const
 {
+#ifdef DEBUG
 	VERIFY				(m_initialized);
+#endif
 	return				(m_position);
 }
 
 IC	const u32 &CPatrolPoint::flags								() const
 {
+#ifdef DEBUG
 	VERIFY				(m_initialized);
+#endif
 	return				(m_flags);
 }
 
 IC	const shared_str &CPatrolPoint::name						() const
 {
+#ifdef DEBUG
 	VERIFY				(m_initialized);
+#endif
 	return				(m_name);
 }
 

@@ -36,6 +36,7 @@
 #include "../CustomOutfit.h"
 #include "../ActorHelmet.h"
 #include "script_game_object.h" //Alundaio
+#include "ActorBackpack.h"
 
 using namespace luabind; //Alundaio
 // -----
@@ -115,7 +116,7 @@ void CUIInventoryUpgradeWnd::InitInventory( CInventoryItem* item, bool can_upgra
 		if(smart_cast<CWeaponRPG7*>(item))
 			m_item->SetShader(InventoryUtilities::GetOutfitUpgradeIconsShader());
 	}
-	else if(smart_cast<CCustomOutfit*>(item) || smart_cast<CHelmet*>(item))
+	else if (smart_cast<CCustomOutfit*>(item) || smart_cast<CHelmet*>(item) || smart_cast<CBackpack*>(item))
 	{
 		is_shader = true;
 		m_item->SetShader(InventoryUtilities::GetOutfitUpgradeIconsShader());
@@ -220,11 +221,22 @@ void CUIInventoryUpgradeWnd::SetCurScheme( const shared_str& id )
 	VERIFY2( 0, make_string( "Scheme <%s> does not loaded !", id.c_str() ) );
 }
 
+#include "UIGameCustom.h"
+
 bool CUIInventoryUpgradeWnd::install_item( CInventoryItem& inv_item, bool can_upgrade )
 {
 	m_scheme_wnd->DetachAll();
 	m_back->DetachAll();
-	m_btn_repair->Enable( (inv_item.GetCondition() < 0.99f) );
+
+	bool can_repair = CurrentGameUI()->GetActorMenu().CanRepairItem(&inv_item);
+	m_btn_repair->Enable(can_repair);
+
+	if (!can_repair)
+	{
+		LPCSTR message = CurrentGameUI()->GetActorMenu().RepairQuestion(&inv_item, false);
+		if (message != nullptr)
+			CurrentGameUI()->GetActorMenu().CallMessageBoxOK(message);
+	}
 
 	if ( !can_upgrade )
 	{

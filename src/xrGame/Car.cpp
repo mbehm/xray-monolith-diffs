@@ -124,7 +124,9 @@ void CCar::reload		(LPCSTR section)
 
 void CCar::cb_Steer			(CBoneInstance* B)
 {
+#ifdef DEBUG
 	VERIFY2(fsimilar(DET(B->mTransform),1.f,DET_CHECK_EPS),"Bones receive returns 0 matrix");
+#endif
 	CCar*	C			= static_cast<CCar*>(B->callback_param());
 	Fmatrix m;
 
@@ -155,23 +157,36 @@ BOOL	CCar::net_Spawn				(CSE_Abstract* DC)
 #ifdef DEBUG
 	InitDebug();
 #endif
-	CSE_Abstract					*e = (CSE_Abstract*)(DC);
-	CSE_ALifeCar					*co=smart_cast<CSE_ALifeCar*>(e);
-	BOOL							R = inherited::net_Spawn(DC);
 
-	PKinematics(Visual())->CalculateBones_Invalidate();
-	PKinematics(Visual())->CalculateBones(TRUE);
+	if (!inherited::net_Spawn(DC))
+		return (FALSE);
+
+	CSE_Abstract *e = (CSE_Abstract*)(DC);
+	CSE_ALifeCar *car = smart_cast<CSE_ALifeCar*>(e);
 
 	CPHSkeleton::Spawn(e);
+	
+	IKinematics* K = smart_cast<IKinematics*>(Visual());
+	IKinematicsAnimated	*A = smart_cast<IKinematicsAnimated*>(Visual());
+	if (A) {
+		if (car->startup_animation.size())
+			A->PlayCycle(*car->startup_animation);
+		K->CalculateBones(TRUE);
+	}
+
 	setEnabled						(TRUE);
 	setVisible						(TRUE);
-	PKinematics(Visual())->CalculateBones_Invalidate();
-	PKinematics(Visual())->CalculateBones(TRUE);
-	m_fSaveMaxRPM					= m_max_rpm;
-	SetfHealth						(co->health);
 
-	if(!g_Alive())					b_exploded=true;
-	else							b_exploded=false;
+	m_fSaveMaxRPM					= m_max_rpm;
+	SetfHealth(car->health);
+
+	if (!g_Alive())
+		b_exploded = true;
+	else
+	{
+		b_exploded = false;
+		processing_activate();
+	}
 									
 	CDamagableItem::RestoreEffect();
 	
@@ -188,8 +203,7 @@ BOOL	CCar::net_Spawn				(CSE_Abstract* DC)
 		m_memory->reload	(pUserData->r_string("visual_memory_definition", "section"));
 	}
 
-	return							(CScriptEntity::net_Spawn(DC) && R);
-	
+	return (CScriptEntity::net_Spawn(DC));
 }
 
 void CCar::ActorObstacleCallback					(bool& do_colide,bool bo1,dContact& c,SGameMtl* material_1,SGameMtl* material_2)	
@@ -214,6 +228,8 @@ void CCar::SpawnInitPhysics	(CSE_Abstract	*D)
 	//PPhysicsShell()->add_ObjectContactCallback(ActorObstacleCallback);
 	SetDefaultNetState				(so);
 	CPHUpdateObject::Activate       ();
+
+	m_pPhysicsShell->applyImpulse(Fvector().set(0.f, -1.f, 0.f), 0.1f);
 }
 
 void	CCar::net_Destroy()
@@ -231,12 +247,6 @@ void	CCar::net_Destroy()
 	CScriptEntity::net_Destroy();
 	inherited::net_Destroy();
 	CExplosive::net_Destroy();
-	if(m_pPhysicsShell)
-	{
-		m_pPhysicsShell->Deactivate();
-		m_pPhysicsShell->ZeroCallbacks();
-		xr_delete(m_pPhysicsShell);
-	}
 	CHolderCustom::detach_Actor();
 	ClearExhausts();
 	m_wheels_map.clear();
@@ -252,6 +262,12 @@ void	CCar::net_Destroy()
 	m_damage_particles.Clear();
 	CPHDestroyable::RespawnInit();
 	CPHCollisionDamageReceiver::Clear();
+	if (m_pPhysicsShell)
+	{
+		m_pPhysicsShell->Deactivate();
+		m_pPhysicsShell->ZeroCallbacks();
+		xr_delete(m_pPhysicsShell);
+	}
 	b_breaks=false;
 }
 
@@ -411,6 +427,7 @@ void CCar::UpdateEx			(float fov)
 	{
 		cam_Update(Device.fTimeDelta, fov);
 		OwnerActor()->Cameras().UpdateFromCamera(Camera());
+		if (eacFirstEye == active_camera->tag && !Level().Cameras().GetCamEffector(cefDemo))
 		OwnerActor()->Cameras().ApplyDevice(VIEWPORT_NEAR);
 	}
 
@@ -443,14 +460,12 @@ void CCar::UpdateCL				( )
 
  void CCar::VisualUpdate(float fov)
 {
+	if (m_pPhysicsShell)
+	{
 	m_pPhysicsShell->InterpolateGlobalTransform(&XFORM());
-
-	Fvector lin_vel;
-	m_pPhysicsShell->get_LinearVel(lin_vel);
-	// Sound
-	Fvector		C,V;
-	Center		(C);
-	V.set		(lin_vel);
+		IKinematics* K = smart_cast<IKinematics*>(Visual());
+		K->CalculateBones();
+	}
 
 	m_car_sound->Update();
 	if(Owner())
@@ -1724,9 +1739,9 @@ void CCar::OnEvent(NET_Packet& P, u16 type)
 			//	O->H_SetParent(0, just_before_destroy);
 			//}
 			//moved to DropItem
-		}break;
 	}
-
+		break;
+	}
 }
 
 void CCar::ResetScriptData(void	*P)
@@ -1805,9 +1820,7 @@ void CCar::CarExplode()
 	CActor* A=OwnerActor();
 	if(A)
 	{
-		if(!m_doors.empty())m_doors.begin()->second.GetExitPosition(m_exit_position);
-		else m_exit_position.set(Position());
-		A->detach_Vehicle();
+		A->use_HolderEx(0, false);
 		if(A->g_Alive()<=0.f)A->character_physics_support()->movement()->DestroyCharacter();
 	}
 
@@ -2117,3 +2130,9 @@ bool CCar::isActiveEngine()
 }
 #endif
 /*************************************************** added by Ray Twitty (aka Shadows) END ***************************************************/
+Fvector CCar::ExitPosition()
+{
+	if (!m_doors.empty())m_doors.begin()->second.GetExitPosition(m_exit_position);
+	else m_exit_position.set(Position());
+	return m_exit_position;
+}

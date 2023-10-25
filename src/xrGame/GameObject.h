@@ -42,7 +42,7 @@ class CAttachableItem;
 class animation_movement_controller;
 class CBlend;
 class ai_obstacle;
-
+class CFlashlight;
 class IKinematics;
 
 template <typename _return_type>
@@ -83,6 +83,8 @@ public:
 	virtual CAI_Stalker*				cast_stalker				()						{return NULL;}
 	virtual CScriptEntity*				cast_script_entity			()						{return NULL;}
 	virtual CWeapon*					cast_weapon					()						{return NULL;}
+	virtual CMissile* cast_missile() { return NULL; }
+	virtual CFlashlight* cast_flashlight() { return NULL; }
 	virtual CExplosive*					cast_explosive				()						{return NULL;}
 	virtual CSpaceRestrictor*			cast_restrictor				()						{return NULL;}
 	virtual CAttachableItem*			cast_attachable_item		()						{return NULL;}
@@ -225,9 +227,12 @@ private:
 	int						m_script_clsid;
 public:
 			CScriptGameObject	*lua_game_object() const;
+
 			int				clsid			() const
 	{
+#ifdef DEBUG
 		THROW				(m_script_clsid >= 0);
+#endif
 		return				(m_script_clsid);
 	}
 public:
@@ -308,6 +313,8 @@ public:
 	}
 
 	virtual void			on_matrix_change	(const Fmatrix &previous);
+
+	void FootStepCallback(float power, bool b_play, bool b_on_ground, bool b_hud_view);
 };
 
 #endif // !defined(AFX_GAMEOBJECT_H__3DA72D03_C759_4688_AEBB_89FA812AA873__INCLUDED_)

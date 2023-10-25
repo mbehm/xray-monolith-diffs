@@ -27,6 +27,8 @@
 #include "relation_registry.h"
 #include "danger_object.h"
 #include "smart_cover_object.h"
+#include "detail_path_manager_space.h"
+#include "patrol_path_manager_space.h"
 
 using namespace luabind;
 
@@ -72,10 +74,18 @@ class_<CScriptGameObject> &script_register_game_object1(class_<CScriptGameObject
 		.property("health",					&CScriptGameObject::GetHealth,			&CScriptGameObject::SetHealth)
 		.property("psy_health",				&CScriptGameObject::GetPsyHealth,		&CScriptGameObject::SetPsyHealth)
 		.property("power",					&CScriptGameObject::GetPower,			&CScriptGameObject::SetPower)
-		.property("satiety",				&CScriptGameObject::GetSatiety,			&CScriptGameObject::ChangeSatiety)
+		.property("satiety", &CScriptGameObject::GetSatiety, &CScriptGameObject::SetSatiety)
 		.property("radiation",				&CScriptGameObject::GetRadiation,		&CScriptGameObject::SetRadiation)
 		.property("morale",					&CScriptGameObject::GetMorale,			&CScriptGameObject::SetMorale)
-		.property("bleeding",				&CScriptGameObject::GetBleeding,		&CScriptGameObject::SetBleeding)
+
+		.property("bleeding", &CScriptGameObject::GetBleeding, &CScriptGameObject::ChangeBleeding)
+
+		.def("change_health", &CScriptGameObject::ChangeHealth)
+		.def("change_psy_health", &CScriptGameObject::ChangePsyHealth)
+		.def("change_power", &CScriptGameObject::ChangePower)
+		.def("change_satiety", &CScriptGameObject::ChangeSatiety)
+		.def("change_radiation", &CScriptGameObject::ChangeRadiation)
+		.def("change_morale", &CScriptGameObject::ChangeMorale)
 
 //		.def("get_bleeding",				&CScriptGameObject::GetBleeding)
 		.def("center",						&CScriptGameObject::Center)
@@ -91,6 +101,9 @@ class_<CScriptGameObject> &script_register_game_object1(class_<CScriptGameObject
 		.def("cost",						&CScriptGameObject::Cost)
 		.def("condition",					&CScriptGameObject::GetCondition)
 		.def("set_condition",				&CScriptGameObject::SetCondition)
+		.def("power_critical", &CScriptGameObject::GetPowerCritical)
+		.def("psy_factor", &CScriptGameObject::GetPsyFactor)
+		.def("set_psy_factor", &CScriptGameObject::SetPsyFactor)
 		.def("death_time",					&CScriptGameObject::DeathTime)
 //		.def("armor",						&CScriptGameObject::Armor)
 		.def("max_health",					&CScriptGameObject::MaxHealth)
@@ -124,19 +137,32 @@ class_<CScriptGameObject> &script_register_game_object1(class_<CScriptGameObject
 		.def("object_count",				&CScriptGameObject::GetInventoryObjectCount)
 		.def("object",						(CScriptGameObject *(CScriptGameObject::*)(LPCSTR))(&CScriptGameObject::GetObjectByName))
 		.def("object",						(CScriptGameObject *(CScriptGameObject::*)(int))(&CScriptGameObject::GetObjectByIndex))
+		.def("object_id", &CScriptGameObject::GetObjectById)
 		.def("active_item",					&CScriptGameObject::GetActiveItem)
 		
-		.def("set_callback",				(void (CScriptGameObject::*)(GameObject::ECallbackType, const luabind::functor<void> &))(&CScriptGameObject::SetCallback))
-		.def("set_callback",				(void (CScriptGameObject::*)(GameObject::ECallbackType, const luabind::functor<void> &, const luabind::object &))(&CScriptGameObject::SetCallback))
+		.def("set_callback",
+		     (void (CScriptGameObject::*)(GameObject::ECallbackType, const luabind::functor<void>&))(&CScriptGameObject
+			     ::SetCallback))
+		.def("set_callback",
+		     (void (CScriptGameObject::*)(GameObject::ECallbackType, const luabind::functor<void>&,
+		                                  const luabind::object&))(&CScriptGameObject::SetCallback))
 		.def("set_callback",				(void (CScriptGameObject::*)(GameObject::ECallbackType))(&CScriptGameObject::SetCallback))
 
-		.def("set_patrol_extrapolate_callback",	(void (CScriptGameObject::*)())(&CScriptGameObject::set_patrol_extrapolate_callback))
-		.def("set_patrol_extrapolate_callback",	(void (CScriptGameObject::*)(const luabind::functor<bool> &))(&CScriptGameObject::set_patrol_extrapolate_callback))
-		.def("set_patrol_extrapolate_callback",	(void (CScriptGameObject::*)(const luabind::functor<bool> &, const luabind::object &))(&CScriptGameObject::set_patrol_extrapolate_callback))
+		.def("set_patrol_extrapolate_callback",
+		     (void (CScriptGameObject::*)())(&CScriptGameObject::set_patrol_extrapolate_callback))
+		.def("set_patrol_extrapolate_callback",
+		     (void (CScriptGameObject::*)(const luabind::functor<bool>&))(&CScriptGameObject::
+			     set_patrol_extrapolate_callback))
+		.def("set_patrol_extrapolate_callback",
+		     (void (CScriptGameObject::*)(const luabind::functor<bool>&, const luabind::object&))(&CScriptGameObject::
+			     set_patrol_extrapolate_callback))
 
 		.def("set_enemy_callback",			(void (CScriptGameObject::*)())(&CScriptGameObject::set_enemy_callback))
-		.def("set_enemy_callback",			(void (CScriptGameObject::*)(const luabind::functor<bool> &))(&CScriptGameObject::set_enemy_callback))
-		.def("set_enemy_callback",			(void (CScriptGameObject::*)(const luabind::functor<bool> &, const luabind::object &))(&CScriptGameObject::set_enemy_callback))
+		.def("set_enemy_callback",
+		     (void (CScriptGameObject::*)(const luabind::functor<bool>&))(&CScriptGameObject::set_enemy_callback))
+		.def("set_enemy_callback",
+		     (void (CScriptGameObject::*)(const luabind::functor<bool>&, const luabind::object&))(&CScriptGameObject::
+			     set_enemy_callback))
 
 		.def("patrol",						&CScriptGameObject::GetPatrolPathName)
 
@@ -187,7 +213,8 @@ class_<CScriptGameObject> &script_register_game_object1(class_<CScriptGameObject
 		.def("set_force_anti_aim",			&CScriptGameObject::set_force_anti_aim)
 		.def("get_force_anti_aim",			&CScriptGameObject::get_force_anti_aim)
 
-		.def("set_override_animation",		&CScriptGameObject::set_override_animation)
+		.def("set_override_animation", (void (CScriptGameObject::*)(pcstr))(&CScriptGameObject::set_override_animation))
+		.def("set_override_animation", (void (CScriptGameObject::*)(u32, u32))(&CScriptGameObject::set_override_animation))
 		.def("clear_override_animation",	&CScriptGameObject::clear_override_animation)
 
 		// burer
@@ -291,7 +318,11 @@ class_<CScriptGameObject> &script_register_game_object1(class_<CScriptGameObject
 		.def("head_orientation",			&CScriptGameObject::head_orientation)
 
 		.def("set_actor_position",			&CScriptGameObject::SetActorPosition)
-		.def("set_actor_direction",			&CScriptGameObject::SetActorDirection)
+		.def("set_actor_direction", (void (CScriptGameObject::*)(float)) &CScriptGameObject::SetActorDirection)
+		.def("set_actor_direction", (void (CScriptGameObject::*)(float, float))& CScriptGameObject::SetActorDirection)
+		.def("set_actor_direction", (void (CScriptGameObject::*)(float, float, float))& CScriptGameObject::SetActorDirection)
+		.def("set_actor_direction", (void (CScriptGameObject::*)(const Fvector&))&CScriptGameObject::SetActorDirection)
+
 		.def("disable_hit_marks",			(void (CScriptGameObject::*)	(bool))&CScriptGameObject::DisableHitMarks)
 		.def("disable_hit_marks",			(bool (CScriptGameObject::*)	() const)&CScriptGameObject::DisableHitMarks)
 		.def("get_movement_speed",			&CScriptGameObject::GetMovementSpeed)
@@ -301,7 +332,10 @@ class_<CScriptGameObject> &script_register_game_object1(class_<CScriptGameObject
 		.def("vertex_in_direction",			&CScriptGameObject::vertex_in_direction)
 
 		.def("item_in_slot",				&CScriptGameObject::item_in_slot)
-		.def("active_detector",				&CScriptGameObject::active_detector)
+		.def("active_detector", &CScriptGameObject::active_device)
+		.def("hide_detector", &CScriptGameObject::hide_device)
+		.def("force_hide_detector", &CScriptGameObject::force_hide_device)
+		.def("show_detector", &CScriptGameObject::show_device)
 		.def("active_slot",					&CScriptGameObject::active_slot)
 		.def("activate_slot",				&CScriptGameObject::activate_slot)
 
@@ -313,6 +347,8 @@ class_<CScriptGameObject> &script_register_game_object1(class_<CScriptGameObject
 
 		.def("get_smart_cover_description",	&CScriptGameObject::get_smart_cover_description)
 		.def("set_visual_name",				&CScriptGameObject::set_visual_name)
+		.def("get_inv_weight", &CScriptGameObject::get_current_weight)
+		.def("get_inv_max_weight", &CScriptGameObject::get_max_weight)
 		.def("get_visual_name",				&CScriptGameObject::get_visual_name)
 
 		.def("can_throw_grenades",			(bool (CScriptGameObject::*)	() const)&CScriptGameObject::can_throw_grenades)
@@ -392,5 +428,6 @@ class_<CScriptGameObject> &script_register_game_object1(class_<CScriptGameObject
 		.def("is_door_blocked_by_npc",			&CScriptGameObject::is_door_blocked_by_npc)
 		.def("is_weapon_going_to_be_strapped",	&CScriptGameObject::is_weapon_going_to_be_strapped)
 
-	;return	(instance);
+		.def("reload_weapon", &CScriptGameObject::reload_weapon);
+	return (instance);
 }

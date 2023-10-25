@@ -74,6 +74,8 @@ m_ambients_config(0)
     wind_strength_factor = 0.f;
     wind_gust_factor = 0.f;
 
+	wetness_factor = 0.f;
+
     wind_blast_strength = 0.f;
     wind_blast_direction.set(1.f, 0.f, 0.f);
 
@@ -141,6 +143,17 @@ m_ambients_config(0)
         TRUE,
         FALSE
         );
+	m_sun_pos_config =
+		xr_new<CInifile>(
+			FS.update_path(
+				file_name,
+				"$game_config$",
+				"environment\\sun_positions.ltx"
+			),
+			TRUE,
+			TRUE,
+			FALSE
+		);
     m_thunderbolt_collections_config =
         xr_new<CInifile>(
         FS.update_path(
@@ -209,6 +222,10 @@ CEnvironment::~CEnvironment()
     VERIFY(m_suns_config);
     CInifile::Destroy(m_suns_config);
     m_suns_config = 0;
+
+	VERIFY(m_sun_pos_config);
+	CInifile::Destroy(m_sun_pos_config);
+	m_sun_pos_config = 0;
 
     VERIFY(m_thunderbolt_collections_config);
     CInifile::Destroy(m_thunderbolt_collections_config);
@@ -294,7 +311,7 @@ void CEnvironment::SetWeather(shared_str name, bool forced)
             Msg("! Invalid weather name: %s", name.c_str());
             return;
         }
-        R_ASSERT3(it != WeatherCycles.end(), "Invalid weather name.", *name);
+		// R_ASSERT3(it != WeatherCycles.end(), "Invalid weather name.", *name);
         CurrentCycleName = it->first;
         if (forced) { Invalidate(); }
         if (!bWFX)
@@ -310,7 +327,7 @@ void CEnvironment::SetWeather(shared_str name, bool forced)
     else
     {
 #ifndef _EDITOR
-        FATAL("! Empty weather name");
+		Msg("! Empty weather name");
 #endif
     }
 }
@@ -507,7 +524,10 @@ void CEnvironment::lerp(float& current_weight)
         mpower += EM.sum(*mit, view);
 
     // final lerp
+	if (!m_paused)
     CurrentEnv->lerp(this, *Current[0], *Current[1], current_weight, EM, mpower);
+
+	//Msg("Puddles amount: %f", wetness_factor);
 }
 
 void CEnvironment::OnFrame()
@@ -543,7 +563,7 @@ void CEnvironment::OnFrame()
     // Igor. Dynamic sun position.
     //AVO: allow sun to move as defined in configs
 #ifdef DYNAMIC_SUN_MOVEMENT
-    if (!::Render->is_sun_static())
+    if (!::Render->is_sun_static() && fGameTime > 18000.f && fGameTime < 79000.f)
         calculate_dynamic_sun_dir();
 #endif
     //-AVO
@@ -565,14 +585,62 @@ void CEnvironment::OnFrame()
     PerlinNoise1D->SetFrequency(wind_gust_factor*MAX_NOISE_FREQ);
     wind_strength_factor = clampr(PerlinNoise1D->GetContinious(Device.fTimeGlobal) + 0.5f, 0.f, 1.f);
 
-    shared_str l_id = (current_weight < 0.5f) ? Current[0]->lens_flare_id : Current[1]->lens_flare_id;
+	shared_str l_id;
+	shared_str t_id;
+	if (m_paused)
+	{
+		l_id = CurrentEnv->lens_flare_id;
+		t_id = CurrentEnv->tb_id;
+	}
+	else
+	{
+		calculate_config_sun_dir();
+		l_id = (current_weight < 0.5f) ? Current[0]->lens_flare_id : Current[1]->lens_flare_id;
+		t_id = (current_weight < 0.5f) ? Current[0]->tb_id : Current[1]->tb_id;
+	}
+
     eff_LensFlare->OnFrame(l_id);
-    shared_str t_id = (current_weight < 0.5f) ? Current[0]->tb_id : Current[1]->tb_id;
     eff_Thunderbolt->OnFrame(t_id, CurrentEnv->bolt_period, CurrentEnv->bolt_duration);
     eff_Rain->OnFrame();
 
     // ******************** Environment params (setting)
     m_pRender->OnFrame(*this);
+}
+
+void CEnvironment::calculate_config_sun_dir()
+{
+	float current_time = fGameTime / (DAY_LENGTH / 24);
+	int weather_time = floor(current_time);
+	float s_weight = current_time - weather_time;
+
+	float real_sun_alt, real_sun_long;
+	float s_alt = sun_hp[weather_time].x;
+	float s_long = sun_hp[weather_time].y;
+
+	if (s_weight > 0)
+	{
+		int next_hour = weather_time == 23 ? 0 : weather_time + 1;
+		float s_alt2 = sun_hp[next_hour].x;
+		float s_long2 = sun_hp[next_hour].y;
+
+		real_sun_alt = _lerp(s_alt, s_alt2, s_weight);
+		real_sun_long = _lerp(s_long, s_long2, s_weight);
+	}
+	else
+	{
+		real_sun_alt = s_alt;
+		real_sun_long = s_long;
+	}
+
+	R_ASSERT(_valid(real_sun_alt));
+	R_ASSERT(_valid(real_sun_long));
+
+	CurrentEnv->sun_dir.setHP(
+		deg2rad(real_sun_alt),
+		deg2rad(real_sun_long)
+	);
+
+	R_ASSERT(_valid(CurrentEnv->sun_dir));
 }
 
 void CEnvironment::calculate_dynamic_sun_dir()

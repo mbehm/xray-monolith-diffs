@@ -2,13 +2,13 @@
 #include "CarWeapon.h"
 #include "../xrphysics/PhysicsShell.h"
 #include "PhysicsShellHolder.h"
-//#include "../Include/xrRender/Kinematics.h"
 #include "../Include/xrRender/Kinematics.h"
 #include "object_broker.h"
 #include "ai_sounds.h"
 #include "weaponAmmo.h"
 #include "xr_level_controller.h"
 #include "game_object_space.h"
+#include "holder_custom.h"
 
 void CCarWeapon::BoneCallbackX		(CBoneInstance *B)
 {
@@ -225,8 +225,8 @@ void CCarWeapon::FireEnd()
 
 void CCarWeapon::OnShot()
 {
-	FireBullet				(	m_fire_pos, m_fire_dir, fireDispersionBase, *m_Ammo, 
-								m_object->ID(), m_object->ID(), SendHitAllowed(m_object), ::Random.randI(0,30));
+	CHolderCustom* holder = smart_cast<CHolderCustom*>(m_object);
+	FireBullet(m_fire_pos, m_fire_dir, fireDispersionBase, *m_Ammo, holder->Engaged() ? 0 : m_object->ID(), m_object->ID(), SendHitAllowed(m_object), ::Random.randI(0, 30));
 
 	StartShotParticles		();
 	

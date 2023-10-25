@@ -5,6 +5,8 @@
 
 #include "../Include/xrRender/DebugRender.h"
 #include "../Include/xrRender/UIRender.h"
+#include "../UIGameCustom.h"
+#include "../ui/UIDialogWnd.h"
 //#include "UIHelper.h"
 //#include "UIHint.h"
 //#include "../ScriptXMLInit.h"
@@ -162,10 +164,11 @@ CUIWindow::~CUIWindow()
 }
 
 
-
 void CUIWindow::Draw()
 {
-	for(WINDOW_LIST_it it = m_ChildWndList.begin(); m_ChildWndList.end() != it; ++it){
+	for (WINDOW_LIST_it it = m_ChildWndList.begin(); m_ChildWndList.end() != it; ++it)
+	{
+		if (!(*it)) continue;
 		if(!(*it)->IsShown())		continue;
 		if((*it)->GetCustomDraw())	continue;
 		(*it)->Draw					();
@@ -187,7 +190,9 @@ void CUIWindow::Draw(float x, float y)
 
 void CUIWindow::Update()
 {
-	if (GetUICursor().IsVisible())
+	CUIDialogWnd* TIR = CurrentGameUI() ? CurrentGameUI()->TopInputReceiver() : nullptr;
+
+	if (GetUICursor().IsVisible() || (TIR && !TIR->NeedCursor()))
 	{
 		bool cursor_on_window;
 

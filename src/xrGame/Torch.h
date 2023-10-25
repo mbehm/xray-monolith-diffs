@@ -14,6 +14,8 @@ private:
 protected:
 	float			fBrightness;
 	CLAItem*		lanim;
+	LPCSTR def_lanim;
+	Fcolor def_clr;
 
 	u16				guid_bone;
 	shared_str		light_trace_bone;
@@ -24,10 +26,20 @@ protected:
 	ref_light		light_render;
 	ref_light		light_omni;
 	ref_glow		glow_render;
-	Fvector			m_focus;
+	shared_str m_light_section;
+	Fvector m_torch_offset;
+	Fvector m_omni_offset;
+	float m_torch_inertion_speed_max;
+	float m_torch_inertion_speed_min;
+	float m_torch_inertion_clamp;
+	bool m_bUseInertion;
 private:
 	inline	bool	can_use_dynamic_lights	();
-
+	bool isFlickering;
+	bool lightRenderState;
+	float lastFlicker;
+	int l_flickerChance;
+	float l_flickerDelay;
 public:
 					CTorch					();
 	virtual			~CTorch					();
@@ -41,31 +53,27 @@ public:
 	virtual void	OnH_A_Chield			();
 	virtual void	OnH_B_Independent		(bool just_before_destroy);
 
+	virtual void OnMoveToSlot(const SInvItemPlace& prev);
+	virtual void OnMoveToRuck(const SInvItemPlace& prev);
 	virtual void	UpdateCL				();
 
 			void	Switch					();
 			void	Switch					(bool light_on);
+	void SwitchLightOnly();
+	void SetLanim(LPCSTR name, bool bFlicker, int flickerChance, float flickerDelay, float framerate);
+	void ResetLanim();
+	void LoadLightParams();
 			bool	torch_active			() const;
 
 	virtual bool	can_be_attached			() const;
 
 	//CAttachableItem
 	virtual	void	enable					(bool value);
- 
-public:
-			void	SwitchNightVision		();
-			void	SwitchNightVision		(bool light_on, bool use_sounds=true);
-
-			bool	GetNightVisionStatus	() { return m_bNightVisionOn; }
-CNightVisionEffector* GetNightVision		() { return m_night_vision; }
 protected:
-	bool					m_bNightVisionEnabled;
-	bool					m_bNightVisionOn;
+	HUD_SOUND_COLLECTION_LAYERED m_sounds;
 
-	CNightVisionEffector*	m_night_vision;
-	HUD_SOUND_COLLECTION	m_sounds;
-
-	enum EStats{
+	enum EStats
+	{
 		eTorchActive				= (1<<0),
 		eNightVisionActive			= (1<<1),
 		eAttached					= (1<<2)
@@ -81,29 +89,11 @@ public:
 	virtual void	activate_physic_shell	();
 	virtual void	setup_physic_shell		();
 
+	virtual void afterAttach();
 	virtual void	afterDetach				();
 	virtual void	renderable_Render		();
 
 	DECLARE_SCRIPT_REGISTER_FUNCTION
-};
-
-class CNightVisionEffector
-{
-	CActor*					m_pActor;
-	HUD_SOUND_COLLECTION	m_sounds;
-public:
-	enum EPlaySounds{
-		eStartSound	= 0,
-		eStopSound,
-		eIdleSound,
-		eBrokeSound
-	};
-				CNightVisionEffector(const shared_str& sect);
-	void		Start		(const shared_str& sect, CActor* pA, bool play_sound=true);
-	void		Stop		(const float factor, bool play_sound=true);
-	bool		IsActive	();
-	void		OnDisabled	(CActor* pA, bool play_sound=true);
-	void		PlaySounds	(EPlaySounds which);
 };
 
 add_to_type_list(CTorch)

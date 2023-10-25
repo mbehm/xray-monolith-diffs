@@ -222,6 +222,7 @@ public:
 	u32						get_animation_variants_count (EMotionAnim anim) const;
 	// you need to call it with default arguments to turn it off
 	void					set_override_animation (EMotionAnim anim=eAnimUndefined, u32 index=-1);
+	void set_override_animation_script(EMotionAnim anim = eAnimUndefined, u32 index = -1);
 	void					set_override_animation (pcstr name);
 	void					clear_override_animation ();
 	EMotionAnim				get_override_animation () const { return m_override_animation; }

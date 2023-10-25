@@ -233,9 +233,12 @@ void		CPHElement::Deactivate()
 	}
 }
 
-void CPHElement::SetTransform(const Fmatrix &m0, motion_history_state history_state ){
+void CPHElement::SetTransform(const Fmatrix& m0, motion_history_state history_state)
+{
+#ifdef DEBUG
 	VERIFY2(_valid(m0), make_string( "invalid_form_in_set_transform" ) + ( PhysicsRefObject()->dump(full_capped) ) );
 	VERIFY2(valid_pos( m0.c ),  dbg_valide_pos_string( m0.c, PhysicsRefObject(), "invalid_form_in_set_transform" ) );
+#endif
 	Fvector mc;
 	CPHGeometryOwner::get_mc_vs_transform(mc,m0);
 	VERIFY_BOUNDARIES2(mc,phBoundaries,PhysicsRefObject(),"mass	center	in set transform");
@@ -1159,12 +1162,28 @@ void	CPHElement::applyForce(float x,float y,float z)																//called any
 	VERIFY(dBodyStateValide(m_body));
 }
 
-void	CPHElement::applyImpulse(const Fvector& dir, float val)//aux
+// demonized: applyTorque
+void CPHElement::applyTorque(const Fvector& dir, float val)
 {														
+	applyTorque(dir.x * val, dir.y * val, dir.z * val);
+}
 	
-	applyForce(dir.x*val/fixed_step,dir.y*val/fixed_step,dir.z*val/fixed_step);
+void CPHElement::applyTorque(float x, float y, float z)
+{
+	VERIFY(_valid(x) && _valid(y) && _valid(z));
+	if (!isActive())return; //hack??
+	if (m_flags.test(flFixed)) return;
+	if (!dBodyIsEnabled(m_body)) dBodyEnable(m_body);
+	m_shell->EnableObject(0);
+	dBodyAddTorque(m_body, x, y, z);
+	BodyCutForce(m_body, m_l_limit, m_w_limit);
+	VERIFY(dBodyStateValide(m_body));
 }
 
+void CPHElement::applyImpulse(const Fvector& dir, float val) //aux
+{
+	applyForce(dir.x * val / fixed_step, dir.y * val / fixed_step, dir.z * val / fixed_step);
+}
 
 
 void CPHElement::add_Shape(const SBoneShape& shape,const Fmatrix& offset)
@@ -1586,6 +1605,7 @@ void	CPHElement::ReleaseFixed()
 	m_flags.set(flFixed,FALSE);
 	if(!isActive())return;
 	dBodySetMass(m_body,&m_mass);
+	dBodySetGravityMode(m_body, 1);
 }
 void CPHElement::applyGravityAccel				(const Fvector& accel)
 {
@@ -1632,6 +1652,25 @@ void CPHElement::GetPointVel( Fvector	 &res_vel, const Fvector & point ) const
 	//Fvector	 res_vel;
 	dBodyGetPointVel(get_bodyConst(),point.x,point.y,point.z,res);
 	CopyMemory (&res_vel,res,sizeof(Fvector));
+}
+
+void CPHElement::ActivatingPos(const Fmatrix& BoneTransform)
+{
+	ToBonePos(BoneTransform, mh_unspecified);
+	m_flags.set(flActivating, FALSE);
+	if (!m_parent_element)
+		m_shell->SetObjVsShellTransform(BoneTransform);
+
+	//{
+	//	m_shell->m_object_in_root.set( B->mTransform );
+	//	m_shell->m_object_in_root.invert( );
+	//	m_shell->SetNotActivating( );
+	//}
+	//VERIFY2(fsimilar(DET(B->mTransform),1.f,DET_CHECK_EPS),"Bones callback returns 0 matrix");
+
+	VERIFY_RMATRIX(BoneTransform);
+	VERIFY(valid_pos(BoneTransform.c, phBoundaries));
+	return;
 }
 
 #ifdef DEBUG

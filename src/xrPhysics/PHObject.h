@@ -33,7 +33,8 @@ class CPHObject :
 					st_dirty						=(1<<2),
 					st_net_interpolation			=(1<<3),
 					fl_ray_motions					=(1<<4),
-					st_recently_deactivated			=(1<<5)
+		st_recently_deactivated =(1 << 5),
+		is_deadbody =(1 << 6)
 				};
 
 			CPHIsland			m_island;
@@ -114,8 +115,16 @@ virtual		void			near_callback					(CPHObject* obj)						{;}
 virtual		void			RMotionsQuery					(qResultVec	&res)						{;}
 virtual		CPHMoveStorage*	MoveStorage						()										{return NULL;}
 virtual		ECastType		CastType						(){return tpNotDefinite;}
-virtual		void			vis_update_activate				()										{}
-virtual		void			vis_update_deactivate			()										{}
+
+	void SetDeadBody() { m_flags.set(is_deadbody, TRUE); }
+
+	virtual void vis_update_activate()
+	{
+	}
+
+	virtual void vis_update_deactivate()
+	{
+	}
 
 #ifdef		DEBUG
 virtual		IPhysicsShellHolder	*ref_object					()										=0;

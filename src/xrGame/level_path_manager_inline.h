@@ -55,9 +55,11 @@ IC	void CLevelManagerTemplate::build_path	(const _vertex_id_type start_vertex_id
 }
 
 TEMPLATE_SPECIALIZATION
-IC	void CLevelManagerTemplate::before_search			(const _vertex_id_type start_vertex_id, const _vertex_id_type dest_vertex_id)
+IC void CLevelManagerTemplate::before_search(const _vertex_id_type start_vertex_id,
+                                             const _vertex_id_type dest_vertex_id)
 {
-	if (m_object) {
+	if (m_object)
+{
 		m_object->add_border	(start_vertex_id,dest_vertex_id);
 		VERIFY					(!m_object->applied() || ai().level_graph().is_accessible(start_vertex_id));
 		VERIFY					(!m_object->applied() || ai().level_graph().is_accessible(dest_vertex_id));

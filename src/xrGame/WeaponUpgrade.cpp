@@ -30,6 +30,7 @@ bool CWeapon::install_upgrade_impl( LPCSTR section, bool test )
 	result |= install_upgrade_disp      ( section, test );
 	result |= install_upgrade_hit       ( section, test );
 	result |= install_upgrade_addon     ( section, test );
+	result |= install_upgrade_hud(section, test);
 	return result;
 }
 
@@ -38,6 +39,8 @@ bool CWeapon::install_upgrade_ammo_class( LPCSTR section, bool test )
 	LPCSTR str;
 
 	bool result = process_if_exists( section, "ammo_mag_size", &CInifile::r_s32, iMagazineSize, test );
+
+	result |= process_if_exists(section, "ap_modifier", &CInifile::r_float, m_APk, test);
 
 	//	ammo_class = ammo_5.45x39_fmj, ammo_5.45x39_ap  // name of the ltx-section of used ammo
 	bool result2 = process_if_exists_set( section, "ammo_class", &CInifile::r_string, str, test );
@@ -108,9 +111,12 @@ bool CWeapon::install_upgrade_disp( LPCSTR section, bool test )
 
 	result |= process_if_exists( section, "PDM_disp_base",          &CInifile::r_float, m_pdm.m_fPDM_disp_base,          test );
 	result |= process_if_exists( section, "PDM_disp_vel_factor",    &CInifile::r_float, m_pdm.m_fPDM_disp_vel_factor,    test );
-	result |= process_if_exists( section, "PDM_disp_accel_factor",  &CInifile::r_float, m_pdm.m_fPDM_disp_accel_factor,  test );
+	result |= process_if_exists(section, "PDM_disp_accel_factor", &CInifile::r_float, m_pdm.m_fPDM_disp_accel_factor,
+	                            test);
 	result |= process_if_exists( section, "PDM_disp_crouch",        &CInifile::r_float, m_pdm.m_fPDM_disp_crouch,        test );
-	result |= process_if_exists( section, "PDM_disp_crouch_no_acc", &CInifile::r_float, m_pdm.m_fPDM_disp_crouch_no_acc, test );
+	result |= process_if_exists(section, "PDM_disp_crouch_no_acc", &CInifile::r_float, m_pdm.m_fPDM_disp_crouch_no_acc,
+	                            test);
+	result |= process_if_exists(section, "PDM_disp_buckshot", &CInifile::r_float, m_pdm.m_fPDM_disp_buckShot, test);
 
 //	result |= process_if_exists( section, "misfire_probability", &CInifile::r_float, misfireProbability,       test );
 //	result |= process_if_exists( section, "misfire_condition_k", &CInifile::r_float, misfireConditionK,        test );
@@ -120,6 +126,7 @@ bool CWeapon::install_upgrade_disp( LPCSTR section, bool test )
 	result |= process_if_exists( section, "misfire_end_condition",		&CInifile::r_float, misfireEndCondition,			test );
 	result |= process_if_exists( section, "misfire_start_prob",			&CInifile::r_float, misfireStartProbability,		test );
 	result |= process_if_exists( section, "misfire_end_prob",			&CInifile::r_float, misfireEndProbability,			test );
+	result |= process_if_exists(section, "zoom_rotate_time", &CInifile::r_float, m_zoom_params.m_fZoomRotateTime, test);
 
 	BOOL value = m_zoom_params.m_bZoomEnabled;
 	bool result2 = process_if_exists_set( section, "zoom_enabled", &CInifile::r_bool, value, test );
@@ -129,6 +136,22 @@ bool CWeapon::install_upgrade_disp( LPCSTR section, bool test )
 	}
 	result |= result2;
 	
+	return result;
+}
+
+#include "player_hud.h"
+
+bool CWeapon::install_upgrade_hud(LPCSTR section, bool test)
+{
+	if (!HudItemData())
+		return false;
+
+	bool result = false;
+	//	Inertion additions
+	result |= process_if_exists(section, "inertion_tendto_speed", &CInifile::r_float, HudItemData()->m_measures.m_inertion_params.m_tendto_speed,
+	                            test);
+	result |= process_if_exists(section, "inertion_tendto_aim_speed", &CInifile::r_float,
+		HudItemData()->m_measures.m_inertion_params.m_tendto_speed_aim, test);
 	return result;
 }
 
@@ -176,11 +199,11 @@ bool CWeapon::install_upgrade_hit( LPCSTR section, bool test )
 	silencer_bullet_speed        = 310
 	*/
 
-	result |= process_if_exists_set( section, "use_aim_bullet",  &CInifile::r_bool, m_bUseAimBullet, test );
+	/*result |= process_if_exists_set(section, "use_aim_bullet", &CInifile::r_bool, m_bUseAimBullet, test);
 	if ( m_bUseAimBullet ) // first super bullet
 	{
 		result |= process_if_exists( section, "time_to_aim",  &CInifile::r_float, m_fTimeToAim, test );
-	}
+	}*/
 
 //	LPCSTR weapon_section = cNameSect().c_str(); 
 	float rpm =	60.0f/fOneShotTime;//pSettings->r_float( weapon_section, "rpm" ); // fOneShotTime * 60.0f;
@@ -237,9 +260,16 @@ bool CWeapon::install_upgrade_addon( LPCSTR section, bool test )
 			}
 		}
 	}
-	result |= process_if_exists_set( section, "scope_dynamic_zoom", &CInifile::r_bool, m_zoom_params.m_bUseDynamicZoom, test );
-	result |= process_if_exists_set( section, "scope_nightvision", &CInifile::r_string_wb, m_zoom_params.m_sUseZoomPostprocess, test );
-	result |= process_if_exists_set( section, "scope_alive_detector", &CInifile::r_string_wb, m_zoom_params.m_sUseBinocularVision, test );
+	result |= process_if_exists_set(section, "scope_dynamic_zoom", &CInifile::r_bool, m_zoom_params.m_bUseDynamicZoom,
+	                                test);
+	result |= process_if_exists_set(section, "scope_nightvision", &CInifile::r_string_wb,
+	                                m_zoom_params.m_sUseZoomPostprocess, test);
+	result |= process_if_exists_set(section, "scope_alive_detector", &CInifile::r_string_wb,
+	                                m_zoom_params.m_sUseBinocularVision, test);
+
+	process_if_exists_set(section, "scope_dynamic_zoom", &CInifile::r_bool, m_zoom_params.m_bUseDynamicZoom_Primary, test);
+	process_if_exists_set(section, "scope_dynamic_zoom_alt", &CInifile::r_bool, m_zoom_params.m_bUseDynamicZoom_Alt, test);
+	process_if_exists_set(section, "scope_dynamic_zoom_gl", &CInifile::r_bool, m_zoom_params.m_bUseDynamicZoom_GL, test);
 
 	result |= result2;
 

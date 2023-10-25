@@ -117,14 +117,16 @@ namespace CDB
 		xr_vector<edge> _edges			(edge_count);
 		edge 							*edges = &*_edges.begin();
 #else
-		edge							*edges = (edge*)_alloca(edge_count*sizeof(edge));
+		edge* edges = xr_alloc<edge>(edge_count);
 #endif
 		edge							*i = edges;
 		xr_vector<TRI>::const_iterator	B = faces.begin(), I = B;
 		xr_vector<TRI>::const_iterator	E = faces.end();
-		for ( ; I != E; ++I) {
+		for (; I != E; ++I)
+		{
 			u32							face_id = u32(I - B);
 
+			VERIFY(i < (edges + edge_count));
 			(*i).face_id				= face_id;
 			(*i).edge_id				= 0;
 			(*i).vertex_id0				= (u16)(*I).verts[0];
@@ -133,6 +135,7 @@ namespace CDB
 				std::swap				((*i).vertex_id0,(*i).vertex_id1);
 			++i;
 			
+			VERIFY(i < (edges + edge_count));
 			(*i).face_id				= face_id;
 			(*i).edge_id				= 1;
 			(*i).vertex_id0				= (u16)(*I).verts[1];
@@ -141,6 +144,7 @@ namespace CDB
 				std::swap				((*i).vertex_id0,(*i).vertex_id1);
 			++i;
 			
+			VERIFY(i < (edges + edge_count));
 			(*i).face_id				= face_id;
 			(*i).edge_id				= 2;
 			(*i).vertex_id0				= (u16)(*I).verts[2];
@@ -248,6 +252,8 @@ namespace CDB
 			}
 		}
 #endif
+
+		xr_free(edges);
 	}
     IC BOOL similar(TRI& T1, TRI& T2)
     {

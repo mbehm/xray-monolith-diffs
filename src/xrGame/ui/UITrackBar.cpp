@@ -177,6 +177,22 @@ void CUITrackBar::UndoOptValue()
 	CUIOptionsItem::UndoOptValue();
 }
 
+void CUITrackBar::SetIValue(int i)
+{
+	m_i_val = i;
+	UpdatePos();
+}
+
+void CUITrackBar::SetFValue(float f)
+{
+	if (m_b_is_float)
+		m_f_val = f;
+	else
+		m_f_val = iFloor(f);
+	
+	UpdatePos();
+}
+
 void CUITrackBar::SetStep(float step)
 {
 	if(m_b_is_float)

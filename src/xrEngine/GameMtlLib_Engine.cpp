@@ -28,10 +28,37 @@ void CreateSounds(SoundVec& lst, LPCSTR buf)
     string128 tmp;
     int cnt = _GetItemCount(buf);
     R_ASSERT(cnt <= GAMEMTL_SUBITEM_COUNT + 2);
-    lst.resize(cnt);
+
     for (int k = 0; k < cnt; ++k)
-        lst[k].create(_GetItem(buf, k, tmp), st_Effect, sg_SourceType);
+	{
+		_GetItem(buf, k, tmp);
+
+		if (strstr(tmp, "*"))
+		{
+			xr_strcat(tmp, ".ogg");
+			FS_FileSet fset;
+			FS.file_list(fset, "$game_sounds$", FS_ListFiles, tmp);
+
+			for (FS_FileSet::iterator it = fset.begin(); it != fset.end(); it++)
+			{
+				string128 name;
+				xr_strcpy(name, sizeof(name), (*it).name.c_str());
+				*strext(name) = 0;
+
+				ref_sound snd;
+				snd.create(name, st_Effect, sg_SourceType);
+				lst.push_back(snd);
+			}
+		}
+		else
+		{
+			ref_sound snd;
+			snd.create(tmp, st_Effect, sg_SourceType);
+			lst.push_back(snd);
 }
+	}
+}
+
 /*
 void CreateMarks(ShaderVec& lst, LPCSTR buf)
 {

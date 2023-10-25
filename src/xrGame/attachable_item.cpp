@@ -18,7 +18,7 @@
 	CAttachableItem*	CAttachableItem::m_dbgItem = NULL;
 #endif
 
-IC	CPhysicsShellHolder &CAttachableItem::object	() const
+CPhysicsShellHolder& CAttachableItem::object() const
 {
 	return				(item().object());
 }
@@ -118,15 +118,20 @@ bool  CAttachableItem::can_be_attached	() const
 	 
 	return					(true);
 }
+
 void CAttachableItem::afterAttach		()
 {
+#ifdef DEBUG
 	VERIFY							(m_valid);
+#endif
 	object().processing_activate	();
 }
 
 void CAttachableItem::afterDetach		()
 {
+#ifdef DEBUG
 	VERIFY							(m_valid);
+#endif
 	object().processing_deactivate	();
 }
 

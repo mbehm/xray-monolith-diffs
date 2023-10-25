@@ -13,8 +13,13 @@
 #include "level_sounds.h"
 #include "GamePersistent.h"
 #include "../xrEngine/Rain.h"
+#include "character_community.h"
+#include "character_rank.h"
+#include "character_reputation.h"
+#include "monster_community.h"
+#include "HudManager.h"
 
-ENGINE_API	bool g_dedicated_server;
+extern ENGINE_API bool g_dedicated_server;
 
 bool CLevel::Load_GameSpecific_Before()
 {
@@ -31,6 +36,11 @@ bool CLevel::Load_GameSpecific_Before()
 		ai().patrol_path_storage_raw	(*stream);
 		FS.r_close						(stream);
 	}
+
+	CHARACTER_COMMUNITY::Reset();
+	CHARACTER_RANK::Reset();
+	CHARACTER_REPUTATION::Reset();
+	MONSTER_COMMUNITY::Reset();
 
 	return								(TRUE);
 }
@@ -157,6 +167,8 @@ bool CLevel::Load_GameSpecific_After()
 	BlockCheatLoad();
 
 	g_pGamePersistent->Environment().SetGameTime	(GetEnvironmentGameDayTimeSec(),game->GetEnvironmentGameTimeFactor());
+
+	HUD().SetRenderable(true);
 
 	return TRUE;
 }

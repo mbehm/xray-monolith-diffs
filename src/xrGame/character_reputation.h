@@ -54,6 +54,7 @@ public:
 
 	static void					DeleteIdToIndexData	();
 
+	static void Reset() { m_relation_table.clear(); }
 private:
 	typedef CIni_Table<CHARACTER_GOODWILL, CHARACTER_REPUTATION> GOODWILL_TABLE;
 	friend GOODWILL_TABLE;

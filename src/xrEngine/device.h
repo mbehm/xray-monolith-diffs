@@ -1,4 +1,4 @@
-#ifndef xr_device
+п»ї#ifndef xr_device
 #define xr_device
 #pragma once
 
@@ -16,7 +16,10 @@
 //#include "shader.h"
 //#include "R_Backend.h"
 
+#include "../build_config_defines.h"
+
 #define VIEWPORT_NEAR 0.2f
+#define R_VIEWPORT_NEAR 0.005f
 
 #define DEVICE_RESET_PRECACHE_FRAME_COUNT 10
 
@@ -49,6 +52,7 @@ public:
     u32 dwPrecacheFrame;
     BOOL b_is_Ready;
     BOOL b_is_Active;
+	BOOL b_hide_cursor;
 public:
 
     // Engine flow-control
@@ -85,7 +89,7 @@ protected:
     CTimer_paused TimerGlobal;
 
     //AVO: 
-    CTimer frame_timer;   //TODO: проверить, не дублируется-ли схожий таймер (alpet)
+	CTimer frame_timer; //TODO: ГЇГ°Г®ГўГҐГ°ГЁГІГј, Г­ГҐ Г¤ГіГЎГ«ГЁГ°ГіГҐГІГ±Гї-Г«ГЁ Г±ГµГ®Г¦ГЁГ© ГІГ Г©Г¬ГҐГ° (alpet)
     //-AVO
 
 public:
@@ -115,6 +119,28 @@ public:
 // refs
 class ENGINE_API CRenderDevice : public CRenderDeviceBase
 {
+public:
+	class ENGINE_API CSecondVPParams //--#SM+#-- +SecondVP+
+	{
+		bool isActive; // Oeaa aeoeaaoee ?aiaa?a ai aoi?ie au?ii?o
+		u8 frameDelay;  // Ia eaeii eaa?a n iiiaioa i?ioeiai ?aiaa?a ai aoi?ie au?ii?o iu ia?i?i iiaue
+						  //(ia ii?ao auou iaiuoa 2 - ea?aue aoi?ie eaa?, ?ai aieuoa oai aieaa ieceee FPS ai aoi?ii au?ii?oa)
+
+	public:
+		bool isCamReady; // Oeaa aioiaiinoe eaia?u (FOV, iiceoey, e o.i) e ?aiaa?o aoi?iai au?ii?oa
+
+		IC bool IsSVPActive() { return isActive; }
+		void SetSVPActive(bool bState);
+		bool    IsSVPFrame();
+
+		IC u8 GetSVPFrameDelay() { return frameDelay; }
+		void  SetSVPFrameDelay(u8 iDelay)
+		{
+			frameDelay = iDelay;
+			clamp<u8>(frameDelay, 2, u8(-1));
+		}
+	};	
+	
 private:
     // Main objects used for creating and rendering the 3D scene
     u32 m_dwWindowStyle;
@@ -204,6 +230,8 @@ public:
 
     Fmatrix mInvFullTransform;
 
+	CSecondVPParams m_SecondViewport;	//--#SM+#-- +SecondVP+
+
     //float fFOV;
     //float fASPECT;
 
@@ -225,12 +253,17 @@ public:
         m_hWnd = NULL;
         b_is_Active = FALSE;
         b_is_Ready = FALSE;
+		b_hide_cursor = FALSE;
         Timer.Start();
         m_bNearer = FALSE;
+		
+		m_SecondViewport.SetSVPActive(false);
+		m_SecondViewport.SetSVPFrameDelay(2);
+		m_SecondViewport.isCamReady = false;			
     };
 
     void Pause(BOOL bOn, BOOL bTimer, BOOL bSound, LPCSTR reason);
-    BOOL Paused();
+	bool Paused();
 
     // Scene control
     void PreCache(u32 amount, bool b_draw_loadscreen, bool b_wait_user_input);
@@ -241,6 +274,9 @@ public:
 
     void overdrawBegin();
     void overdrawEnd();
+
+	//Console Screenshot
+	void Screenshot();
 
     // Mode control
     void DumpFlags();
@@ -331,6 +367,9 @@ extern ENGINE_API CRenderDevice Device;
 #define RDEVICE EDevice
 #endif
 
+#ifdef ECO_RENDER
+extern ENGINE_API float refresh_rate;
+#endif // ECO_RENDER
 
 extern ENGINE_API bool g_bBenchmark;
 

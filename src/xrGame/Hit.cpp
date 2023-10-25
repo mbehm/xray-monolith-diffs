@@ -6,7 +6,11 @@
 #include "xrMessages.h"
 #include "Level.h"
 #include "../xrphysics/mathutils.h"
-SHit::SHit(float powerA, Fvector &dirA, CObject *whoA, u16 elementA, Fvector p_in_bone_spaceA,\
+#include "script_hit.h"
+#include "script_game_object.h"
+#include "GameObject.h"
+
+SHit::SHit(float powerA, Fvector& dirA, CObject* whoA, u16 elementA, Fvector p_in_bone_spaceA,
 		   float impulseA, ALife::EHitType hit_typeA, float armor_piercingA, bool AimBullet)
 {
     Time = 0;
@@ -142,6 +146,17 @@ void SHit::Write_Packet			(NET_Packet	&Packet)
 
 	Write_Packet_Cont (Packet);	
 };
+
+void SHit::ApplyScriptHit(CScriptHit* tLuaHit)
+{
+	power = tLuaHit->m_fPower;
+	impulse = tLuaHit->m_fImpulse;
+	dir = tLuaHit->m_tDirection;
+	hit_type = (ALife::EHitType)(tLuaHit->m_tHitType);
+	who = smart_cast<CObject*>(&tLuaHit->m_tpDraftsman->object());
+	whoID = tLuaHit->m_tpDraftsman->ID();
+	weaponID = tLuaHit->m_tpWeaponID;
+}
 
 #ifdef DEBUG
 void SHit::_dump()

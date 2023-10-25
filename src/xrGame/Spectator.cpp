@@ -290,9 +290,11 @@ void CSpectator::IR_OnKeyboardHold(int cmd)
 			Fvector right;
 			right.crossproduct(C->vNormal,C->vDirection);
 			vmove.mad( right, -m_fTimeDelta*Accel_mul );
-			}break;
 		}
-		if (cam_active != eacFreeFly || (pMPGame->Is_Spectator_Camera_Allowed(eacFreeFly) || (PS && PS->testFlag(GAME_PLAYER_FLAG_SPECTATOR))))
+			break;
+		}
+		if (cam_active != eacFreeFly || (pMPGame->Is_Spectator_Camera_Allowed(eacFreeFly) || (PS && PS->testFlag(
+			GAME_PLAYER_FLAG_SPECTATOR))))
 			XFORM().c.add( vmove );
 	}
 }

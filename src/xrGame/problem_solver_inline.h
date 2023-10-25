@@ -223,11 +223,15 @@ IC	bool CProblemSolverAbstract::is_accessible	(const _index_type &vertex_index) 
 }
 
 TEMPLATE_SPECIALIZATION
-IC	const typename CProblemSolverAbstract::_index_type &CProblemSolverAbstract::value(const _index_type &vertex_index, const_iterator &i, bool reverse_search) const
+IC const typename CProblemSolverAbstract::_index_type&CProblemSolverAbstract::value(
+	const _index_type& vertex_index, const_iterator& i, bool reverse_search) const
 {
-	if (reverse_search) {
-		if ((*i).m_operator->applicable_reverse((*i).m_operator->effects(),(*i).m_operator->conditions(),vertex_index))
-			m_applied			= (*i).m_operator->apply_reverse(vertex_index,(*i).m_operator->effects(),m_temp,(*i).m_operator->conditions());
+	if (reverse_search)
+{
+		if ((*i).m_operator->applicable_reverse((*i).m_operator->effects(), (*i).m_operator->conditions(), vertex_index)
+		)
+			m_applied = (*i).m_operator->apply_reverse(vertex_index, (*i).m_operator->effects(), m_temp,
+			                                           (*i).m_operator->conditions());
 		else
 			m_applied			= false;
 	}

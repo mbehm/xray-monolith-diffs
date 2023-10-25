@@ -481,7 +481,9 @@ void		CActor::net_Import_Physic			( NET_Packet& P)
 			}
 			else
 			{
+#ifdef DEBUG
 				VERIFY(valid_pos(N_A.State.position,ph_boundaries()));
+#endif
 				NET_A.push_back			(N_A);
 				if (NET_A.size()>5) NET_A.pop_front();
 			};
@@ -701,6 +703,10 @@ BOOL CActor::net_Spawn		(CSE_Abstract* DC)
 	{
 		setLocal(FALSE);
 	};
+
+	//Alun: In theory it will call SwitchNightVision 'true' when outfit or helmet spawn and moved to slot if m_bNightVisionOn is true
+	m_bNightVisionOn = !!m_trader_flags.test(CSE_ALifeTraderAbstract::eTraderFlagNightVisionActive);
+
 	return					TRUE;
 }
 

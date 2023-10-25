@@ -24,6 +24,7 @@
 
 #include "../../../../xrCore/_vector3d_ext.h"
 #include "../control_direction_base.h"
+#include "../../script_game_object.h"
 
 bool CBurer::can_scan = true;
 
@@ -243,11 +244,18 @@ void xr_stdcall CBurer::StaminaHit ()
 	float const weight				=	active_weapon->Weight();
 	float const stamina_hit			=	weight * m_weight_to_stamina_hit;
 
-	bool const do_weapon_drop		=	Actor()->conditions().GetPower() < stamina_hit*m_weapon_drop_stamina_k;
+	bool do_weapon_drop = Actor()->conditions().GetPower() < stamina_hit * m_weapon_drop_stamina_k;
 
 	Actor()->conditions().PowerHit		(stamina_hit, false);
 
 	if ( do_weapon_drop )
+	{
+		luabind::functor<bool> funct;
+		if (ai().script_engine().functor("_G.CBurer_BeforeWeaponDropCallback", funct))
+			do_weapon_drop = funct(this->lua_game_object(), active_weapon->lua_game_object());
+	}
+
+	if (do_weapon_drop)
 	{
 		Fvector dir					=	Actor()->Direction();
 		if ( dir.y < 0.f )
@@ -362,6 +370,9 @@ void CBurer::UpdateGraviObject()
 		CPhysicsShellHolder  *obj = smart_cast<CPhysicsShellHolder *>(m_nearest[i]);
 		if (!obj || !obj->m_pPhysicsShell) continue;
 		
+		CInventoryItem* itm = smart_cast<CInventoryItem*>(obj);
+		if (itm && itm->IsQuestItem()) continue;
+
 		Fvector dir;
 		dir.sub(obj->Position(), m_gravi_object.cur_pos);
 		dir.normalize();

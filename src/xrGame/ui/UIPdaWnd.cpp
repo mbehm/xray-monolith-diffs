@@ -29,6 +29,12 @@
 
 #include "UIScriptWnd.h"
 
+#include "Actor.h"
+#include "Inventory.h"
+#include "../xrEngine/XR_IOConsole.h"
+#include "ui\UIProgressBar.h"
+#include "player_hud.h"
+
 #define PDA_XML		"pda.xml"
 
 u32 g_pda_info_state = 0;
@@ -41,6 +47,10 @@ CUIPdaWnd::CUIPdaWnd()
 	pUIRankingWnd = NULL;
 	pUILogsWnd = NULL;
 	m_hint_wnd = NULL;
+	m_battery_bar = NULL;
+	m_power = 0.f;
+	last_cursor_pos.set(UI_BASE_WIDTH / 2.f, UI_BASE_HEIGHT / 2.f);
+	m_cursor_box.set(117.f, 39.f, UI_BASE_WIDTH - 121.f, UI_BASE_HEIGHT - 37.f);
 	Init();
 }
 
@@ -73,9 +83,14 @@ void CUIPdaWnd::Init()
 	m_anim_static->SetAutoDelete(true);
 	CUIXmlInit::InitAnimatedStatic(uiXml, "anim_static", 0, m_anim_static);
 */
-	m_btn_close				= UIHelper::Create3tButton( uiXml, "close_button", this );
+	//m_btn_close = UIHelper::Create3tButton(uiXml, "close_button", this);
 	m_hint_wnd				= UIHelper::CreateHint( uiXml, "hint_wnd" );
 
+	m_battery_bar = xr_new<CUIProgressBar>();
+	m_battery_bar->SetAutoDelete(true);
+	AttachChild(m_battery_bar);
+	CUIXmlInit::InitProgressBar(uiXml, "battery_bar", 0, m_battery_bar);
+	m_battery_bar->Show(true);
 
 	if ( IsGameTypeSingle() )
 	{
@@ -124,17 +139,77 @@ void CUIPdaWnd::SendMessage(CUIWindow* pWnd, s16 msg, void* pData)
 		{
 			if ( pWnd == m_btn_close )
 			{
-				HideDialog();
+				if (smart_cast<CPda*>(Actor()->inventory().ActiveItem()))
+					Actor()->inventory().Activate(NO_ACTIVE_SLOT);
 			}
 			break;
 		}
 	default:
 		{
-			//R_ASSERT						(m_pActiveDialog);
 			if (m_pActiveDialog)
 				m_pActiveDialog->SendMessage(pWnd, msg, pData);
 		}
 	};
+}
+
+bool CUIPdaWnd::OnMouseAction(float x, float y, EUIMessages mouse_action)
+{
+	switch (mouse_action)
+	{
+	case WINDOW_LBUTTON_DOWN:
+	case WINDOW_RBUTTON_DOWN:
+	case WINDOW_LBUTTON_UP:
+	case WINDOW_RBUTTON_UP:
+	{
+		CPda* pda = smart_cast<CPda*>(Actor()->inventory().ActiveItem());
+		if (pda)
+		{
+			if (pda->IsPending())
+				return true;
+
+			if (mouse_action == WINDOW_LBUTTON_DOWN)
+				bButtonL = true;
+			else if (mouse_action == WINDOW_RBUTTON_DOWN)
+				bButtonR = true;
+			else if (mouse_action == WINDOW_LBUTTON_UP)
+				bButtonL = false;
+			else if (mouse_action == WINDOW_RBUTTON_UP)
+				bButtonR = false;
+		}
+		break;
+	}
+	}
+	CUIDialogWnd::OnMouseAction(x, y, mouse_action);
+	return true; //always true because StopAnyMove() == false
+}
+
+void CUIPdaWnd::MouseMovement(float x, float y)
+{
+	CPda* pda = smart_cast<CPda*>(Actor()->inventory().ActiveItem());
+	if (!pda) return;
+
+	x *= .1f;
+	y *= .1f;
+	clamp(x, -.15f, .15f);
+	clamp(y, -.15f, .15f);
+
+	if (_abs(x) < .05f)
+		x = 0.f;
+
+	if (_abs(y) < .05f)
+		y = 0.f;
+
+	bool buttonpressed = (bButtonL || bButtonR);
+
+	target_buttonpress = (buttonpressed ? -.0015f : 0.f);
+	target_joystickrot.set(x*-.75f, 0.f, y*.75f);
+
+	x += y * pda->m_thumb_rot[0];
+	y += x * pda->m_thumb_rot[1];
+
+	g_player_hud->m_bone_callback_params[r_finger0]->m_target.set(y*.15f, y*-.05f, (x*-.15f) + (buttonpressed ? .002f : 0.f));
+	g_player_hud->m_bone_callback_params[r_finger01]->m_target.set(0.f, 0.f, (x*-.25f) + (buttonpressed ? .01f : 0.f));
+	g_player_hud->m_bone_callback_params[r_finger02]->m_target.set(0.f, 0.f, (x*.75f) + (buttonpressed ? .025f : 0.f));
 }
 
 void CUIPdaWnd::Show(bool status)
@@ -152,7 +227,9 @@ void CUIPdaWnd::Show(bool status)
 		else
 			SetActiveSubdialog(m_sActiveSection);
 
-	}else
+		CurrentGameUI()->HideActorMenu();
+	}
+	else
 	{
 		InventoryUtilities::SendInfoToActor	("ui_pda_hide");
 		CurrentGameUI()->UIMainIngameWnd->SetFlashIconState_(CUIMainIngameWnd::efiPdaTask, false);
@@ -172,7 +249,10 @@ void CUIPdaWnd::Update()
 	if (m_pActiveDialog)
 		m_pActiveDialog->Update();
 
-	m_clock->TextItemControl().SetText(InventoryUtilities::GetGameTimeAsString(InventoryUtilities::etpTimeToMinutes).c_str());
+	m_clock->TextItemControl().SetText(
+		InventoryUtilities::GetGameTimeAsString(InventoryUtilities::etpTimeToMinutes).c_str());
+
+	m_battery_bar->SetProgressPos(m_power);
 
     pUILogsWnd->PerformWork();
 }
@@ -220,11 +300,13 @@ void CUIPdaWnd::SetActiveSubdialog(const shared_str& section)
 			UIMainPdaFrame->AttachChild(m_pActiveDialog);
 		m_pActiveDialog->Show(true);
 		m_sActiveSection = section;
-		SetActiveCaption();
 	}
-	else {
+	else
+	{
 		m_sActiveSection = "";
 	}
+
+	SetActiveCaption();
 }
 
 void CUIPdaWnd::SetActiveCaption()
@@ -240,9 +322,26 @@ void CUIPdaWnd::SetActiveCaption()
 			string256 buf;
 			strconcat( sizeof(buf), buf, m_caption_const.c_str(), cur );
 			SetCaption( buf );
+			UITabControl->Show(true);
+			m_clock->Show(true);
+			m_caption->Show(true);
+			m_battery_bar->Show(true);
 			return;
 		}
 	}
+
+	UITabControl->Show(false);
+	//m_clock->Show(false);
+	m_caption->Show(false);
+	//m_battery_bar->Show(false);
+}
+
+#include "UICursor.h"
+
+void CUIPdaWnd::ResetCursor()
+{
+	if (!last_cursor_pos.similar({ 0.f, 0.f }))
+		GetUICursor().SetUICursorPosition(last_cursor_pos);
 }
 
 void CUIPdaWnd::Show_SecondTaskWnd( bool status )
@@ -265,6 +364,11 @@ void CUIPdaWnd::Show_MapLegendWnd( bool status )
 
 void CUIPdaWnd::Draw()
 {
+	if (Device.dwFrame == dwPDAFrame)
+		return;
+
+	dwPDAFrame = Device.dwFrame;
+
 	inherited::Draw();
 //.	DrawUpdatedSections();
 	DrawHint();
@@ -342,15 +446,43 @@ void RearrangeTabButtons(CUITabControl* pTab)
 	pTab->SetWndPos( pos );
 }
 
+void CUIPdaWnd::Enable(bool status)
+{
+	if (status)
+		ResetCursor();
+	else
+	{
+		g_player_hud->reset_thumb(false);
+		ResetJoystick(false);
+		bButtonL = false;
+		bButtonR = false;
+	}
+
+	inherited::Enable(status);
+}
+
 bool CUIPdaWnd::OnKeyboardAction(int dik, EUIMessages keyboard_action)
 {
-	if ( is_binded(kACTIVE_JOBS, dik) )
+	if (IsShown() && (keyboard_action == WINDOW_KEY_PRESSED || keyboard_action == WINDOW_KEY_RELEASED))
 	{
-		if ( WINDOW_KEY_PRESSED == keyboard_action )
-			HideDialog();
+		if (!psActorFlags.test(AF_3D_PDA) && keyboard_action == WINDOW_KEY_PRESSED)
+		{
+			EGameActions action = get_binded_action(dik);
 
-		return true;
+			if (action == kQUIT || action == kINVENTORY || action == kACTIVE_JOBS)
+	{
+			HideDialog();
+				return  action == kQUIT;
+			}
+
+			return inherited::OnKeyboardAction(dik, keyboard_action);
 	}	
 
+		CPda* pda = smart_cast<CPda*>(Actor()->inventory().ActiveItem());
+
+		if (!pda)
 	return inherited::OnKeyboardAction(dik,keyboard_action);
+
+		return pda->Action(get_binded_action(dik), keyboard_action == WINDOW_KEY_PRESSED ? CMD_START : CMD_STOP);
+	}
 }

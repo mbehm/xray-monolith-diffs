@@ -37,6 +37,17 @@ bool CUIOptionsManagerScript::NeedVidRestart()
 	return CUIOptionsItem::GetOptionsManager()->NeedVidRestart();
 }
 
+extern xr_token* vid_quality_token;
+
+LPCSTR CUIOptionsManagerScript::GetRendererName(int index)
+{
+	for (int i = 0; vid_quality_token[i].name; i++)
+	{
+		if (i == index) return vid_quality_token[i].name;
+	}
+	return "";
+}
+
 #pragma optimize("s",on)
 void CUIOptionsManagerScript::script_register(lua_State *L)
 {
@@ -52,5 +63,6 @@ void CUIOptionsManagerScript::script_register(lua_State *L)
 			.def("SendMessage2Group",	&CUIOptionsManagerScript::SendMessage2Group )
 			.def("NeedSystemRestart",	&CUIOptionsManagerScript::NeedSystemRestart )
 			.def("NeedVidRestart",		&CUIOptionsManagerScript::NeedVidRestart )
+		.def("GetRendererName", &CUIOptionsManagerScript::GetRendererName)
 		];
 }

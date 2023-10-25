@@ -24,6 +24,8 @@ void CF1::script_register	(lua_State *L)
 		class_<CF1,CGameObject>("CF1")
 			.def(constructor<>()),
 			//new 14.10.08 peacemaker
+		//Alun: Moved to other files
+		/*
 		class_<CWeaponAmmo,CGameObject>("CWeaponAmmo")
 			.def(constructor<>()),
 		class_<CMedkit,CGameObject>("CMedkit")
@@ -36,6 +38,7 @@ void CF1::script_register	(lua_State *L)
 			.def(constructor<>()),
 		class_<CInventoryBox,CGameObject>("CInventoryBox")
 			.def(constructor<>()),
+		*/
 		class_<CExplosiveItem,CGameObject>("CExplosiveItem")
 			.def(constructor<>())
 	];

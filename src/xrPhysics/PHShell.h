@@ -115,6 +115,7 @@ public:
 	virtual			void	SetSmall				()											;
 	virtual			void	SetIgnoreSmall			()											;
 
+	virtual _flags<CLClassBits>& collide_class_bits() { return CPHObject::collide_class_bits(); }
 	virtual		const CLBits&					collide_bits								()const { return CPHObject::collide_bits();};
 	virtual		const _flags<CLClassBits>&		collide_class_bits 							()const {return CPHObject::collide_class_bits(); }																	
 
@@ -131,6 +132,11 @@ public:
 	virtual	void			get_Extensions			(const Fvector& axis,float center_prg,float& lo_ext, float& hi_ext) const;
 	virtual void			applyForce				(const Fvector& dir, float val)				;
 	virtual void			applyForce				(float x,float y,float z)					;
+
+	// demonized: applyTorque
+	virtual void applyTorque(float x, float y, float z);
+	virtual void applyTorque(const Fvector& dir, float val);
+
 	virtual void			applyImpulse			(const Fvector& dir, float val)				;
 	virtual void	_BCL	applyGravityAccel		(const Fvector& accel);
 	virtual void			setTorque				(const Fvector& torque);
@@ -201,8 +207,7 @@ public:
 	virtual		void				Disable							();
 	virtual		void				DisableCollision				();
 	virtual		void				EnableCollision					();
-	virtual		void				DisableCharacterCollision		();
-	virtual		void				SetRemoveCharacterCollLADisable	(){m_flags.set(flRemoveCharacterCollisionAfterDisable,TRUE);}
+	virtual void SetDeadBody();
 	virtual		bool				isEnabled						()const {return CPHObject::is_active();}
 	virtual		bool				isActive						()const {return !!m_flags.test(flActive);}
 	virtual		bool				isFullActive					()const {return isActive()&&!m_flags.test(flActivating);}	

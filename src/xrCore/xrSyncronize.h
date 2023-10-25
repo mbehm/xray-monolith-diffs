@@ -49,6 +49,8 @@ public:
     void Enter();
     void Leave();
     BOOL TryEnter();
+
+	bool IsValid() { return pmutex != nullptr; }
 };
 
 #endif // xrSyncronizeH

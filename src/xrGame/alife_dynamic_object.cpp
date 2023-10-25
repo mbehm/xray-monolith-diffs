@@ -87,7 +87,11 @@ void CSE_ALifeDynamicObject::add_offline			(const xr_vector<ALife::_OBJECT_ID> &
 
 bool CSE_ALifeDynamicObject::synchronize_location	()
 {
-	if (!ai().level_graph().valid_vertex_position(o_Position) || ai().level_graph().inside(ai().level_graph().vertex(m_tNodeID),o_Position))
+	if (!ai().level_graph().valid_vertex_id(m_tNodeID)) return false;
+
+	if (!ai().level_graph().valid_vertex_position(o_Position) || ai().level_graph().inside(
+		ai().level_graph().vertex(m_tNodeID),
+		o_Position))
 		return					(true);
 
 	u32 const new_vertex_id		= ai().level_graph().vertex(m_tNodeID,o_Position);
@@ -219,9 +223,16 @@ void CSE_ALifeInventoryBox::add_offline	(const xr_vector<ALife::_OBJECT_ID> &sav
 {
 	CSE_ALifeDynamicObjectVisual		*object = (this);
 
-	for (u32 i=0, n=saved_children.size(); i<n; ++i) {
-		CSE_ALifeDynamicObject	*child = smart_cast<CSE_ALifeDynamicObject*>(ai().alife().objects().object(saved_children[i],true));
-		R_ASSERT				(child);
+	for (u32 i = 0, n = saved_children.size(); i < n; ++i)
+	{
+		CSE_ALifeDynamicObject* child = smart_cast<CSE_ALifeDynamicObject*>(
+			ai().alife().objects().object(saved_children[i], true));
+		// R_ASSERT(child);
+		if (!child)
+		{
+			Msg("[DO] can't switch child [%d] offline, it's null", saved_children[i]);
+			continue;
+		}
 		child->m_bOnline		= false;
 
 		CSE_ALifeInventoryItem	*inventory_item = smart_cast<CSE_ALifeInventoryItem*>(child);

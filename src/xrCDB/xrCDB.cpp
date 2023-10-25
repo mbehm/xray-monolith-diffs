@@ -9,17 +9,19 @@
 #ifdef USE_ARENA_ALLOCATOR
 static const u32	s_arena_size = (128+16)*1024*1024;
 static char			s_fake_array[s_arena_size];
-doug_lea_allocator	g_collision_allocator( s_fake_array, s_arena_size, "collision" );
+//doug_lea_allocator	g_collision_allocator( s_fake_array, s_arena_size, "collision" );
 #endif // #ifdef USE_ARENA_ALLOCATOR
 
-namespace Opcode {
+namespace Opcode
+{
 #	include "OPC_TreeBuilders.h"
 } // namespace Opcode
 
 using namespace CDB;
 using namespace Opcode;
 
-BOOL APIENTRY DllMain( HANDLE hModule, 
+//BOOL APIENTRY DllMain( HANDLE hModule, 
+BOOL DllMainIgnore1(HANDLE hModule,
 					  u32  ul_reason_for_call, 
 					  LPVOID lpReserved
 					  )

@@ -225,7 +225,6 @@ wrapping the class around HUD_SOUND_COLLECTION and tagging them with the same al
 sndShot is played, it will play all the sound items with the same alias.
 */
 //----------------------------------------------------------
-#ifdef	LAYERED_SND_SHOOT
 HUD_SOUND_COLLECTION_LAYERED::~HUD_SOUND_COLLECTION_LAYERED()
 {
 	xr_vector<HUD_SOUND_COLLECTION>::iterator it = m_sound_items.begin();
@@ -302,6 +301,9 @@ HUD_SOUND_ITEM* HUD_SOUND_COLLECTION_LAYERED::FindSoundItem(LPCSTR alias, bool b
 
 void HUD_SOUND_COLLECTION_LAYERED::LoadSound(LPCSTR section, LPCSTR line, LPCSTR alias, bool exclusive, int type)
 {
+	if (!pSettings->line_exist(section, line))
+		return;
+
 	LPCSTR str = pSettings->r_string(section, line);
 	string256 buf_str;
 
@@ -333,8 +335,12 @@ void HUD_SOUND_COLLECTION_LAYERED::LoadSound(LPCSTR section, LPCSTR line, LPCSTR
 	}
 }
 
-void HUD_SOUND_COLLECTION_LAYERED::LoadSound(CInifile const *ini, LPCSTR section, LPCSTR line, LPCSTR alias, bool exclusive, int type)
+void HUD_SOUND_COLLECTION_LAYERED::LoadSound(CInifile const* ini, LPCSTR section, LPCSTR line, LPCSTR alias,
+                                             bool exclusive, int type)
 {
+	if (!ini->line_exist(section, line))
+		return;
+
 	LPCSTR str = ini->r_string(section, line);
 	string256 buf_str;
 
@@ -365,5 +371,4 @@ void HUD_SOUND_COLLECTION_LAYERED::LoadSound(CInifile const *ini, LPCSTR section
 		snd_item.m_alias = alias;
 	}
 }
-#endif
 //-Alundaio

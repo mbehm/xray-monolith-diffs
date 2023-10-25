@@ -21,7 +21,17 @@ public:
 
 	virtual float	GetWorldYaw		( )	{ return -yaw;	};
 	virtual float	GetWorldPitch	( )	{ return pitch; };
-			void	LookAtPoint		(Fvector p){lookat_point=p;lookat_active=true;}
+
+	void LookAtPoint(Fvector p)
+	{
+		lookat_point = p;
+		lookat_active = true;
+	}
+
+	void StopLookAtPoint()
+	{
+		lookat_active = false;
+	}
 };
 
 #endif // __CAMERALOOK_H__

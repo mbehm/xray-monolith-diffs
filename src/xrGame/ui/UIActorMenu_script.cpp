@@ -23,6 +23,12 @@
 #include "eatable_item.h"
 
 #include "UIPdaWnd.h"
+#include "UITabControl.h"
+
+#include "UIMainIngameWnd.h"
+#include "UIZoneMap.h"
+#include "UIMotionIcon.h"
+#include "UIHudStatesWnd.h"
 
 using namespace luabind;
 
@@ -34,6 +40,11 @@ CUIActorMenu* GetActorMenu()
 CUIPdaWnd* GetPDAMenu()
 {
 	return &CurrentGameUI()->GetPdaMenu();
+}
+
+CUIMainIngameWnd* GetMainGameMenu()
+{
+	return CurrentGameUI()->UIMainIngameWnd;
 }
 
 u8 GrabMenuMode()
@@ -50,16 +61,11 @@ CScriptGameObject* CUIActorMenu::GetCurrentItemAsGameObject()
 	return (0);
 }
 
-void CUIActorMenu::TryRepairItem(CUIWindow* w, void* d)
-{
-	PIItem item = get_upgrade_item();
-	if ( !item )
+bool CUIActorMenu::CanRepairItem(PIItem item)
 	{
-		return;
-	}
 	if ( item->GetCondition() > 0.99f )
 	{
-		return;
+		return false;
 	}
 	LPCSTR item_name = item->m_section_id.c_str();
 
@@ -68,7 +74,7 @@ void CUIActorMenu::TryRepairItem(CUIWindow* w, void* d)
 	{
 		bool allow_repair = !!READ_IF_EXISTS(pSettings, r_bool, item_name, "allow_repair", false);
 		if (!allow_repair)
-			return;
+			return false;
 	}
 
 
@@ -81,20 +87,52 @@ void CUIActorMenu::TryRepairItem(CUIWindow* w, void* d)
 		);
 	bool can_repair = funct( item_name, item->GetCondition(), partner );
 
+	return can_repair;
+}
+
+LPCSTR CUIActorMenu::RepairQuestion(PIItem item, bool can_repair)
+{
+	LPCSTR partner = m_pPartnerInvOwner->CharacterInfo().Profile().c_str();
+	LPCSTR item_name = item->m_section_id.c_str();
 	luabind::functor<LPCSTR> funct2;
 	R_ASSERT2(
 		ai().script_engine().functor( "inventory_upgrades.question_repair_item", funct2 ),
 		make_string( "Failed to get functor <inventory_upgrades.question_repair_item>, item = %s", item_name )
 		);
-	LPCSTR question = funct2( item_name, item->GetCondition(), can_repair, partner );
+	LPCSTR question = funct2(item->m_section_id.c_str(), item->GetCondition(), can_repair, partner);
+
+	return question;
+}
+
+void CUIActorMenu::TryRepairItem(CUIWindow* w, void* d)
+{
+	PIItem item = get_upgrade_item();
+	if (!item)
+	{
+		return;
+	}
+
+	LPCSTR item_name = item->m_section_id.c_str();
+
+	bool can_repair = CanRepairItem(item);
+
+	luabind::functor<bool> funct;
+	R_ASSERT2(
+		ai().script_engine().functor("inventory_upgrades.can_afford_repair_item", funct),
+		make_string("Failed to get functor <inventory_upgrades.can_afford_repair_item>, item = %s", item_name)
+	);
+	bool enough_money = funct(item_name, item->GetCondition());
 
 	if(can_repair)
 	{
+		if (enough_money)
+		{
 		m_repair_mode = true;
-		CallMessageBoxYesNo( question );
+			CallMessageBoxYesNo(RepairQuestion(item, true));
 	} 
 	else
-		CallMessageBoxOK( question );
+			CallMessageBoxOK(RepairQuestion(item, true));
+	}
 }
 
 void CUIActorMenu::RepairEffect_CurItem()
@@ -197,7 +235,7 @@ void CUIActorMenu::HighlightSectionInSlot(LPCSTR section, u8 type, u16 slot_id)
 }
 
 
-void CUIActorMenu::HighlightForEachInSlot(luabind::functor<bool> functor, u8 type, u16 slot_id)
+void CUIActorMenu::HighlightForEachInSlot(const luabind::functor<bool>& functor, u8 type, u16 slot_id)
 {
 	if (!functor)
 		return;
@@ -295,12 +333,69 @@ void CUIActorMenu::script_register(lua_State *L)
 				.def("SetActiveDialog", &CUIPdaWnd::SetActiveDialog)
 				.def("GetActiveDialog", &CUIPdaWnd::GetActiveDialog)
 				.def("GetActiveSection", &CUIPdaWnd::GetActiveSection)
+		.def("GetTabControl", &CUIPdaWnd::GetTabControl),
+
+		class_<CUIMainIngameWnd, CUIWindow>("CUIMainIngameWnd")
+		.def(constructor<>())
+		.def_readonly("UIStaticDiskIO", &CUIMainIngameWnd::UIStaticDiskIO)
+		.def_readonly("UIStaticQuickHelp", &CUIMainIngameWnd::UIStaticQuickHelp)
+		.def_readonly("UIMotionIcon", &CUIMainIngameWnd::UIMotionIcon)
+		.def_readonly("UIZoneMap", &CUIMainIngameWnd::UIZoneMap)
+		.def_readonly("m_ui_hud_states", &CUIMainIngameWnd::m_ui_hud_states)
+		.def_readonly("m_ind_bleeding", &CUIMainIngameWnd::m_ind_bleeding)
+		.def_readonly("m_ind_radiation", &CUIMainIngameWnd::m_ind_radiation)
+		.def_readonly("m_ind_starvation", &CUIMainIngameWnd::m_ind_starvation)
+		.def_readonly("m_ind_weapon_broken", &CUIMainIngameWnd::m_ind_weapon_broken)
+		.def_readonly("m_ind_helmet_broken", &CUIMainIngameWnd::m_ind_helmet_broken)
+		.def_readonly("m_ind_outfit_broken", &CUIMainIngameWnd::m_ind_outfit_broken)
+		.def_readonly("m_ind_overweight", &CUIMainIngameWnd::m_ind_overweight)
+		.def_readonly("m_ind_boost_psy", &CUIMainIngameWnd::m_ind_boost_psy)
+		.def_readonly("m_ind_boost_radia", &CUIMainIngameWnd::m_ind_boost_radia)
+		.def_readonly("m_ind_boost_chem", &CUIMainIngameWnd::m_ind_boost_chem)
+		.def_readonly("m_ind_boost_wound", &CUIMainIngameWnd::m_ind_boost_wound)
+		.def_readonly("m_ind_boost_weight", &CUIMainIngameWnd::m_ind_boost_weight)
+		.def_readonly("m_ind_boost_health", &CUIMainIngameWnd::m_ind_boost_health)
+		.def_readonly("m_ind_boost_power", &CUIMainIngameWnd::m_ind_boost_power)
+		.def_readonly("m_ind_boost_rad", &CUIMainIngameWnd::m_ind_boost_rad),
+
+		class_<CUIZoneMap>("CUIZoneMap")
+		.def(constructor<>())
+		.def_readwrite("disabled", &CUIZoneMap::disabled)
+		.def_readonly("visible", &CUIZoneMap::visible)
+		.def("MapFrame", &CUIZoneMap::MapFrame)
+		.def("Background", &CUIZoneMap::Background),
+
+		class_<CUIMotionIcon, CUIWindow>("CUIMotionIcon")
+		.def(constructor<>()),
+
+		class_<CUIHudStatesWnd, CUIWindow>("CUIHudStatesWnd")
+		.def(constructor<>())
+		.def_readonly("m_back", &CUIHudStatesWnd::m_back)
+		.def_readonly("m_ui_weapon_ammo_color_active", &CUIHudStatesWnd::m_ui_weapon_ammo_color_active)
+		.def_readonly("m_ui_weapon_ammo_color_inactive", &CUIHudStatesWnd::m_ui_weapon_ammo_color_inactive)
+		.def_readonly("m_ui_weapon_cur_ammo", &CUIHudStatesWnd::m_ui_weapon_cur_ammo)
+		.def_readonly("m_ui_weapon_fmj_ammo", &CUIHudStatesWnd::m_ui_weapon_fmj_ammo)
+		.def_readonly("m_ui_weapon_ap_ammo", &CUIHudStatesWnd::m_ui_weapon_ap_ammo)
+		.def_readonly("m_ui_weapon_third_ammo", &CUIHudStatesWnd::m_ui_weapon_third_ammo)
+		.def_readonly("m_fire_mode", &CUIHudStatesWnd::m_fire_mode)
+		.def_readonly("m_ui_grenade", &CUIHudStatesWnd::m_ui_grenade)
+		.def_readonly("m_ui_weapon_icon", &CUIHudStatesWnd::m_ui_weapon_icon)
+		.def_readonly("m_ui_health_bar", &CUIHudStatesWnd::m_ui_health_bar)
+		.def_readonly("m_ui_stamina_bar", &CUIHudStatesWnd::m_ui_stamina_bar)
+		.def_readonly("m_ui_psy_bar", &CUIHudStatesWnd::m_ui_psy_bar)
+		.def_readonly("m_radia_damage", &CUIHudStatesWnd::m_radia_damage)
+
+		// Tronex
+		.def_readwrite("m_ui_health_bar_show", &CUIHudStatesWnd::m_ui_health_bar_show)
+		.def_readwrite("m_ui_stamina_bar_show", &CUIHudStatesWnd::m_ui_stamina_bar_show)
+		.def_readwrite("m_ui_psy_bar_show", &CUIHudStatesWnd::m_ui_psy_bar_show)
 	];
 
 	module(L, "ActorMenu")
 	[
 		def("get_pda_menu", &GetPDAMenu),
 		def("get_actor_menu", &GetActorMenu),
-		def("get_menu_mode", &GrabMenuMode)
+		def("get_menu_mode", &GrabMenuMode),
+		def("get_maingame", &GetMainGameMenu)
 	];
 }

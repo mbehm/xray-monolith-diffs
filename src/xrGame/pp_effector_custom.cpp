@@ -76,10 +76,9 @@ void CPPEffectorController::deactivate()
 
 void CPPEffectorController::frame_update()
 {
-	if (m_effector) {
+	if (m_effector)
+	{
 		if (check_completion())				deactivate();
-	} else if (check_start_conditions())	activate();
 }
-
-
-
+	else if (check_start_conditions()) activate();
+}

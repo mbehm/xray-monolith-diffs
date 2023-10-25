@@ -15,7 +15,7 @@ CSimpleDetector::~CSimpleDetector(void)
 
 void CSimpleDetector::CreateUI()
 {
-	R_ASSERT(NULL==m_ui);
+	R_ASSERT(nullptr==m_ui);
 	m_ui				= xr_new<CUIArtefactDetectorSimple>();
 	ui().construct		(this);
 }
@@ -102,7 +102,7 @@ CUIArtefactDetectorSimple::~CUIArtefactDetectorSimple()
 void CUIArtefactDetectorSimple::Flash(bool bOn, float fRelPower)
 {
 	if(!m_parent->HudItemData())	return;
-
+	if (m_flash_bone == BI_NONE) return;
 
 	IKinematics* K		= m_parent->HudItemData()->m_model;
 	R_ASSERT			(K);

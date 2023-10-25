@@ -84,9 +84,11 @@ void CInventoryBox::net_Destroy()
 	inherited::net_Destroy	();
 }
 #include "../xrServerEntities/xrServer_Objects_Alife.h"
+
 BOOL CInventoryBox::net_Spawn(CSE_Abstract* DC)
 {
-	inherited::net_Spawn	(DC);
+	if (!inherited::net_Spawn(DC)) return FALSE;
+
 	setVisible				(TRUE);
 	setEnabled				(TRUE);
 	set_tip_text			("inventory_box_use");

@@ -6,6 +6,7 @@
 #include "../Include/xrRender/Kinematics.h"
 #include "profiler.h"
 #include "MainMenu.h"
+#include "script_wallmarks_manager.h"
 #include "UICursor.h"
 #include "game_base_space.h"
 #include "level.h"
@@ -102,6 +103,8 @@ CGamePersistent::CGamePersistent(void)
     eQuickLoad = Engine.Event.Handler_Attach("Game:QuickLoad", this);
     Fvector3* DofValue = Console->GetFVectorPtr("r2_dof");
     SetBaseDof(*DofValue);
+
+	m_pWallmarksManager = nullptr;
 }
 
 CGamePersistent::~CGamePersistent(void)
@@ -151,6 +154,7 @@ void CGamePersistent::OnAppStart()
     __super::OnAppStart();
     m_pUI_core = xr_new<ui_core>();
     m_pMainMenu = xr_new<CMainMenu>();
+	m_pWallmarksManager = xr_new<ScriptWallmarksManager>();
 }
 
 
@@ -161,6 +165,7 @@ void CGamePersistent::OnAppEnd()
 
     xr_delete(m_pMainMenu);
     xr_delete(m_pUI_core);
+	xr_delete(m_pWallmarksManager);
 
     __super::OnAppEnd();
 
@@ -281,16 +286,13 @@ void CGamePersistent::WeathersUpdate()
 
         int data_set = (Random.randF() < (1.f - Environment().CurrentEnv->weight)) ? 0 : 1;
 
-        CEnvDescriptor* const current_env = Environment().Current[0];
-        VERIFY(current_env);
-
         CEnvDescriptor* const _env = Environment().Current[data_set];
         VERIFY(_env);
 
-        CEnvAmbient* env_amb = _env->env_ambient;
+		CEnvAmbient* env_amb = Environment().m_paused ? Environment().CurrentEnv->env_ambient : _env->env_ambient;
         if (env_amb)
         {
-            CEnvAmbient::SSndChannelVec& vec = current_env->env_ambient->get_snd_channels();
+			CEnvAmbient::SSndChannelVec& vec = env_amb->get_snd_channels();
             CEnvAmbient::SSndChannelVecIt I = vec.begin();
             CEnvAmbient::SSndChannelVecIt E = vec.end();
 
@@ -504,14 +506,13 @@ void CGamePersistent::update_logo_intro()
     }
 }
 
-extern int g_keypress_on_start;
 void CGamePersistent::game_loaded()
 {
     if (Device.dwPrecacheFrame <= 2)
     {
         if (g_pGameLevel							&&
             g_pGameLevel->bReady &&
-            (allow_intro() && g_keypress_on_start) &&
+			(allow_intro() && psDeviceFlags2.test(rsKeypress)) &&
             load_screen_renderer.b_need_user_input	&&
             m_game_params.m_e_game_type == eGameIDSingle)
         {
@@ -520,6 +521,14 @@ void CGamePersistent::game_loaded()
             m_intro->Start("game_loaded");
             Msg("intro_start game_loaded");
             m_intro->m_on_destroy_event.bind(this, &CGamePersistent::update_game_loaded);
+
+			// demonized
+			// Callback for when loading screen happens and "Press Any Key to Continue" prompt appears
+			luabind::functor<void> funct;
+			if (ai().script_engine().functor("_G.OnLoadingScreenKeyPrompt", funct))
+			{
+				funct();
+			}
         }
         m_intro_event = 0;
     }
@@ -530,6 +539,14 @@ void CGamePersistent::update_game_loaded()
     xr_delete(m_intro);
     Msg("intro_delete ::update_game_loaded");
     start_game_intro();
+
+	// demonized
+	// Callback for when player dismisses loading screen after "Press Any Key to Continue" pressed
+	luabind::functor<void> funct;
+	if (ai().script_engine().functor("_G.OnLoadingScreenDismissed", funct))
+	{
+		funct();
+	}
 }
 
 void CGamePersistent::start_game_intro()

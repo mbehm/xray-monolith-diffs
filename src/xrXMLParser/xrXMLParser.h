@@ -4,9 +4,11 @@
 
 
 #ifdef XRXMLPARSER_EXPORTS
-	#define XRXMLPARSER_API __declspec(dllexport)
+#define XRXMLPARSER_API
+//__declspec(dllexport)
 #else
-	#define XRXMLPARSER_API __declspec(dllimport)
+	#define XRXMLPARSER_API
+//__declspec(dllimport)
 	#pragma comment			(lib,"xrXMLParser.lib")
 #endif
 
@@ -29,7 +31,7 @@ public:
 	void				ClearInternal			();
 
 	void 				Load					(LPCSTR path_alias, LPCSTR path, LPCSTR  xml_filename);
-
+	void LoadFromString(LPCSTR xml_string);
 
 	//чтение элементов
 	LPCSTR 				Read					(LPCSTR path, int index,  LPCSTR   default_str_val);

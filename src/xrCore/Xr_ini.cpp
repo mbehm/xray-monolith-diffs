@@ -3,6 +3,14 @@
 
 #include "fs_internal.h"
 
+#include <functional>
+#include <regex>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
+#include <algorithm>
+#include "mezz_stringbuffer.h"
+
 XRCORE_API CInifile const* pSettings = NULL;
 XRCORE_API CInifile const* pSettingsAuth = NULL;
 
@@ -171,8 +179,19 @@ CInifile::~CInifile()
         xr_delete(*I);
 }
 
+std::unordered_map<std::string, std::vector<CInifile::Item>> OverrideModifyListData;
+
 static void insert_item(CInifile::Sect* tgt, const CInifile::Item& I)
 {
+	// demonized
+	// DLTX: add or remove item from the section parameter if it has a structure of "name = item1, item2, item3, ..."
+	// >name = item will add item to the list
+	// <name = item will remove item from the list
+	if (*I.first && (I.first.c_str()[0] == '<' || I.first.c_str()[0] == '>')) {
+		OverrideModifyListData[std::string(tgt->Name.c_str())].push_back(I);
+		return;
+	}
+
     CInifile::SectIt_ sect_it = std::lower_bound(tgt->Data.begin(), tgt->Data.end(), *I.first, item_pred);
     if (sect_it != tgt->Data.end() && sect_it->first.equal(I.first))
     {
@@ -204,16 +223,231 @@ void CInifile::Load(IReader* F, LPCSTR path
                    )
 {
     R_ASSERT(F);
+
+	std::string DLTX_DELETE = "DLTX_DELETE";
+
+	std::function<void(std::vector<std::string>*, std::vector<std::string>*, bool)> MergeParentSet = [](std::vector<std::string>* ParentsBase, std::vector<std::string>* ParentsOverride, bool bIncludeRemovers)
+	{
+		for (std::string CurrentParent : *ParentsOverride)
+		{
+			bool bIsParentRemoval = CurrentParent[0] == '!';
+
+			std::string StaleParentString = (!bIsParentRemoval ? "!" : "") + CurrentParent.substr(1);
+
+			for (auto It = ParentsBase->rbegin(); It != ParentsBase->rend(); It++)
+			{
+				if (*It == StaleParentString)
+				{
+					ParentsBase->erase(std::next(It).base());
+				}
+			}
+
+			if (bIncludeRemovers || !bIsParentRemoval)
+			{
+				ParentsBase->insert(ParentsBase->end(), CurrentParent);
+			}
+		}
+	};
+
+	string_path currentFileName;
+	std::unordered_map<std::string, std::unordered_map<std::string, bool>> OverrideToFilename;
+	std::unordered_map<std::string, std::string> SectionToFilename;
+
+	std::function<void
+		(
+		IReader*,
+		LPCSTR,
+		std::unordered_map<std::string, Sect>*,
+		std::unordered_map<std::string, std::vector<std::string>>*,
+		BOOL,
+		BOOL
+		)
+	> LTXLoad = [&]
+		(
+		IReader* F,
+		LPCSTR path,
+		std::unordered_map<std::string, Sect>* OutputData,
+		std::unordered_map<std::string, std::vector<std::string>>* ParentDataMap,
+		BOOL bOverridesOnly,
+		BOOL bIsRootFile
+		)
+	{
     Sect* Current = 0;
-    string4096 str;
-    string4096 str2;
+		MezzStringBuffer str;
+		MezzStringBuffer str2;
 
     BOOL bInsideSTR = FALSE;
 
-    while (!F->eof())
+		BOOL bIsCurrentSectionOverride = FALSE;
+		BOOL bHasLoadedModFiles = FALSE;
+
+		std::function<std::vector<std::string>*(std::string)> GetParentStrings = [&](std::string SectionName)
+		{
+			auto It = ParentDataMap->find(SectionName);
+
+			if (It == ParentDataMap->end())
+			{
+				ParentDataMap->insert(std::pair<std::string, std::vector<std::string>>(SectionName, std::vector<std::string>()));
+
+				It = ParentDataMap->find(SectionName);
+			}
+
+			return &It->second;
+		};
+
+		auto GetParentsSetFromString = [&](const char* ParentString)
+		{
+			std::vector<std::string> ParentSet = std::vector<std::string>();
+
+			u32 ItemCount = _GetItemCount(ParentString);
+
+			for (u32 i = 0; i < ItemCount; i++)
+			{
+				_GetItem(ParentString, i, str2, str2.GetSize());
+
+				ParentSet.insert(ParentSet.end(), str2.GetBuffer());
+			}
+
+			return ParentSet;
+		};
+
+		auto GetRegexMatch = [](std::string InputString, std::string PatternString)
+		{
+			std::regex Pattern = std::regex(PatternString);
+			std::smatch MatchResult;
+
+			std::regex_search(InputString, MatchResult, Pattern);
+
+			if (MatchResult.begin() == MatchResult.end())
+			{
+				return std::string();
+			}
+
+			return MatchResult.begin()->str();
+		};
+
+		auto IsFullRegexMatch = [](std::string InputString, std::string PatternString)
+		{
+			return std::regex_match(InputString, std::regex(PatternString));
+		};
+
+		const auto loadFile = [&, LTXLoad](const string_path _fn, const string_path inc_path, const string_path name)
+		{
+			if (!allow_include_func || allow_include_func(_fn))
+			{
+				IReader* I = FS.r_open(_fn);
+				R_ASSERT3(I, "Can't find include file:", name);
+
+				strcpy(currentFileName, name);
+
+				LTXLoad(I, inc_path, OutputData, ParentDataMap, bOverridesOnly, false);
+
+				FS.r_close(I);
+			}
+		};
+
+		auto StashCurrentSection = [&]()
+		{
+			if (Current && bIsCurrentSectionOverride == bOverridesOnly)
+			{
+				//store previous section
+				auto SectIt = OutputData->find(std::string(Current->Name.c_str()));
+				if (SectIt != OutputData->end())
+				{
+					if (!bIsCurrentSectionOverride)
+					{
+
+						Debug.fatal(DEBUG_INFO, "Duplicate section '%s' wasn't marked as an override.\n\nOverride section by prefixing it with '!' (![%s]) or give it a unique name.\n\nCheck this file and its DLTX mods:\n\"%s\",\nfile with section \"%s\",\nfile with duplicate \"%s\"", *Current->Name, *Current->Name, m_file_name, SectionToFilename[std::string(Current->Name.c_str())].c_str(), currentFileName);
+					}
+
+					//Overwrite existing override data
+					for (Item CurrentItem : Current->Data)
+					{
+						insert_item(&SectIt->second, CurrentItem);
+					}
+
+					OverrideToFilename[SectIt->first][currentFileName] = true;
+				}
+				else
+				{
+					OutputData->emplace(std::pair<std::string, Sect>(std::string(Current->Name.c_str()), *Current));
+					OverrideToFilename[std::string(Current->Name.c_str())][currentFileName] = true;
+					SectionToFilename[std::string(Current->Name.c_str())] = currentFileName;
+				}
+			}
+
+			Current = NULL;
+		};
+
+		std::unordered_set<std::string> sectionsMarkedForCreate;
+
+		while (!F->eof() || (bIsRootFile && !bHasLoadedModFiles))
+		{
+			if (!F->eof())
     {
-        F->r_string(str, sizeof(str));
+				F->r_string(str, str.GetSize());
         _Trim(str);
+			}
+			else if (!bHasLoadedModFiles && bIsRootFile)
+			{
+				StashCurrentSection();
+				bHasLoadedModFiles = TRUE;
+
+				if (!m_file_name[0])
+				{
+					continue;
+				}
+
+				//Assemble paths and filename
+				MezzStringBuffer split_drive;
+				MezzStringBuffer split_dir;
+				MezzStringBuffer split_name;
+
+				_splitpath_s(m_file_name, split_drive, split_drive.GetSize(), split_dir, split_dir.GetSize(), split_name, split_name.GetSize(), NULL, 0);
+
+				std::string FilePath = std::string(split_drive) + std::string(split_dir);
+				std::string FileName = split_name;
+
+				//Collect all files that could potentially be confused as a root file by our mod files
+				FS_FileSet AmbiguousFiles;
+				FS.file_list(AmbiguousFiles, FilePath.c_str(), FS_ListFiles, (FileName + "_*.ltx").c_str());
+
+				//Collect all matching mod files
+				FS_FileSet ModFiles;
+				FS.file_list(ModFiles, FilePath.c_str(), FS_ListFiles, ("mod_" + FileName + "_*.ltx").c_str());
+
+				for (auto It = ModFiles.begin(); It != ModFiles.end(); ++It)
+				{
+					std::string ModFileName = It->name.c_str();
+
+					//Determine if we should load this mod file, or if it's meant for a different root file
+					BOOL bIsModfileMeantForMe = [&]()
+					{
+						for (auto It2 = AmbiguousFiles.begin(); It2 != AmbiguousFiles.end(); ++It2)
+						{
+							std::string AmbiguousFileName = GetRegexMatch(It2->name.c_str(), "^.+(?=.ltx$)");
+							std::string AmbiguousFileMatchPattern = std::string("mod_") + AmbiguousFileName + std::string("_.+.ltx");
+
+							if (IsFullRegexMatch(ModFileName, AmbiguousFileMatchPattern))
+							{
+								return false;
+							}
+						}
+
+						return true;
+					}();
+
+					if (!bIsModfileMeantForMe)
+					{
+						continue;
+					}
+
+					loadFile((FilePath + ModFileName).c_str(), FilePath.c_str(), ModFileName.c_str());
+				}
+
+				continue;
+			}
+
         LPSTR comm = strchr(str, ';');
         LPSTR comm_1 = strchr(str, '/');
 
@@ -248,6 +482,19 @@ void CInifile::Load(IReader* F, LPCSTR path
             }
         }
 
+			_Trim(str);
+
+			auto isOverrideSection = [](char* str) {
+				return strstr(str, "![") == &str[0];
+			};
+
+			auto isSafeOverrideSection = [](char* str) {
+				return strstr(str, "@[") == &str[0];
+			};
+
+			auto isModSection = [isOverrideSection, isSafeOverrideSection](char* str) {
+				return isOverrideSection(str) || isSafeOverrideSection(str);
+			};
 
         if (str[0] && (str[0] == '#') && strstr(str, "#include")) //handle includes
         {
@@ -259,101 +506,142 @@ void CInifile::Load(IReader* F, LPCSTR path
                 strconcat(sizeof(fn), fn, path, inc_name);
                 _splitpath(fn, inc_path, folder, 0, 0);
                 xr_strcat(inc_path, sizeof(inc_path), folder);
-#ifndef _EDITOR
-                if (!allow_include_func || allow_include_func(fn))
-#endif
+
+
+					if (strstr(inc_name, "*.ltx"))
                 {
-                    IReader* I = FS.r_open(fn);
-                    R_ASSERT3(I, "Can't find include file:", inc_name);
-                    Load(I, inc_path
-#ifndef _EDITOR
-                         , allow_include_func
-#endif
-                        );
-                    FS.r_close(I);
+						FS_FileSet fset;
+						FS.file_list(fset, inc_path, FS_ListFiles, inc_name);
+
+						for (FS_FileSet::iterator it = fset.begin(); it != fset.end(); it++)
+						{
+							LPCSTR _name = it->name.c_str();
+							string_path _fn;
+							strconcat(sizeof(_fn), _fn, inc_path, _name);
+							loadFile(_fn, inc_path, _name);
                 }
             }
+					else
+						loadFile(fn, inc_path, inc_name);
+				}
+
+				continue;
         }
-        else if (str[0] && (str[0] == '[')) //new section ?
+			else if (str[0] && strstr(str, "!![") == &str[0])	//Section delete
         {
-            // insert previous filled section
-            if (Current)
+				StashCurrentSection();
+
+				if (!bOverridesOnly)
             {
-                //store previous section
-                RootIt I = std::lower_bound(DATA.begin(), DATA.end(), *Current->Name, sect_pred);
-                if ((I != DATA.end()) && ((*I)->Name == Current->Name))
-                    Debug.fatal(DEBUG_INFO, "Duplicate section '%s' found.", *Current->Name);
-                DATA.insert(I, Current);
+					continue;
             }
+
             Current = xr_new<Sect>();
-            Current->Name = 0;
+				*strchr(str, ']') = 0;
+				Current->Name = strlwr(&str[3]);
+
+				bIsCurrentSectionOverride = true;
+
+				Item DeleteItem;
+				DeleteItem.first = DLTX_DELETE.c_str();
+				DeleteItem.second = "";
+
+				insert_item(Current, DeleteItem);
+
+				continue;
+			}
+			else if ((str[0] && (str[0] == '[')) || isModSection(str)) //new section ?
+			{
+				// insert previous filled section
+				StashCurrentSection();
+
+				u32 SectionNameStartPos = (isModSection(str) ? 2 : 1);
+				std::string SecName = std::string(str).substr(SectionNameStartPos, strchr(str, ']') - str - SectionNameStartPos).c_str();
+				for (auto i = SecName.begin(); i != SecName.end(); ++i)
+				{
+					*i = tolower(*i);
+				}
+				
+				if (isOverrideSection(str)) { //Used to detect bad or unintended overrides
+					bIsCurrentSectionOverride = true;
+				} else if (isSafeOverrideSection(str)) { // Create section if it doesnt exist, override if it does
+					bIsCurrentSectionOverride = true;
+					if (bOverridesOnly) {
+						// Msg("using @[, override existing section %s", SecName.c_str());
+					} else {
+						auto SectIt = OutputData->find(SecName);
+						if (SectIt != OutputData->end()) {
+							// Msg("using @[, override existing section %s", SecName.c_str());
+						} else {
+							// Msg("using @[, create new section %s", SecName.c_str());
+							sectionsMarkedForCreate.insert(SecName);
+						}
+					}
+				} else {
+					bIsCurrentSectionOverride = false;
+				}
+
+				Current = xr_new<Sect>();
+				Current->Name = SecName.c_str();
+
             // start new section
             R_ASSERT3(strchr(str, ']'), "Bad ini section found: ", str);
+
+				if (bIsCurrentSectionOverride == bOverridesOnly)
+				{
             LPCSTR inherited_names = strstr(str, "]:");
             if (0 != inherited_names)
             {
                 VERIFY2(m_flags.test(eReadOnly), "Allow for readonly mode only.");
                 inherited_names += 2;
-                u32 cnt = _GetItemCount(inherited_names);
-                u32 total_count = 0;
-                u32 k = 0;
-                for (k = 0; k < cnt; ++k)
-                {
-                    string512 tmp;
-                    _GetItem(inherited_names, k, tmp);
-                    Sect& inherited_section = r_section(tmp);
-                    total_count += inherited_section.Data.size();
-                }
 
-                Current->Data.reserve(Current->Data.size() + total_count);
+						std::vector<std::string> CurrentParents = GetParentsSetFromString(inherited_names);
+						std::vector<std::string>* SectionParents = GetParentStrings(Current->Name.c_str());
 
-                for (k = 0; k < cnt; ++k)
-                {
-                    string512 tmp;
-                    _GetItem(inherited_names, k, tmp);
-                    Sect& inherited_section = r_section(tmp);
-                    for (SectIt_ it = inherited_section.Data.begin(); it != inherited_section.Data.end(); it++)
-                        insert_item(Current, *it);
+						MergeParentSet(SectionParents, &CurrentParents, true);
                 }
             }
-            *strchr(str, ']') = 0;
-            Current->Name = strlwr(str + 1);
+
+				continue;
         }
         else // name = value
         {
-            if (Current)
+				if (Current && bIsCurrentSectionOverride == bOverridesOnly)
             {
-                string4096 value_raw;
-                char* name = str;
+					bool bIsDelete = str[0] == '!';
+
+					MezzStringBuffer value_raw;
+					char* name = (char*) (str + (bIsDelete ? 1 : 0));
                 char* t = strchr(name, '=');
                 if (t)
                 {
                     *t = 0;
                     _Trim(name);
                     ++t;
-                    xr_strcpy(value_raw, sizeof(value_raw), t);
+						xr_strcpy(value_raw, value_raw.GetSize(), t);
                     bInsideSTR = _parse(str2, value_raw);
                     if (bInsideSTR)//multiline str value
                     {
                         while (bInsideSTR)
                         {
-                            xr_strcat(value_raw, sizeof(value_raw), "\r\n");
-                            string4096 str_add_raw;
-                            F->r_string(str_add_raw, sizeof(str_add_raw));
+								xr_strcat(value_raw, value_raw.GetSize(), "\r\n");
+								MezzStringBuffer str_add_raw;
+								F->r_string(str_add_raw, str_add_raw.GetSize());
                             R_ASSERT2(
-                                xr_strlen(value_raw) + xr_strlen(str_add_raw) < sizeof(value_raw),
+									xr_strlen(value_raw) + xr_strlen(str_add_raw) < value_raw.GetSize(),
                                 make_string(
-                                    "Incorrect inifile format: section[%s], variable[%s]. Odd number of quotes (\") found, but should be even.",
+										"Incorrect inifile format: section[%s], variable[%s]. Odd number of quotes (\") found, but should be even."
+										,
                                     Current->Name.c_str(),
                                     name
                                 )
                             );
-                            xr_strcat(value_raw, sizeof(value_raw), str_add_raw);
+								xr_strcat(value_raw, value_raw.GetSize(), str_add_raw);
                             bInsideSTR = _parse(str2, value_raw);
                             if (bInsideSTR)
                             {
                                 if (is_empty_line_now(F))
-                                    xr_strcat(value_raw, sizeof(value_raw), "\r\n");
+										xr_strcat(value_raw, value_raw.GetSize(), "\r\n");
                             }
                         }
                     }
@@ -366,35 +654,319 @@ void CInifile::Load(IReader* F, LPCSTR path
 
                 Item I;
                 I.first = (name[0] ? name : NULL);
-                I.second = (str2[0] ? str2 : NULL);
-                //#ifdef DEBUG
-                // I.comment = m_flags.test(eReadOnly)?0:comment;
-                //#endif
+					I.second = bIsDelete ? DLTX_DELETE.c_str() : (str2[0] ? str2.GetBuffer() : NULL);
 
-                if (m_flags.test(eReadOnly))
+					if (*I.first || *I.second)
+					{
+						insert_item(Current, I);
+					}
+				}
+
+				continue;
+			}
+		}
+
+		StashCurrentSection();
+
+		// Create empty sections that were marked with @[ and weren't defined normally
+		if (!bOverridesOnly) {
+			for (auto& SecName : sectionsMarkedForCreate) {
+				auto SectIt = OutputData->find(SecName);
+				if (SectIt == OutputData->end()) {
+					// Msg("section %s does not exist but was marked as @[, creating", SecName.c_str());
+					Current = xr_new<Sect>();
+					Current->Name = SecName.c_str();
+					OutputData->emplace(std::pair<std::string, Sect>(std::string(Current->Name.c_str()), *Current));
+					OverrideToFilename[std::string(Current->Name.c_str())][currentFileName] = true;
+					SectionToFilename[std::string(Current->Name.c_str())] = currentFileName;
+					Current = NULL;
+				}
+			}
+		}
+	};
+
+	std::unordered_map<std::string, std::vector<std::string>> BaseParentDataMap;
+	std::unordered_map<std::string, Sect> BaseData;
+
+	std::unordered_map<std::string, std::vector<std::string>> OverrideParentDataMap;
+	std::unordered_map<std::string, Sect> OverrideData;
+
+	std::unordered_map<std::string, Sect> FinalData;
+
+	std::unordered_set<std::string> FinalizedSections;
+
+	enum InsertType
+	{
+		Override,
+		Base,
+		Parent
+	};
+
+	std::function<void(std::string, std::vector<std::string>*)> EvaluateSection = [&](std::string SectionName, std::vector<std::string>* PreviousEvaluations)
+	{
+		if (FinalizedSections.find(SectionName) != FinalizedSections.end())
+		{
+			return;
+		}
+
+		PreviousEvaluations->insert(PreviousEvaluations->end(), SectionName);
+
+		std::vector<std::string>* BaseParents = &BaseParentDataMap.find(SectionName)->second;
+		std::vector<std::string>* OverrideParents = &OverrideParentDataMap.find(SectionName)->second;
+
+		BOOL bDeleteSectionIfEmpty = FALSE;
+
+		MergeParentSet(BaseParents, OverrideParents, false);
+
+		std::pair<std::string, Sect> CurrentSecPair = std::pair<std::string, Sect>(SectionName, Sect());
+		Sect* CurrentSect = &CurrentSecPair.second;
+		CurrentSect->Name = SectionName.c_str();
+
+		auto IsStringDLTXDelete = [&](shared_str str)
+		{
+			const char* RawString = str.c_str();
+
+			return RawString && std::string(RawString) == DLTX_DELETE;
+		};
+
+		auto InsertItemWithDelete = [&](Item CurrentItem, InsertType Type)
                 {
-                    if (*I.first) insert_item(Current, I);
+			if (IsStringDLTXDelete(CurrentItem.first))
+			{
+				//Delete section
+				bDeleteSectionIfEmpty = TRUE;
                 }
                 else
                 {
-                    if (
-                        *I.first
-                        || *I.second
-                        //#ifdef DEBUG
-                        // || *I.comment
-                        //#endif
-                    )
-                        insert_item(Current, I);
+				//Insert item if variable isn't already set
+				CInifile::SectIt_ sect_it = std::lower_bound(CurrentSect->Data.begin(), CurrentSect->Data.end(), *CurrentItem.first, item_pred);
+				if (sect_it != CurrentSect->Data.end() && sect_it->first.equal(CurrentItem.first))
+				{
+					bool bShouldInsert = [&]()
+					{
+						switch (Type)
+						{
+						case InsertType::Override:		return true;
+						case InsertType::Base:			return false;
+						case InsertType::Parent:		return IsStringDLTXDelete(sect_it->second);
+						}
+					}();
+
+					if (bShouldInsert)
+					{
+						sect_it->second = CurrentItem.second;
+					}
                 }
+				else
+				{
+					CurrentSect->Data.insert(sect_it, CurrentItem);
+				}
+			}
+		};
+
+		//Insert variables of own data
+		auto InsertData = [&](std::unordered_map<std::string, Sect>* Data, BOOL bIsBase)
+		{
+			auto It = Data->find(SectionName);
+
+			if (It != Data->end())
+			{
+				Sect* DataSection = &It->second;
+				for (Item CurrentItem : DataSection->Data)
+				{
+					InsertItemWithDelete(CurrentItem, bIsBase ? Base : Override);
             }
+
+				if (!bIsBase)
+				{
+					Data->erase(It);
         }
     }
-    if (Current)
+		};
+
+		InsertData(&OverrideData, false);
+		InsertData(&BaseData, true);
+
+		//Insert variables from parents
+		for (auto It = BaseParents->rbegin(); It != BaseParents->rend(); ++It)
     {
-        RootIt I = std::lower_bound(DATA.begin(), DATA.end(), *Current->Name, sect_pred);
-        if ((I != DATA.end()) && ((*I)->Name == Current->Name))
-            Debug.fatal(DEBUG_INFO, "Duplicate section '%s' found.", *Current->Name);
-        DATA.insert(I, Current);
+			std::string ParentSectionName = *(It.base() - 1);
+
+			for (auto It = PreviousEvaluations->begin(); It != PreviousEvaluations->end(); ++It)
+			{
+				if (ParentSectionName == *It)
+				{
+					Debug.fatal(DEBUG_INFO, "Section '%s' has cyclical dependencies. Ensure that sections with parents don't inherit in a loop. Check this file and its DLTX mods: %s, mod file %s", ParentSectionName.c_str(), m_file_name, currentFileName);
+				}
+			}
+
+			EvaluateSection(ParentSectionName, PreviousEvaluations);
+
+			auto ParentIt = FinalData.find(ParentSectionName);
+
+			if (ParentIt == FinalData.end())
+			{
+				Debug.fatal(DEBUG_INFO, "Section '%s' inherits from non-existent section '%s'. Check this file and its DLTX mods: %s, mod file %s", SectionName.c_str(), ParentSectionName.c_str(), m_file_name, currentFileName);
+			}
+
+			Sect* ParentSec = &ParentIt->second;
+
+			for (Item CurrentItem : ParentSec->Data)
+			{
+				InsertItemWithDelete(CurrentItem, Parent);
+			}
+		}
+
+		//Delete entries that are still marked DLTX_DELETE
+		for (auto It = CurrentSect->Data.rbegin(); It != CurrentSect->Data.rend(); ++It)
+		{
+			if (IsStringDLTXDelete(It->second))
+			{
+				CurrentSect->Data.erase(It.base() - 1);
+			}
+		}
+
+		// If there is data to modify parameters lists
+		if (OverrideModifyListData.find(std::string(CurrentSect->Name.c_str())) != OverrideModifyListData.end()) {
+			for (auto It = OverrideModifyListData[std::string(CurrentSect->Name.c_str())].begin(); It != OverrideModifyListData[std::string(CurrentSect->Name.c_str())].end(); ++It) {
+				CInifile::Item &I = *It;
+
+				// If section exists with item list, split list and perform operation
+				char dltx_listmode = I.first[0];
+				I.first = I.first.c_str() + 1;
+
+				CInifile::SectIt_ sect_it = std::lower_bound(CurrentSect->Data.begin(), CurrentSect->Data.end(), *I.first, item_pred);
+				if (sect_it != CurrentSect->Data.end() && sect_it->first.equal(I.first)) {
+
+					//Msg("%s has dltx_listmode %s", I.first.c_str(), std::string(1, dltx_listmode).c_str());
+
+					if (dltx_listmode && sect_it->second != NULL) {
+						// Split list 
+						auto split_list = [](const std::string items, const std::string delimiter = ",") {
+							std::string i = items;
+							std::vector<std::string> vec;
+							size_t pos = 0;
+							std::string token;
+							while ((pos = i.find(delimiter)) != std::string::npos) {
+								token = i.substr(0, pos);
+								vec.push_back(token);
+								i.erase(0, pos + delimiter.length());
+							}
+							vec.push_back(i);
+
+							auto trim = [](std::string &s, const char* t = " \t\n\r\f\v") {
+								s.erase(s.find_last_not_of(t) + 1);
+								s.erase(0, s.find_first_not_of(t));
+							};
+							for (auto &item : vec) {
+								trim(item);
+							}
+							return vec;
+						};
+						std::vector<std::string> sect_it_items_vec = split_list(sect_it->second.c_str());
+						std::vector<std::string> I_items_vec = split_list(I.second.c_str());
+
+						// Add or remove to the list
+						auto find_and_store_index = [](const std::vector<std::string> &items_vec, const std::string item, int &vec_index) {
+							auto it = std::find(items_vec.begin(), items_vec.end(), item);
+							if (it != items_vec.end()) {
+								vec_index = it - items_vec.begin();
+								return true;
+							}
+							else {
+								vec_index = -1;
+								return false;
+							}
+						};
+						int vec_index = -1;
+						for (const auto &item : I_items_vec) {
+							if (dltx_listmode == '>') {
+								sect_it_items_vec.push_back(item);
+							}
+							else if (dltx_listmode == '<') {
+								while (find_and_store_index(sect_it_items_vec, item, vec_index)) {
+									sect_it_items_vec.erase(sect_it_items_vec.begin() + vec_index);
+								}
+							}
+						}
+
+						// Store result back
+						auto join_list = [](const std::vector<std::string> &items_vec, const std::string delimiter = ",") {
+							std::string ret;
+							for (const auto &i : items_vec) {
+								if (!ret.empty()) {
+									ret += delimiter;
+								}
+								ret += i;
+							}
+							return ret;
+						};
+
+						/*std::string c(1, dltx_listmode);
+						Msg("%s has dltx_listmode %s, %s items", I.first.c_str(), c.c_str(), dltx_listmode == '>' ? "adding" : "removing");
+						Msg("old %s", sect_it->second.c_str());
+						Msg("new %s", join_list(sect_it_items_vec).c_str());*/
+
+						sect_it->second = join_list(sect_it_items_vec, ",").c_str();
+					}
+				}
+			}
+		}
+		
+
+		//Pop from stack
+		auto LastElement = PreviousEvaluations->end();
+		LastElement--;
+
+		PreviousEvaluations->erase(LastElement);
+
+		//Finalize
+		if (!bDeleteSectionIfEmpty || CurrentSecPair.second.Data.size())
+		{
+			FinalData.emplace(CurrentSecPair);
+		}
+
+		FinalizedSections.insert(SectionName);
+	};
+
+	//Read contents of root file
+	LTXLoad(F, path, &OverrideData, &OverrideParentDataMap, true, true);
+	F->seek(0);
+	LTXLoad(F, path, &BaseData, &BaseParentDataMap, false, true);
+
+	//Merge base and override data together
+	std::vector<std::string> PreviousEvaluations = std::vector<std::string>();
+
+	for (std::pair<std::string, Sect> SectPair : BaseData)
+	{
+		EvaluateSection(SectPair.first, &PreviousEvaluations);
+	}
+
+	//Insert all finalized sections into final container
+	for (std::pair<std::string, Sect> SectPair : FinalData)
+	{
+		Sect* NewSect = xr_new<Sect>();
+		*NewSect = SectPair.second;
+
+		RootIt I = std::lower_bound(DATA.begin(), DATA.end(), SectPair.first.c_str(), sect_pred);
+		DATA.insert(I, NewSect);
+	}
+
+	// Clean modifiers of parameters' lists
+	OverrideModifyListData.clear();
+
+	//throw errors if there are overrides that never got used
+	if (OverrideData.size())
+	{
+		//Debug.fatal(DEBUG_INFO, "Attemped to override section '%s', which doesn't exist. Ensure that a base section with the same name is loaded first. Check this file and its DLTX mods: %s", OverrideData.begin()->first.c_str(), m_file_name);
+		for (auto i = OverrideData.begin(); i != OverrideData.end(); i++) {
+			auto override_filenames = OverrideToFilename.find(i->first);
+			if (override_filenames != OverrideToFilename.end()) {
+				for (auto &override_filename : override_filenames->second) {
+					Msg("!!!DLTX ERROR Attemped to override section '%s', which doesn't exist. Ensure that a base section with the same name is loaded first. Check this file and its DLTX mods: %s, mod file %s", i->first.c_str(), m_file_name, override_filename.first.c_str());
+				}
+			}
+		}
     }
 }
 
@@ -498,6 +1070,10 @@ BOOL CInifile::section_exist(const shared_str& S)const { return section_exist(*S
 //--------------------------------------------------------------------------------------
 CInifile::Sect& CInifile::r_section(LPCSTR S)const
 {
+	R_ASSERT(S && strlen(S),
+	         "Empty section (null\\'') passed into CInifile::r_section(). See info above ^, check your configs and 'call stack'.")
+	; //--#SM+#--
+
     char section[256];
     xr_strcpy(section, sizeof(section), S);
     strlwr(section);
@@ -524,6 +1100,11 @@ CInifile::Sect& CInifile::r_section(LPCSTR S)const
 
 LPCSTR CInifile::r_string(LPCSTR S, LPCSTR L)const
 {
+	if (!S || !L || !strlen(S) || !strlen(L)) //--#SM+#-- [fix for one of "xrDebug - Invalid handler" error log]
+	{
+		Msg("!![ERROR] CInifile::r_string: S = [%s], L = [%s]", S, L);
+	}
+
     Sect const& I = r_section(S);
     SectCIt A = std::lower_bound(I.Data.begin(), I.Data.end(), L, item_pred);
     if (A != I.Data.end() && xr_strcmp(*A->first, L) == 0) return *A->second;

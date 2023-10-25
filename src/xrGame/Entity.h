@@ -72,10 +72,18 @@ public:
 	bool					IsMyCamera			()const;
 
 //	virtual float			g_Health			()const	{ return GetfHealth();}
-/*	virtual*/ IC float			GetMaxHealth		()const	{ return m_entity_condition->max_health();	}
-/*	virtual*/ IC void			SetMaxHealth		(float v)	{ m_entity_condition->max_health()=v;}
+	/*	virtual*/
+	IC float GetMaxHealth() const { return m_entity_condition->max_health(); }
+	/*	virtual*/
+	IC void SetMaxHealth(float v) { m_entity_condition->max_health() = v; }
 
-	/*virtual*/ IC BOOL		g_Alive				()const	{ return GetfHealth()>0; }
+	//--DSR-- HeatVision_start
+	virtual float GetHotness();
+	virtual void  OnChangeVisual();
+	//--DSR-- HeatVision_end
+
+	/*virtual*/
+	IC BOOL g_Alive() const { return GetfHealth() > 0; }
 	virtual BOOL			g_State				(SEntityState&) const	{return FALSE;}
 	
 			bool			AlreadyDie			()			{return  0!=GetLevelDeathTime()?true:false;}

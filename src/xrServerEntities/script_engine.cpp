@@ -13,6 +13,8 @@
 #include "script_process.h"
 #include "../build_config_defines.h"
 #include "script_storage.h"
+#include <unordered_map>
+#include <set>
 
 #ifdef USE_DEBUGGER
 #	ifndef USE_LUA_STUDIO
@@ -176,17 +178,57 @@ void CScriptEngine::unload()
 
 int CScriptEngine::lua_panic(lua_State *L)
 {
+	ai().script_engine().print_stack();
     print_output(L, "PANIC", LUA_ERRRUN);
     return			(0);
 }
 
+// demonized: get lua stack in array
+static std::vector<std::string> get_lua_stack(lua_State* L)
+{
+	std::vector<std::string> res;
+	lua_Debug l_tDebugInfo;
+	for (int i = 0; lua_getstack(L, i, &l_tDebugInfo); ++i)
+	{
+		lua_getinfo(L, "nSlu", &l_tDebugInfo);
+		if (!l_tDebugInfo.name)
+		{
+			res.push_back(make_string("%2d : [%s] %s(%d) : %s", i, l_tDebugInfo.what, l_tDebugInfo.short_src, l_tDebugInfo.currentline, ""));
+		} else
+		{
+			if (!xr_strcmp(l_tDebugInfo.what, "C"))
+			{
+				res.push_back(make_string("%2d : [C  ] %s", i, l_tDebugInfo.name));
+			} else
+			{
+				res.push_back(make_string("%2d : [%s] %s(%d) : %s", i, l_tDebugInfo.what, l_tDebugInfo.short_src, l_tDebugInfo.currentline, l_tDebugInfo.name));
+			}
+		}
+	}
+	return res;
+}
+
 void CScriptEngine::lua_error(lua_State *L)
 {
+	ai().script_engine().print_stack();
     print_output(L, "", LUA_ERRRUN);
     ai().script_engine().on_error(L);
 
+	// demonized: print first line with lua error
+	auto stack = get_lua_stack(L);
+	std::string lua_error_line = "";
+	for (auto const& s : stack) {
+		if (s.find("[Lua]") != std::string::npos) {
+			lua_error_line = s;
+			break;
+		}
+	}
+
+	auto error_str = make_string("\n%s\n\nLUA error: %s\n\nCheck log for details", lua_error_line.c_str(), lua_tostring(L, -1));
+	LPCSTR error_msg = error_str.c_str();
+
 #if !XRAY_EXCEPTIONS
-    Debug.fatal(DEBUG_INFO, "LUA error: %s", lua_tostring(L, -1));
+	Debug.fatal(DEBUG_INFO, error_msg);
 #else
     throw					lua_tostring(L,-1);
 #endif
@@ -194,11 +236,25 @@ void CScriptEngine::lua_error(lua_State *L)
 
 int  CScriptEngine::lua_pcall_failed(lua_State *L)
 {
+	ai().script_engine().print_stack();
     print_output(L, "", LUA_ERRRUN);
     ai().script_engine().on_error(L);
 
+	// demonized: print first line with lua error
+	auto stack = get_lua_stack(L);
+	std::string lua_error_line = "";
+	for (auto const& s : stack) {
+		if (s.find("[Lua]") != std::string::npos) {
+			lua_error_line = s;
+			break;
+		}
+	}
+
+	auto error_str = make_string("\n%s\n\nLUA error: %s\n\nCheck log for details", lua_error_line.c_str(), lua_isstring(L, -1) ? lua_tostring(L, -1) : "");
+	LPCSTR error_msg = error_str.c_str();
+
 #if !XRAY_EXCEPTIONS
-    Debug.fatal(DEBUG_INFO, "LUA error: %s", lua_isstring(L, -1) ? lua_tostring(L, -1) : "");
+	Debug.fatal(DEBUG_INFO, error_msg);
 #endif
     if (lua_isstring(L, -1))
         lua_pop(L, 1);
@@ -231,9 +287,7 @@ void CScriptEngine::setup_callbacks()
         luabind::set_error_callback(CScriptEngine::lua_error);
 #endif
 
-#ifndef MASTER_GOLD
         luabind::set_pcall_callback		(CScriptEngine::lua_pcall_failed);
-#endif // MASTER_GOLD
     }
 
 #if !XRAY_EXCEPTIONS
@@ -281,6 +335,8 @@ void CScriptEngine::setup_auto_load()
 }
 
 extern void export_classes(lua_State *L);
+extern std::unordered_map<std::string, std::set<std::string>> unlocalizers;
+extern bool unlocalizerPassed;
 
 void CScriptEngine::init()
 {
@@ -327,6 +383,8 @@ void CScriptEngine::init()
 #endif // #ifndef USE_LUA_STUDIO
     //	lua_sethook							(lua(), lua_hook_call,	LUA_MASKLINE|LUA_MASKCALL|LUA_MASKRET,	0);
 
+	unlocalizers.clear();
+	unlocalizerPassed = false;
     bool								save = m_reload_modules;
     m_reload_modules = true;
     process_file_if_exists("_G", false);
@@ -406,7 +464,7 @@ void CScriptEngine::process_file_if_exists(LPCSTR file_name, bool warn_if_not_ex
 #	endif
             {
                 print_stack			();
-                Msg					("* trying to access variable %s, which doesn't exist, or to load script %s, which doesn't exist too",file_name,S1);
+                Msg					("* trying to access variable %s, which doesn't exist, or to load script %s, which doesn't exist too",file_name,S);
                 m_stack_is_ready	= true;
             }
 #endif

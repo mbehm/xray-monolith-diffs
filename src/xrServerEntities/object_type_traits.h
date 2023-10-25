@@ -61,14 +61,29 @@
 		typedef T result;
 	};
 
-	namespace object_type_traits {
-		namespace detail {
-			struct yes {char a[1];};
-			struct no  {char a[2];};
-			template <typename T> struct other{};
+namespace object_type_traits
+{
+	namespace detail
+	{
+		struct yes
+		{
+			char a[1];
 		};
 
-		template <typename T> struct remove_pointer{
+		struct no
+		{
+			char a[2];
+		};
+
+		template <typename T>
+		struct other
+		{
+		};
+	};
+
+	template <typename T>
+	struct remove_pointer
+	{
 			typedef T type;
 		};
 

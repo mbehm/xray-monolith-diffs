@@ -136,13 +136,27 @@ void CControlAnimationBase::clear_override_animation ()
 
 void CControlAnimationBase::set_override_animation (EMotionAnim anim, u32 index)
 {
-	if ( m_override_animation == anim )
-		return;
+	if (m_override_animation == anim) return;
+	if (!m_anim_storage[anim]) return;
 
-	if ( anim != eAnimUndefined )
+	m_override_animation = anim;
+	m_override_animation_index = index;
+}
+
+void CControlAnimationBase::set_override_animation_script(EMotionAnim anim, u32 index)
+{
+	if (m_override_animation == anim) return;
+
+	if (!m_anim_storage[anim])
 	{
-		VERIFY2						(m_override_animation == eAnimUndefined, 
-									"animation already overriden, call clear_override_animation");
+		Msg("![CControlAnimationBase] wrong animation id.");
+		return;
+	}
+
+	if (m_anim_storage[anim]->count < index)
+	{
+		Msg("![CControlAnimationBase] wrong animation index.");
+		return;
 	}
 
 	m_override_animation		=	anim;
@@ -173,7 +187,7 @@ void CControlAnimationBase::set_override_animation (pcstr name)
 		}
 	}
 	
-	NODEFAULT;
+	Msg("![CControlAnimationBase] override animation %s not found.", name);
 }
 
 //////////////////////////////////////////////////////////////////////////

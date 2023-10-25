@@ -16,7 +16,7 @@ CAdvancedDetector::~CAdvancedDetector()
 
 void CAdvancedDetector::CreateUI()
 {
-	R_ASSERT			(NULL==m_ui);
+	R_ASSERT(nullptr==m_ui);
 	m_ui				= xr_new<CUIArtefactDetectorAdv>();
 	ui().construct		(this);
 }
@@ -24,6 +24,12 @@ void CAdvancedDetector::CreateUI()
 CUIArtefactDetectorAdv&  CAdvancedDetector::ui()
 {
 	return *((CUIArtefactDetectorAdv*)m_ui);
+}
+
+void CAdvancedDetector::ResetUI()
+{
+	if (m_ui)
+		ui().SetValue(0.0f, Fvector().set(0, 0, 0));
 }
 
 void CAdvancedDetector::UpdateAf()

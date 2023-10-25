@@ -129,12 +129,22 @@ bool CUICustomEdit::OnMouseAction(float x, float y, EUIMessages mouse_action)
 	return false;
 }
 
+extern int mouse_button_2_key[];
 
 bool CUICustomEdit::OnKeyboardAction( int dik, EUIMessages keyboard_action )
 {	
 	if ( !m_bInputFocus )
 	{
 		return false;
+	}
+
+	if (dik == mouse_button_2_key[0] || dik == mouse_button_2_key[1]) // Mouse 1 + 2
+	{
+		if (!m_bCursorOverWindow)
+		{
+			press_commit();
+			return false;
+		}
 	}
 
 	if ( keyboard_action == WINDOW_KEY_PRESSED )

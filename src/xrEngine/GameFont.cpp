@@ -26,7 +26,26 @@ CGameFont::CGameFont(LPCSTR section, u32 flags)
     uFlags = flags;
     nNumChars = 0x100;
     TCMap = NULL;
-    Initialize(pSettings->r_string(section, "shader"), pSettings->r_string(section, "texture"));
+
+	const auto FindTextureName = [&](LPCSTR _sect)
+	{
+		static char* tex_names[] = { "texture800", "texture", "texture1600", "texture2160" };
+		int idx = 1;
+		u32 h = Device.dwHeight;
+		if (h <= 600) idx = 0;
+		else if (h < 1024) idx = 1;
+		else if (h < 1440) idx = 2;
+		else idx = 3;
+		while (idx >= 0)
+		{
+			if (pSettings->line_exist(_sect, tex_names[idx]))
+				return pSettings->r_string(_sect, tex_names[idx]);
+			--idx;
+		}
+		return pSettings->r_string(_sect, tex_names[1]);
+	};
+
+	Initialize(pSettings->r_string(section, "shader"), FindTextureName(section));
     if (pSettings->line_exist(section, "size"))
     {
         float sz = pSettings->r_float(section, "size");
@@ -219,8 +238,9 @@ u16 CGameFont::GetCutLengthPos(float fTargetWidth, const char* pszText)
     float fCurWidth = 0.0f, fDelta = 0.0f;
 
     u16 len = mbhMulti2Wide(wsStr, wsPos, MAX_MB_CHARS, pszText);
+	u16 i = 1;
 
-    for (u16 i = 1; i <= len; i++)
+	for (; i <= len; i++)
     {
 
         fDelta = GetCharTC(wsStr[i]).z - 2;

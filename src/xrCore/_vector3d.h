@@ -21,42 +21,246 @@ public:
     ICF T& operator[] (int i) { return *((T*)this + i); }
     ICF T& operator[] (int i) const { return *((T*)this + i); }
 
-    ICF SelfRef set(T _x, T _y, T _z) { x = _x; y = _y; z = _z; return *this; };
-    ICF SelfRef set(const _vector3<float>& v) { x = T(v.x); y = T(v.y); z = T(v.z); return *this; };
-    ICF SelfRef set(const _vector3<double>& v) { x = T(v.x); y = T(v.y); z = T(v.z); return *this; };
-    ICF SelfRef set(float* p) { x = p[0]; y = p[1]; z = p[2]; return *this; };
-    ICF SelfRef set(double* p) { x = p[0]; y = p[1]; z = p[2]; return *this; };
+	ICF SelfRef set(T _x, T _y, T _z)
+	{
+		x = _x;
+		y = _y;
+		z = _z;
+		return *this;
+	};
+	ICF SelfRef set(const _vector3<float>& v)
+	{
+		x = T(v.x);
+		y = T(v.y);
+		z = T(v.z);
+		return *this;
+	};
+	ICF SelfRef set(const _vector3<double>& v)
+	{
+		x = T(v.x);
+		y = T(v.y);
+		z = T(v.z);
+		return *this;
+	};
+	ICF SelfRef set(float* p)
+	{
+		x = p[0];
+		y = p[1];
+		z = p[2];
+		return *this;
+	};
+	ICF SelfRef set(double* p)
+	{
+		x = p[0];
+		y = p[1];
+		z = p[2];
+		return *this;
+	};
 
-    ICF SelfRef add(const Self& v) { x += v.x; y += v.y; z += v.z; return *this; };
-    ICF SelfRef add(T s) { x += s; y += s; z += s; return *this; };
-    ICF SelfRef add(const Self& a, const Self& v) { x = a.x + v.x; y = a.y + v.y; z = a.z + v.z; return *this; };
-    ICF SelfRef add(const Self& a, T s) { x = a.x + s; y = a.y + s; z = a.z + s; return *this; };
+	ICF SelfRef add(const Self& v)
+	{
+		x += v.x;
+		y += v.y;
+		z += v.z;
+		return *this;
+	};
+	ICF SelfRef add(T s)
+	{
+		x += s;
+		y += s;
+		z += s;
+		return *this;
+	};
+	ICF SelfRef add(T _x, T _y, T _z)
+	{
+		x += _x;
+		y += _y;
+		z += _z;
+		return *this;
+	};
+	ICF SelfRef add(const Self& a, const Self& v)
+	{
+		x = a.x + v.x;
+		y = a.y + v.y;
+		z = a.z + v.z;
+		return *this;
+	};
+	ICF SelfRef add(const Self& a, T s)
+	{
+		x = a.x + s;
+		y = a.y + s;
+		z = a.z + s;
+		return *this;
+	};
 
-    ICF SelfRef sub(const Self& v) { x -= v.x; y -= v.y; z -= v.z; return *this; };
-    ICF SelfRef sub(T s) { x -= s; y -= s; z -= s; return *this; };
-    ICF SelfRef sub(const Self& a, const Self& v) { x = a.x - v.x; y = a.y - v.y; z = a.z - v.z; return *this; };
-    ICF SelfRef sub(const Self& a, T s) { x = a.x - s; y = a.y - s; z = a.z - s; return *this; };
+	ICF SelfRef sub(const Self& v)
+	{
+		x -= v.x;
+		y -= v.y;
+		z -= v.z;
+		return *this;
+	};
+	ICF SelfRef sub(T s)
+	{
+		x -= s;
+		y -= s;
+		z -= s;
+		return *this;
+	};
+	ICF SelfRef sub(T _x, T _y, T _z)
+	{
+		x -= _x;
+		y -= _y;
+		z -= _z;
+		return *this;
+	};
+	ICF SelfRef sub(const Self& a, const Self& v)
+	{
+		x = a.x - v.x;
+		y = a.y - v.y;
+		z = a.z - v.z;
+		return *this;
+	};
+	ICF SelfRef sub(const Self& a, T s)
+	{
+		x = a.x - s;
+		y = a.y - s;
+		z = a.z - s;
+		return *this;
+	};
 
-    ICF SelfRef mul(const Self& v) { x *= v.x; y *= v.y; z *= v.z; return *this; };
-    ICF SelfRef mul(T s) { x *= s; y *= s; z *= s; return *this; };
-    ICF SelfRef mul(const Self& a, const Self& v) { x = a.x*v.x; y = a.y*v.y; z = a.z*v.z; return *this; };
-    ICF SelfRef mul(const Self& a, T s) { x = a.x*s; y = a.y*s; z = a.z*s; return *this; };
+	ICF SelfRef mul(const Self& v)
+	{
+		x *= v.x;
+		y *= v.y;
+		z *= v.z;
+		return *this;
+	};
+	ICF SelfRef mul(T s)
+	{
+		x *= s;
+		y *= s;
+		z *= s;
+		return *this;
+	};
+	ICF SelfRef mul(T _x, T _y, T _z)
+	{
+		x *= _x;
+		y *= _y;
+		z *= _z;
+		return *this;
+	};
+	ICF SelfRef mul(const Self& a, const Self& v)
+	{
+		x = a.x * v.x;
+		y = a.y * v.y;
+		z = a.z * v.z;
+		return *this;
+	};
+	ICF SelfRef mul(const Self& a, T s)
+	{
+		x = a.x * s;
+		y = a.y * s;
+		z = a.z * s;
+		return *this;
+	};
 
-    ICF SelfRef div(const Self& v) { x /= v.x; y /= v.y; z /= v.z; return *this; };
-    ICF SelfRef div(T s) { x /= s; y /= s; z /= s; return *this; };
-    ICF SelfRef div(const Self& a, const Self& v) { x = a.x / v.x; y = a.y / v.y; z = a.z / v.z; return *this; };
-    ICF SelfRef div(const Self& a, T s) { x = a.x / s; y = a.y / s; z = a.z / s; return *this; };
+	ICF SelfRef div(const Self& v)
+	{
+		x /= v.x;
+		y /= v.y;
+		z /= v.z;
+		return *this;
+	};
+	ICF SelfRef div(T s)
+	{
+		x /= s;
+		y /= s;
+		z /= s;
+		return *this;
+	};
+	ICF SelfRef div(T _x, T _y, T _z)
+	{
+		x /= _x;
+		y /= _y;
+		z /= _z;
+		return *this;
+	};
+	ICF SelfRef div(const Self& a, const Self& v)
+	{
+		x = a.x / v.x;
+		y = a.y / v.y;
+		z = a.z / v.z;
+		return *this;
+	};
+	ICF SelfRef div(const Self& a, T s)
+	{
+		x = a.x / s;
+		y = a.y / s;
+		z = a.z / s;
+		return *this;
+	};
 
-    IC SelfRef invert() { x = -x; y = -y; z = -z; return *this; }
-    IC SelfRef invert(const Self& a) { x = -a.x; y = -a.y; z = -a.z; return *this; }
+	IC SelfRef invert()
+	{
+		x = -x;
+		y = -y;
+		z = -z;
+		return *this;
+	}
 
-    IC SelfRef min(const Self& v1, const Self& v2) { x = _min(v1.x, v2.x); y = _min(v1.y, v2.y); z = _min(v1.z, v2.z); return *this; }
-    IC SelfRef min(const Self& v) { x = _min(x, v.x); y = _min(y, v.y); z = _min(z, v.z); return *this; }
-    IC SelfRef max(const Self& v1, const Self& v2) { x = _max(v1.x, v2.x); y = _max(v1.y, v2.y); z = _max(v1.z, v2.z); return *this; }
-    IC SelfRef max(const Self& v) { x = _max(x, v.x); y = _max(y, v.y); z = _max(z, v.z); return *this; }
+	IC SelfRef invert(const Self& a)
+	{
+		x = -a.x;
+		y = -a.y;
+		z = -a.z;
+		return *this;
+	}
 
-    IC SelfRef abs(const Self& v) { x = _abs(v.x); y = _abs(v.y); z = _abs(v.z); return *this; }
-    ICF BOOL similar(const Self& v, T E = EPS_L) const { return _abs(x - v.x) < E && _abs(y - v.y) < E && _abs(z - v.z) < E; };
+	IC SelfRef min(const Self& v1, const Self& v2)
+	{
+		x = _min(v1.x, v2.x);
+		y = _min(v1.y, v2.y);
+		z = _min(v1.z, v2.z);
+		return *this;
+	}
+
+	IC SelfRef min(const Self& v)
+	{
+		x = _min(x, v.x);
+		y = _min(y, v.y);
+		z = _min(z, v.z);
+		return *this;
+	}
+
+	IC SelfRef max(const Self& v1, const Self& v2)
+	{
+		x = _max(v1.x, v2.x);
+		y = _max(v1.y, v2.y);
+		z = _max(v1.z, v2.z);
+		return *this;
+	}
+
+	IC SelfRef max(const Self& v)
+	{
+		x = _max(x, v.x);
+		y = _max(y, v.y);
+		z = _max(z, v.z);
+		return *this;
+	}
+
+	IC SelfRef abs(const Self& v)
+	{
+		x = _abs(v.x);
+		y = _abs(v.y);
+		z = _abs(v.z);
+		return *this;
+	}
+
+	ICF BOOL similar(const Self& v, T E = EPS_L) const
+	{
+		return _abs(x - v.x) < E && _abs(y - v.y) < E && _abs(z - v.z) < E;
+	};
 
     IC SelfRef set_length(T l)
     {

@@ -23,7 +23,7 @@
 #include "luabind/library_linkage.h"
 
 //#pragma comment(lib,"ode.lib")
-#pragma comment(lib,"xrEngine.lib")
+//#pragma comment(lib,"xrEngine.lib")
 
 extern "C" {
 	DLL_API DLL_Pure*	__cdecl xrFactory_Create		(CLASS_ID clsid)
@@ -46,10 +46,13 @@ extern "C" {
 void CCC_RegisterCommands	();
 void setup_luabind_allocator();
 
-BOOL APIENTRY DllMain(HANDLE hModule, u32 ul_reason_for_call, LPVOID lpReserved)
+//BOOL APIENTRY DllMain(HANDLE hModule, u32 ul_reason_for_call, LPVOID lpReserved)
+BOOL DllMainXrGame(HANDLE hModule, u32 ul_reason_for_call, LPVOID lpReserved)
 {
-	switch (ul_reason_for_call) {
-		case DLL_PROCESS_ATTACH: {
+	switch (ul_reason_for_call)
+	{
+	case DLL_PROCESS_ATTACH:
+{
 			// register console commands
 			CCC_RegisterCommands();
 			// keyboard binding

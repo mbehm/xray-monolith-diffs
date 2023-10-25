@@ -21,6 +21,7 @@
 #include "ai_space.h"
 #include "profiler.h"
 #include "actor.h"
+#include "actor_memory.h"
 #include "ai/stalker/ai_stalker.h"
 #include "movement_manager.h"
 #include "agent_manager.h"
@@ -90,7 +91,7 @@ float CEnemyManager::evaluate				(const CEntityAlive *object) const
 {
 //	Msg						("[%6d] enemy manager %s evaluates %s",Device.dwTimeGlobal,*m_object->cName(),*object->cName());
 
-	bool					actor = (!!smart_cast<CActor const*>(object));
+	const CActor* actor = smart_cast<const CActor*>(object);
 	if (actor)
 		m_ready_to_save		= false;
 
@@ -119,16 +120,16 @@ float CEnemyManager::evaluate				(const CEntityAlive *object) const
 		penalty				-= 1000.f;
 
 	// if object is actor and he/she sees us
-//	if (actor) {
-//		if (smart_cast<const CActor*>(object)->memory().visual().visible_now(m_object))
-//			penalty			-= 900.f;
-//	}
-//	else {
-//		// if object is npc and it sees us
-//		const CCustomMonster	*monster = smart_cast<const CCustomMonster*>(object);
-//		if (monster && monster->memory().visual().visible_now(m_object))
-//			penalty			-= 300.f;
-//	}
+	if (actor) {
+		if (actor->memory().visual().visible_now(m_object))
+			penalty -= 900.f;
+	}
+	else {
+		// if object is npc and it sees us
+		const CCustomMonster	*monster = smart_cast<const CCustomMonster*>(object);
+		if (monster && monster->memory().visual().visible_now(m_object))
+			penalty -= 300.f;
+	}
 
 #ifdef USE_EVALUATOR
 	ai().ef_storage().non_alife().member_item()	= 0;

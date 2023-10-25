@@ -770,12 +770,17 @@ void CDetailPathManager::postprocess_key_points(
 	if (m_key_points[m_key_points.size() - 2].position.similar(m_key_points[m_key_points.size() - 1].position,EPS_S))
 		m_key_points.pop_back();
 
-	for (int i=1, n=(int)m_key_points.size() - 1; i < n; ++i) {
-		STravelPoint		key_point0 = compute_better_key_point(m_key_points[i-1],m_key_points[i],m_key_points[i+1],false);
-		STravelPoint		key_point1 = compute_better_key_point(m_key_points[i+1],m_key_points[i],m_key_points[i-1],true);
+	for (int i = 1, n = (int)m_key_points.size() - 1; i < n; ++i)
+	{
+		STravelPoint key_point0 = compute_better_key_point(m_key_points[i - 1], m_key_points[i], m_key_points[i + 1],
+		                                                   false);
+		STravelPoint key_point1 = compute_better_key_point(m_key_points[i + 1], m_key_points[i], m_key_points[i - 1],
+		                                                   true);
 		{
-			u32				vertex_id = ai().level_graph().check_position_in_direction(m_key_points[i-1].vertex_id,m_key_points[i-1].position,key_point0.position);
-			if (!ai().level_graph().valid_vertex_id(vertex_id)) {
+			u32 vertex_id = ai().level_graph().check_position_in_direction(
+				m_key_points[i - 1].vertex_id, m_key_points[i - 1].position, key_point0.position);
+			if (!ai().level_graph().valid_vertex_id(vertex_id))
+		{
 				vertex_id	= vertex_id;
 			}
 		}

@@ -11,10 +11,10 @@ void CFlare::Load(LPCSTR section)
 
 BOOL CFlare::net_Spawn(CSE_Abstract* DC)
 {
-	inherited::net_Spawn	(DC);
+	BOOL res = inherited::net_Spawn(DC);
 	SwitchState				(eFlareHidden);
 	m_pFlareParticles		= NULL;
-	return					TRUE;
+	return res;
 }
 
 void CFlare::net_Destroy()
@@ -41,23 +41,28 @@ bool CFlare::IsFlareActive()
 	return ( GetState()==eFlareIdle );
 }
 
-void CFlare::OnStateSwitch(u32 S)
+void CFlare::OnStateSwitch(u32 S, u32 oldState)
 {
-	inherited::OnStateSwitch(S);
+	inherited::OnStateSwitch(S, oldState);
 
 	switch(S)
 	{
 	case eFlareShowing:
 		{
 			g_player_hud->attach_item	(this);
-			PlayHUDMotion				("anm_show", TRUE, this, GetState());
+			PlayHUDMotion("anm_show", FALSE, this, GetState(), 1.f, 0.f, false);
 			SetPending					(TRUE);
-		}break;
+		}
+		break;
 	case eFlareHiding:
 		{
+			if (oldState != eFlareHiding)
+			{
 			PlayHUDMotion				("anm_hide", TRUE, this, GetState());
 			SetPending					(TRUE);
-		}break;
+			}
+		}
+		break;
 	case eFlareIdle:
 		{
 			light_lanim					= LALib.FindItem("flare_lanim_idle");

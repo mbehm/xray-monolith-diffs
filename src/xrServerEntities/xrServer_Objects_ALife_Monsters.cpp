@@ -116,6 +116,33 @@ void setup_location_types(GameGraph::TERRAIN_VECTOR &m_vertex_types, CInifile co
 
 using namespace ALife;
 
+xr_string TranslateName(LPCSTR nameStr)
+{
+	xr_string ret;
+
+	// Savegame (before this tweak) + custom npc compatibility
+	if (!strstr(nameStr, ":lname_"))
+	{
+		ret = (*CStringTable().translate(nameStr));
+		return ret;
+	}
+
+	// Split name string and translate it
+	R_ASSERT2(_GetItemCount(nameStr, ':') == 2, nameStr);
+
+	string512 name;
+	_GetItem(nameStr, 0, name, ':');
+
+	string512 lname;
+	_GetItem(nameStr, 1, lname, ':');
+
+	ret = (*CStringTable().translate(name));
+	ret += " ";
+	ret += (*CStringTable().translate(lname));
+
+	return ret;
+}
+
 ////////////////////////////////////////////////////////////////////////////
 // CSE_ALifeTraderAbstract
 ////////////////////////////////////////////////////////////////////////////
@@ -180,7 +207,7 @@ void CSE_ALifeTraderAbstract::STATE_Write	(NET_Packet &tNetPacket)
 	tNetPacket.w_s32			(NO_RANK);
 	tNetPacket.w_s32			(NO_REPUTATION);
 #endif
-	save_data					(m_character_name, tNetPacket);
+	save_data(m_character_name_str, tNetPacket);
 	
 	tNetPacket.w_u8				( (m_deadbody_can_take)? 1 : 0 );
 	tNetPacket.w_u8				( (m_deadbody_closed)? 1 : 0 );
@@ -242,8 +269,10 @@ void CSE_ALifeTraderAbstract::STATE_Read	(NET_Packet &tNetPacket, u16 size)
 			tNetPacket.r_s32	(m_reputation);
 		}
 
-		if (m_wVersion > 104) {
-			load_data			(m_character_name, tNetPacket);
+		if (m_wVersion > 104)
+		{
+			load_data(m_character_name_str, tNetPacket);
+			m_character_name = TranslateName(m_character_name_str.c_str());
 		}
 	}
 
@@ -349,9 +378,19 @@ shared_str CSE_ALifeTraderAbstract::specific_character()
 				}
 			}
 		}
-		R_ASSERT3(!m_DefaultCharacters.empty(), 
+		VERIFY3(!m_DefaultCharacters.empty(),
 			"no default specific character set for class", *char_info.data()->m_Class);
 
+		if (m_DefaultCharacters.empty())
+		{
+			if (!m_CheckedCharacters.empty())
+			{
+				char_info.m_SpecificCharacterId = m_CheckedCharacters[Random.randI(m_CheckedCharacters.size())];
+				set_specific_character(char_info.m_SpecificCharacterId);
+			}
+			return m_SpecificCharacter;
+		}
+		
 #ifdef XRGAME_EXPORTS
 		if(m_CheckedCharacters.empty())
 			char_info.m_SpecificCharacterId = m_DefaultCharacters[Random.randI(m_DefaultCharacters.size())];
@@ -418,19 +457,30 @@ void CSE_ALifeTraderAbstract::set_specific_character	(shared_str new_spec_char)
 	}
 //----
 	if(NO_RANK == m_rank)
-		m_rank = selected_char.Rank();
+	{
+		if (selected_char.RankDef().min != selected_char.RankDef().max)
+			m_rank = ::Random.randI(selected_char.RankDef().min, selected_char.RankDef().max);
+		else
+			m_rank = selected_char.RankDef().max;
+	}
 
 	if(NO_REPUTATION == m_reputation)
-		m_reputation = selected_char.Reputation();
+	{
+		if (selected_char.ReputationDef().min != selected_char.ReputationDef().max)
+			m_reputation = ::Random.randI(selected_char.ReputationDef().min, selected_char.ReputationDef().max);
+		else
+			m_reputation = selected_char.ReputationDef().max;
+	}
 
 	m_icon_name = selected_char.IconName();
 
-	m_character_name = *(CStringTable().translate(selected_char.Name()));
+	m_character_name_str = selected_char.Name();
 	
 	LPCSTR gen_name = "GENERATE_NAME_";
-	if( strstr(m_character_name.c_str(),gen_name) ){
+	if (strstr(m_character_name_str.c_str(), gen_name))
+	{
 		//select name and lastname
-		xr_string subset			= m_character_name.c_str()+xr_strlen(gen_name);
+		xr_string subset = m_character_name_str.c_str() + xr_strlen(gen_name);
 
 		string_path					t1;
 		strconcat					(sizeof(t1),t1,"stalker_names_",subset.c_str());
@@ -442,21 +492,22 @@ void CSE_ALifeTraderAbstract::set_specific_character	(shared_str new_spec_char)
 		n					+= subset;
 		n					+= "_";
 		n					+= itoa(::Random.randI(name_cnt),S,10);
-		m_character_name	= *(CStringTable().translate(n.c_str()));
-		m_character_name	+= " ";
+		m_character_name_str = n.c_str();
+		m_character_name_str += ":";
 
 		n					= "lname_";
 		n					+= subset;
 		n					+= "_";
 		n					+= itoa(::Random.randI(last_name_cnt),S,10);
-		m_character_name	+= *(CStringTable().translate(n.c_str()));
-
-
-	
+		m_character_name_str += n.c_str();
 	}
+
+	m_character_name = TranslateName(m_character_name_str.c_str());
+	
 	u32 min_m = selected_char.MoneyDef().min_money;
 	u32 max_m = selected_char.MoneyDef().max_money;
-	if(min_m!=0 && max_m!=0){
+	if (min_m != 0 && max_m != 0)
+	{
 		m_dwMoney = min_m;
 		if(min_m!=max_m)	m_dwMoney += ::Random.randI(max_m-min_m);
 	}
@@ -494,6 +545,8 @@ CHARACTER_COMMUNITY_INDEX		CSE_ALifeTraderAbstract::Community	() const
 
 LPCSTR			CSE_ALifeTraderAbstract::CommunityName () const
 {
+	if (NO_COMMUNITY_INDEX == m_community_index)
+		return "unknown";
 	return *CHARACTER_COMMUNITY::IndexToId(m_community_index);
 }
 
@@ -1114,13 +1167,13 @@ bool CSE_ALifeCreatureAbstract::can_switch_offline	() const
 	return						(inherited::can_switch_offline() && (get_health() > 0.f));
 }
 
-IC	void CSE_ALifeCreatureAbstract::set_health	(float const health_value)
+void CSE_ALifeCreatureAbstract::set_health(float const health_value)
 {
 	VERIFY( !((get_killer_id() != u16(-1)) && (health_value > 0.f)) );
 	fHealth = health_value;
 }
 
-IC	void CSE_ALifeCreatureAbstract::set_killer_id	(ALife::_OBJECT_ID const killer_id)
+void CSE_ALifeCreatureAbstract::set_killer_id(ALife::_OBJECT_ID const killer_id)
 {
 	m_killer_id = killer_id;
 }

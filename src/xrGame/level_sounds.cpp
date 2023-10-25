@@ -1,4 +1,6 @@
 #include "stdafx.h"
+#include <random>
+#include <algorithm>
 #pragma hdrstop
 
 #include "level.h"
@@ -28,23 +30,38 @@ void SStaticSound::Load(IReader& F)
 
 void SStaticSound::Update(u32 game_time, u32 global_time)
 {
-	if ((0==m_ActiveTime.x)&&(0==m_ActiveTime.y)||((int(game_time)>=m_ActiveTime.x)&&(int(game_time)<m_ActiveTime.y))){
-		if (0==m_Source._feedback()){
-			if ((0==m_PauseTime.x)&&(0==m_PauseTime.y)){    
+	if ((0 == m_ActiveTime.x) && (0 == m_ActiveTime.y) || ((int(game_time) >= m_ActiveTime.x) && (int(game_time) <
+		m_ActiveTime.y)))
+	{
+		if (0 == m_Source._feedback())
+		{
+			Fvector occ[3];
+			const float occluder_volume = Sound->get_occlusion(m_Position, .2f, occ);
+			const float vol = m_Volume * occluder_volume;
+
+			if ((0 == m_PauseTime.x) && (0 == m_PauseTime.y))
+			{
 				m_Source.play_at_pos	(0,m_Position,sm_Looped);
-				m_Source.set_volume		(m_Volume);
+				m_Source.set_volume(vol);
 				m_Source.set_frequency	(m_Freq);
 				m_StopTime				= 0xFFFFFFFF;
-			}else{
-				if (global_time>=m_NextTime){
+			}
+			else
+			{
+				if (global_time >= m_NextTime)
+				{
 					bool bFullPlay		= (0==m_PlayTime.x)&&(0==m_PlayTime.y);
 					m_Source.play_at_pos	(0,m_Position,bFullPlay?0:sm_Looped);
-					m_Source.set_volume		(m_Volume);
+					m_Source.set_volume(vol);
 					m_Source.set_frequency	(m_Freq);
-					if (bFullPlay){
+					if (bFullPlay)
+					{
 						m_StopTime		= 0xFFFFFFFF;
-						m_NextTime		= global_time+iFloor(m_Source.get_length_sec()*1000.0f)+Random.randI(m_PauseTime.x,m_PauseTime.y);
-					}else{
+						m_NextTime = global_time + iFloor(m_Source.get_length_sec() * 1000.0f) + Random.randI(
+							m_PauseTime.x, m_PauseTime.y);
+					}
+					else
+					{
 						m_StopTime		= bFullPlay?0:global_time+Random.randI(m_PlayTime.x,m_PlayTime.y);
 						m_NextTime		= m_StopTime+Random.randI(m_PauseTime.x,m_PauseTime.y);
 					}
@@ -162,9 +179,13 @@ void CLevelSoundManager::Load()
 				Msg("- Loading music tracks from '%s'...",music_sect);
 #endif // #ifdef DEBUG
 				CInifile::Sect&	S	= gameLtx.r_section	(music_sect);
+				std::random_device rd;
+				std::mt19937 g(rd());
+				std::shuffle(S.Data.begin(), S.Data.end(), g);
 				CInifile::SectCIt it	= S.Data.begin(), end = S.Data.end();
 				m_MusicTracks.reserve	(S.Data.size());
-				for (;it!=end; it++){
+				for (; it != end; it++)
+				{
 					m_MusicTracks.push_back	(SMusicTrack());
 					m_MusicTracks.back().Load(*it->first,*it->second);
 				}
@@ -179,6 +200,7 @@ void CLevelSoundManager::Unload()
 	m_StaticSounds.clear		();
 	// music
 	m_MusicTracks.clear			();
+	m_PlayedMusicIndices.clear();
 }
 
 void CLevelSoundManager::Update()
@@ -201,30 +223,46 @@ void CLevelSoundManager::Update()
 		if (m_CurrentTrack<0 && engine_time>m_NextTrackTime)
 		{
 			U32Vec				indices;
-			for (u32 k=0; k<m_MusicTracks.size(); ++k)
+			for (u32 k = 0; k < m_MusicTracks.size(); k++)
 			{
+				// Msg("Checking track %d", k);
 				SMusicTrack& T		= m_MusicTracks[k];
-				if (T.IsPlaying())	
+				if (T.IsPlaying()) {
 					T.Stop();
-				
-				if( T.in(game_time) )
+					// Msg("Stopping track %d", k);
+				}
+				if ((T.in(game_time) && m_PlayedMusicIndices.empty()) || 
+					(T.in(game_time) && !(std::find(m_PlayedMusicIndices.begin(), m_PlayedMusicIndices.end(), k) != m_PlayedMusicIndices.end()))) {
 					indices.push_back	(k);
+					// Msg("Pushing track %d", k);
 /*
 				if ((0==T.m_ActiveTime.x) && (0==T.m_ActiveTime.y)||
 					((int(game_time)>=T.m_ActiveTime.x)&&(int(game_time)<T.m_ActiveTime.y)))
 					indices.push_back	(k);
 */
 			}
+			}
 			if (!indices.empty())
 			{
-				u32 idx			= Random.randI(indices.size());
+				//u32 idx = Random.randI(indices.size());
+				u32 idx = 0;
 				m_CurrentTrack	= indices[idx];
 				SMusicTrack& T	= m_MusicTracks[m_CurrentTrack];
 				T.Play			();
+				m_PlayedMusicIndices.push_back(indices[idx]);
+				// Msg("Starting track %d", indices[idx]);
 #ifdef DEBUG
 				Log				("- Play music track:",T.m_DbgName.c_str());
 #endif
-			}else{
+			}
+			else
+			{
+				// Msg("m_PlayedMusicIndices.size %d", m_PlayedMusicIndices.size());
+				m_PlayedMusicIndices.clear();
+				std::random_device rd;
+				std::mt19937 g(rd());
+				std::shuffle(m_MusicTracks.begin(), m_MusicTracks.end(), g);
+				// Msg("Refreshing tracks");
 				m_NextTrackTime	= engine_time+10000; // next check after 10 sec
 			}
 		}

@@ -52,6 +52,9 @@ extern	BOOL death_anim_debug;
 #define USE_SMART_HITS
 #define USE_IK
 
+#define IK_CALC_DIST 100.f
+#define IK_ALWAYS_CALC_DIST 20.f
+
 //void  NodynamicsCollide( bool& do_colide, bool bo1, dContact& c, SGameMtl * /*material_1*/, SGameMtl * /*material_2*/ )
 //{
 //	dBodyID body1=dGeomGetBody( c.geom.g1 );
@@ -645,8 +648,22 @@ void CCharacterPhysicsSupport::in_UpdateCL( )
 	//} 
 	else if( ik_controller( ) )
 	{
+		CFrustum& view_frust = ::Render->ViewBase;
+		vis_data& vis = m_EntityAlife.Visual()->getVisData();
+		Fvector p;
+
+		m_EntityAlife.XFORM().transform_tiny(p, vis.sphere.P);
+
+		float dist = Device.vCameraPosition.distance_to(p);
+
+		if (dist < IK_CALC_DIST)
+		{
+			if (view_frust.testSphere_dirty(p, vis.sphere.R) || dist < IK_ALWAYS_CALC_DIST)
+			{
 		update_interactive_anims();
 		ik_controller( )->Update();
+	}
+		}
 	}
 
 #ifdef DEBUG
@@ -1146,9 +1163,8 @@ void	CCharacterPhysicsSupport::	CreateShell						( CObject* who, Fvector& dp, Fv
 	if(anim_mov_ctrl) //we do not whant to move by long animation in root 
 			BR.set_callback_overwrite (TRUE);
 
-
 	if(!DoCharacterShellCollide())
-		m_pPhysicsShell->DisableCharacterCollision();
+		m_pPhysicsShell->SetDeadBody();
 
 	if( m_eType != etBitting )
 		K->LL_SetBoneRoot( anim_root );
@@ -1169,11 +1185,7 @@ void	CCharacterPhysicsSupport::	CreateShell						( CObject* who, Fvector& dp, Fv
 	if(IsGameTypeSingle())
 	{
 		m_pPhysicsShell->SetPrefereExactIntegration	();//use exact integration for ragdolls in single
-        //AVO: turn on collision with dead bodies (thanks malandrinus)
-#ifndef DEAD_BODY_COLLISION
-			m_pPhysicsShell->SetRemoveCharacterCollLADisable();
-#endif
-        //-AVO
+		m_pPhysicsShell->SetDeadBody();
 	}
 	else
 		m_pPhysicsShell->SetIgnoreDynamic();
@@ -1429,7 +1441,7 @@ bool	CCharacterPhysicsSupport::	can_drop_active_weapon	( )
 	return !interactive_motion() && m_flags.test(fl_death_anim_on);
 };
 
-void		CCharacterPhysicsSupport::in_Die( )
+void CCharacterPhysicsSupport::in_Die(bool hit)
 {
 	if( m_hit_valide_time < Device.dwTimeGlobal || !m_sv_hit.is_valide() )
 	{
@@ -1439,6 +1451,8 @@ void		CCharacterPhysicsSupport::in_Die( )
 		m_PhysicMovementControl->DestroyCharacter( );
 		return;
 	}
+
+	if (hit)
 	in_Hit( m_sv_hit, true );
 }
 

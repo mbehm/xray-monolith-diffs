@@ -354,10 +354,13 @@ public:
 
 #define GET_RANDOM(a_vector) (a_vector[Random.randI(a_vector.size())])
 
-#define CLONE_MTL_SOUND(_res_, _mtl_pair_, _a_vector_)\
- { VERIFY2(!_mtl_pair_##->_a_vector_.empty(),_mtl_pair_->dbg_Name());\
- _res_.clone(GET_RANDOM(_mtl_pair_##->_a_vector_),st_Effect,sg_SourceType);\
- }
+#ifdef DEBUG
+#define CLONE_MTL_SOUND_CHECK(_res_, _mtl_pair_, _a_vector_)\
+ { VERIFY2(!_mtl_pair_##->_a_vector_.empty(),_mtl_pair_->dbg_Name()); }
+#endif
+
+#define CLONE_MTL_SOUND_DO(_res_, _mtl_pair_, _a_vector_)\
+ { _res_.clone(GET_RANDOM(_mtl_pair_##->_a_vector_),st_Effect,sg_SourceType); }
 
 extern MTL_EXPORT_API CGameMtlLibrary GMLib;
 

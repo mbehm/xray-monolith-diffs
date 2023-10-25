@@ -107,19 +107,19 @@ CScriptParticles::~CScriptParticles()
 	}
 }
 
-void CScriptParticles::Play()
+void CScriptParticles::Play(bool bHudMode)
 {
 	VERIFY						(m_particles);
-	m_particles->Play			(false);
+	m_particles->Play(bHudMode);
 }
 
-void CScriptParticles::PlayAtPos(const Fvector &position)
+void CScriptParticles::PlayAtPos(const Fvector& position, bool bHudMode)
 {
 	VERIFY						(m_particles);
 	//m_particles->play_at_pos	(position);
 	m_transform.translate_over  (position);
 	m_particles->UpdateParent	(m_transform, zero_vel);	
-	m_particles->Play(false);	
+	m_particles->Play(bHudMode);
 	m_particles->UpdateParent	(m_transform, zero_vel);  
 }
 
@@ -144,6 +144,13 @@ void CScriptParticles::MoveTo	(const Fvector &pos, const Fvector& vel)
 	VERIFY						(m_particles);
 	m_transform.translate_over (pos);
 	m_particles->UpdateParent	(m_transform,vel);	  
+}
+
+void CScriptParticles::XFORMMoveTo(const Fvector& pos)
+{
+	VERIFY(m_particles);
+	m_transform.translate_over(pos);
+	m_particles->SetXFORM(m_transform);
 }
 
 void CScriptParticles::SetDirection (const Fvector &dir)

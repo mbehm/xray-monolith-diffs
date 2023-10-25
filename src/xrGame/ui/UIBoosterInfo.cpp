@@ -258,10 +258,10 @@ void UIBoosterInfoItem::SetValue(float value)
 {
 	value *= m_magnitude;
 	string32 buf;
-	if(m_show_sign)
-		xr_sprintf(buf, "%+.0f", value);
+	if (value > -1.f && value < 1.f)
+		xr_sprintf(buf, m_show_sign ? "%+.2f" : "%.2f", value);
 	else
-		xr_sprintf(buf, "%.0f", value);
+		xr_sprintf(buf, m_show_sign ? "%+.0f" : "%.0f", value);
 	
 	LPSTR str;
 	if(m_unit_str.size())

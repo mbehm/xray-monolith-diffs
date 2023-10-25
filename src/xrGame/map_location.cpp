@@ -28,6 +28,7 @@
 #include "gametaskmanager.h"
 #include "ActorHelmet.h"
 #include "Inventory.h"
+#include "HUDManager.h"
 //#include "CustomMonster.h"
 
 CMapLocation::CMapLocation(LPCSTR type, u16 object_id)
@@ -53,7 +54,8 @@ CMapLocation::CMapLocation(LPCSTR type, u16 object_id)
 	m_actual_time			= 0;
 	m_owner_se_object		= (ai().get_alife()) ? ai().alife().objects().object(m_objectID,true) : NULL;
 	m_flags.set				(eHintEnabled, TRUE);
-	LoadSpot				(type, false);
+	spot_type = type;
+	LoadSpot(spot_type, false);
 	
 	DisablePointer			();
 
@@ -640,6 +642,13 @@ CMapSpotPointer* CMapLocation::GetSpotPointer(CMapSpot* sp)
 CMapSpot* CMapLocation::GetSpotBorder(CMapSpot* sp)
 {
 	R_ASSERT(sp);
+
+	if (!g_uiSpotXml)
+	{
+		g_uiSpotXml = xr_new<CUIXml>();
+		g_uiSpotXml->Load(CONFIG_PATH, UI_PATH, "map_spots.xml");
+	}
+
 	if ( PointerEnabled() )
 	{
 		if( sp == m_level_spot )

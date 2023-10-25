@@ -89,6 +89,11 @@ public:
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	virtual		void			applyForce								(const Fvector& dir, float val)																							= 0;
 	virtual		void			applyForce								(float x,float y,float z)																								= 0;
+
+	// demonized: applyTorque
+	virtual void applyTorque(const Fvector& dir, float val) = 0;
+	virtual void applyTorque(float x, float y, float z) = 0;
+
 	virtual		void			applyImpulse							(const Fvector& dir, float val)																							= 0;
 	virtual		void			setTorque								(const Fvector& torque)																									= 0;
 	virtual		void			setForce								(const Fvector& force)																									= 0;
@@ -322,6 +327,7 @@ virtual				void						GetGlobalTransformDynamic					(Fmatrix* m) 																
 	virtual			void						SetRagDoll									()																							= 0;
 	virtual			void						SetIgnoreRagDoll							()																							= 0;
 	virtual		const CLBits&					collide_bits								()const 																					= 0;
+	virtual _flags<CLClassBits>& collide_class_bits() = 0;
 	virtual		const _flags<CLClassBits>&		collide_class_bits 							()const 																					= 0;
 	virtual			void						CreateShellAnimator							( CInifile const * ini, LPCSTR section )															= 0;
 	virtual			void						SetIgnoreAnimated							()																							= 0;
@@ -374,8 +380,7 @@ virtual				void						GetGlobalTransformDynamic					(Fmatrix* m) 																
 	virtual			void						Disable										()																							= 0;
 	virtual			void						DisableCollision							()																							= 0;
 	virtual			void						EnableCollision								()																							= 0;
-	virtual			void						SetRemoveCharacterCollLADisable				()																							= 0;
-	virtual			void						DisableCharacterCollision					()																							= 0;
+	virtual void SetDeadBody() = 0;
 	virtual			void						PureStep									(float step = fixed_step)																	= 0;
 	virtual			void						SetGlTransformDynamic						(const Fmatrix &form)																		= 0;
 	virtual			void						CollideAll									()																							= 0;

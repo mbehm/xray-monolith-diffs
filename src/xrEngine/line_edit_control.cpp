@@ -413,6 +413,7 @@ bool line_edit_control::empty_inserted()
 
 void line_edit_control::set_edit(LPCSTR str)
 {
+		if (!str) str = "";
     u32 str_size = xr_strlen(str);
     clamp(str_size, (u32)0, (u32)(m_buffer_size - 1));
     strncpy_s(m_edit_str, m_buffer_size, str, str_size);

@@ -124,6 +124,18 @@ void   CScriptGameObject::set_override_animation (pcstr anim_name)
 	monster->anim().set_override_animation(anim_name);
 }
 
+void CScriptGameObject::set_override_animation(u32 AnimType, u32 AnimIndex)
+{
+	CBaseMonster* monster = smart_cast<CBaseMonster*>(&object());
+	if (!monster)
+	{
+		ai().script_engine().script_log(ScriptStorage::eLuaMessageTypeError, "object is not of CBaseMonster class!");
+		return;
+	}
+
+	monster->anim().set_override_animation_script((EMotionAnim)AnimType, AnimIndex);
+}
+
 void   CScriptGameObject::clear_override_animation ()
 {
 	CBaseMonster* monster	=	smart_cast<CBaseMonster*>(&object());

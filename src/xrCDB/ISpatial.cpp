@@ -95,7 +95,11 @@ void	ISpatial::spatial_move	()
 {
 	if (spatial.node_ptr)
 	{
+		float spatial_sector_threshold_sqr = 1.0f;
+		float spatial_distance_sqr = last_sector_point.distance_to_sqr(spatial_sector_point());
+		
 		//*** somehow it was determined that object has been moved
+		if (spatial_distance_sqr > spatial_sector_threshold_sqr)
 		spatial.type		|=				STYPEFLAG_INVALIDSECTOR;
 
 		//*** check if we are supposed to correct it's spatial location
@@ -110,7 +114,8 @@ void	ISpatial::spatial_move	()
 
 void	ISpatial::spatial_updatesector_internal()
 {
-	IRender_Sector*		S				=	::Render->detectSector(spatial_sector_point());
+	last_sector_point = spatial_sector_point();
+	IRender_Sector* S = ::Render->detectSector(last_sector_point);
 	spatial.type						&=	~STYPEFLAG_INVALIDSECTOR;
 	if (S)				spatial.sector	=	S;
 }

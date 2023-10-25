@@ -17,10 +17,8 @@
 #include "date_time.h"
 #include "game_cl_base_weapon_usage_statistic.h"
 #include "string_table.h"
-#include "../xrGameSpy/xrGameSpy_MainDefs.h"
 #include "DemoPlay_Control.h"
 #include "account_manager_console.h"
-#include "gamespy/GameSpy_GP.h"
 
 EGameIDs	ParseStringToGameType	(LPCSTR str);
 LPCSTR		GameTypeToString		(EGameIDs gt, bool bShort);
@@ -34,7 +32,6 @@ extern	int		g_cl_save_demo;
 extern string64	gsCDKey;
 extern	u32		g_dwMaxCorpses;
 extern	float	g_fTimeFactor;
-extern	BOOL	g_b_COD_PickUpMode		;
 extern	int		g_iWeaponRemove			;
 extern	int		g_iCorpseRemove			;
 extern	BOOL	g_bCollectStatisticData ;
@@ -114,10 +111,11 @@ extern BOOL		g_sv_write_updates_bin;
 extern u32		g_sv_traffic_optimization_level;
 
 void XRNETSERVER_API DumpNetCompressorStats	(bool brief);
-BOOL XRNETSERVER_API g_net_compressor_enabled;
-BOOL XRNETSERVER_API g_net_compressor_gather_stats;
+extern BOOL XRNETSERVER_API g_net_compressor_enabled;
+extern BOOL XRNETSERVER_API g_net_compressor_gather_stats;
 
-class CCC_Restart : public IConsole_Command {
+class CCC_Restart : public IConsole_Command
+{
 public:
 					CCC_Restart		(LPCSTR N) : IConsole_Command(N)  { bEmptyArgsHandled = true; };
 	virtual void	Execute			(LPCSTR args) 
@@ -1718,13 +1716,20 @@ public:
 	virtual void	Info	(TInfo& I)	{xr_strcpy(I,"saving statistic data"); }
 };
 
-class CCC_AuthCheck : public CCC_Integer {
+class CCC_AuthCheck : public CCC_Integer
+{
 public:
-					CCC_AuthCheck	(LPCSTR N, int* V, int _min=0, int _max=999) :CCC_Integer(N,V,_min,_max){};
-	  virtual void	Save			(IWriter *F)	{};
+	CCC_AuthCheck(LPCSTR N, int* V, int _min = 0, int _max = 999) : CCC_Integer(N, V, _min, _max)
+	{
 };
 
-class CCC_ReturnToBase: public IConsole_Command {
+	virtual void Save(IWriter* F)
+	{
+	};
+};
+
+class CCC_ReturnToBase : public IConsole_Command
+{
 public:
 					CCC_ReturnToBase(LPCSTR N) : IConsole_Command(N)  { bEmptyArgsHandled = false; };
 	virtual void	Execute(LPCSTR args) 
@@ -1841,11 +1846,11 @@ public:
 				P.w_stringZ		(pass);
 
 				Level().Send(P,net_flags(TRUE,TRUE));
-			}else
-				Msg("2 args(user pass) needed");
 		}
 		else
-		if(strstr(arguments,"logout")==arguments)
+				Msg("2 args(user pass) needed");
+		}
+		else if (strstr(arguments, "logout") == arguments)
 		{
 			NET_Packet		P;			
 			P.w_begin		(M_REMOTE_CONTROL_AUTH);
@@ -2049,7 +2054,6 @@ void register_mp_console_commands()
 
 	CMD1(CCC_SetWeather,	"sv_setweather"			);
 
-	CMD4(CCC_Integer,		"cl_cod_pickup_mode",	&g_b_COD_PickUpMode,	0, 1)	;
 
 	CMD4(CCC_Integer,		"sv_remove_weapon",		&g_iWeaponRemove, -1, 1);
 	CMD4(CCC_Integer,		"sv_remove_corpse",		&g_iCorpseRemove, -1, 1);

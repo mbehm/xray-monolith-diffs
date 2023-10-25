@@ -3,6 +3,10 @@
 
 #include "ui/xrUIXmlParser.h"
 #include "xr_level_controller.h"
+#include "..\..\xrEngine\x_ray.h"
+#include "MainMenu.h"
+#include "UIGameCustom.h"
+#include <regex>
 
 STRING_TABLE_DATA* CStringTable::pData = NULL;
 BOOL CStringTable::m_bWriteErrorsToLog = FALSE;
@@ -23,6 +27,10 @@ void CStringTable::rescan()
 	Init				();
 }
 
+extern void refresh_npc_names();
+
+// demonized: use english text if locale text string is missing
+BOOL use_english_text_for_missing_translations = TRUE;
 void CStringTable::Init		()
 {
 	if(NULL != pData) return;
@@ -30,8 +38,26 @@ void CStringTable::Init		()
 	pData				= xr_new<STRING_TABLE_DATA>();
 	
 	//имя языка, если не задано (NULL), то первый <text> в <string> в XML
-	pData->m_sLanguage	= pSettings->r_string("string_table", "language");
+	pData->m_sLanguage = READ_IF_EXISTS(pSettings, r_string, "string_table", "language", "eng");
 
+	// demonized: parse english files first, then they will be replaced by current locale
+	if (use_english_text_for_missing_translations && xr_strcmp(pData->m_sLanguage, "eng") != 0) {
+		FS_FileSet fset;
+		string_path files_mask;
+		xr_sprintf(files_mask, "text\\%s\\*.xml", "eng");
+		FS.file_list(fset, "$game_config$", FS_ListFiles, files_mask);
+		FS_FileSetIt fit = fset.begin();
+		FS_FileSetIt fit_e = fset.end();
+
+		for (; fit != fit_e; ++fit)
+		{
+			string_path fn, ext;
+			_splitpath((*fit).name.c_str(), 0, 0, fn, ext);
+			xr_strcat(fn, ext);
+
+			Load(fn, "eng");
+		}
+	}
 
 //---
 	FS_FileSet fset;
@@ -54,13 +80,28 @@ void CStringTable::Init		()
 #endif // #ifdef DEBUG
 //---
 	ReparseKeyBindings();
+
+	//Discord
+	snprintf(discord_strings.mainmenu, 128, xr_ToUTF8(*CStringTable().translate("st_main_menu")));
+	snprintf(discord_strings.paused, 128, xr_ToUTF8(*CStringTable().translate("st_pause_menu")));
+	snprintf(discord_strings.loading, 128, xr_ToUTF8(*CStringTable().translate("st_loading")));
+	snprintf(discord_strings.health, 128, xr_ToUTF8(*CStringTable().translate("st_ui_health_sensor")));
+	snprintf(discord_strings.dead, 128, xr_ToUTF8(*CStringTable().translate("st_player_dead")));
+	snprintf(discord_strings.livesleft, 128, xr_ToUTF8(*CStringTable().translate("st_hardcore_lives_left")));
+	snprintf(discord_strings.livesleftsingle, 128, xr_ToUTF8(*CStringTable().translate("st_hardcore_lives_left_single")));
+	snprintf(discord_strings.livespossessed, 128, xr_ToUTF8(*CStringTable().translate("st_azazel_lives_possessed")));
+	snprintf(discord_strings.livespossessedsingle, 128, xr_ToUTF8(*CStringTable().translate("st_azazel_lives_possessed_single")));
+	snprintf(discord_strings.godmode, 128, xr_ToUTF8(*CStringTable().translate("st_godmode")));
+
+	discord_gameinfo.ex_update = true;
 }
 
-void CStringTable::Load	(LPCSTR xml_file_full)
+void CStringTable::Load(LPCSTR xml_file_full, LPCSTR lang_in)
 {
+	LPCSTR lang = lang_in ? lang_in : pData->m_sLanguage.c_str();
 	CUIXml						uiXml;
 	string_path					_s;
-	strconcat					(sizeof(_s),_s, "text\\", pData->m_sLanguage.c_str() );
+	strconcat(sizeof(_s), _s, "text\\", lang);
 
 	uiXml.Load					(CONFIG_PATH, _s, xml_file_full);
 
@@ -76,9 +117,9 @@ void CStringTable::Load	(LPCSTR xml_file_full)
 		LPCSTR string_text		= uiXml.Read(uiXml.GetRoot(), "string:text", i,  NULL);
 
 		if(m_bWriteErrorsToLog && string_text)
-			Msg("[string table] '%s' no translation in '%s'", string_name, pData->m_sLanguage.c_str() );
+			Msg("[string table] '%s' no translation in '%s'", string_name, lang);
 		
-		VERIFY3						(string_text, "string table entry does not has a text", string_name);
+		R_ASSERT3(string_text, "string table entry does not have a text", string_name);
 		
 		STRING_VALUE str_val		= ParseLine(string_text, string_name, true);
 		
@@ -98,6 +139,31 @@ void CStringTable::ReparseKeyBindings()
 	}
 }
 
+void CStringTable::ReloadLanguage()
+{
+	if (0 == xr_strcmp(READ_IF_EXISTS(pSettings, r_string, "string_table", "language", "eng"), *(pData->m_sLanguage)))
+		return;
+
+	//reload language
+	Destroy();
+	Init();
+
+	//reload language in menu
+	if (MainMenu()->IsActive())
+	{
+		MainMenu()->Activate(FALSE);
+		MainMenu()->Activate(TRUE);
+	}
+
+	if (!g_pGameLevel)
+		return;
+
+	//refresh npc names
+	refresh_npc_names();
+
+	//reload language in other UIs
+	g_hud->OnScreenResolutionChanged();
+}
 
 STRING_VALUE CStringTable::ParseLine(LPCSTR str, LPCSTR skey, bool bFirst)
 {
@@ -141,6 +207,11 @@ STRING_VALUE CStringTable::ParseLine(LPCSTR str, LPCSTR skey, bool bFirst)
 
 	if(b_hit&&bFirst) pData->m_string_key_binding[skey] = str;
 
+	if (Core.april1)
+	{
+		res = std::regex_replace(res, std::regex("Anomal"), "Amomaw");
+		res = std::regex_replace(res, std::regex("anomal"), "amomaw");
+	}
 	return STRING_VALUE(res.c_str());
 }
 

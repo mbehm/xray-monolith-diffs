@@ -10,10 +10,15 @@
 #include "script_engine.h"
 #include "ai_space.h"
 #include "script_debugger.h"
+#include "new_sds.h"
 
 using namespace luabind;
 
-void LuaLog(LPCSTR caMessage)
+void AddScope(LPCSTR key, float val) {
+    listScopeRadii[key] = val;
+}
+
+void LuaLog1(LPCSTR caMessage)
 {
 #ifndef MASTER_GOLD
     ai().script_engine().script_log	(ScriptStorage::eLuaMessageTypeMessage,"%s",caMessage);
@@ -225,7 +230,7 @@ void CScriptEngine::script_register(lua_State *L)
     module(L)
     [
         //def("log1", (void(*) (LPCSTR msg)) &Log), // AVO: fixed log func
-        def("log", &LuaLog),
+		def("log", &LuaLog1),
         def("print_stack", &PrintStack),
         def("error_log", &ErrorLog),
         def("flush", &FlushLogs),
@@ -239,6 +244,7 @@ void CScriptEngine::script_register(lua_State *L)
         def("user_name", &user_name),
         def("time_global", &script_time_global),
         def("time_global_async", &script_time_global_async),
+        def("add_scope_radii", &AddScope),
 #ifdef XRGAME_EXPORTS
         def("device", &get_device),
         def("is_enough_address_space_available", &is_enough_address_space_available_impl),

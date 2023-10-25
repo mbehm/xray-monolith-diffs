@@ -13,6 +13,7 @@
 #include "script_game_object.h"
 #include "game_object_space.h"
 #include "trade_parameters.h"
+#include "eatable_item.h"
 
 bool CTrade::CanTrade()
 {
@@ -265,6 +266,15 @@ u32	CTrade::GetItemPrice(PIItem pItem, bool b_buying, bool b_free)
 	result			= iFloor(result * func(smart_cast<const CGameObject*>(pThis.inv_owner)->ID()));
 	//if(result>500)
 	//	result		= iFloor(result/10+0.5f)*10;
+
+	CEatableItem* eatable_item = pItem->cast_eatable_item();
+	if (eatable_item && eatable_item->GetMaxUses())
+	{
+		u8 max_uses = eatable_item->GetMaxUses();
+		u8 remaining_uses = eatable_item->GetRemainingUses();
+		result = result * remaining_uses / max_uses;
+		if (result < 1) result = 1;
+	}
 
 	clamp<u32>					(result, 1, 1000000);
 	return					(result);

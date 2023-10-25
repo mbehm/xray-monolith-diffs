@@ -146,7 +146,7 @@ DWORD ttapi_Init( _processor_info* ID )
 	ttapi_dwSlowIter = (DWORD)(( dwNumIter * liFrequency.QuadPart ) / ( ( liEnd.QuadPart - liStart.QuadPart ) * 2 ));
 	//Msg( "slow spin-loop iterations : %u" , ttapi_dwSlowIter );
 
-	SetPriorityClass( GetCurrentProcess() , NORMAL_PRIORITY_CLASS );
+	SetPriorityClass(GetCurrentProcess(), HIGH_PRIORITY_CLASS);
 
 	// Check for override from command line
 	char szSearchFor[] = "-max-threads";

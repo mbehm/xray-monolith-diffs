@@ -5,9 +5,10 @@
 //	Author		: Plichko Alexander
 //	Description : movement manager holder
 ////////////////////////////////////////////////////////////////////////////
-#pragma once;
+#pragma once
 
-class CMovementManagerHolder {
+class CMovementManagerHolder
+{
 public:
 	GameGraph::_GRAPH_ID				m_tNextGraphID;
 	GameGraph::_GRAPH_ID				m_tPrevGraphID;

@@ -71,8 +71,11 @@ class 				ISpatial_DB;
 namespace Feel { class Sound; }
 class 				IRenderable;
 class 				IRender_Light;
+
 class XRCDB_API				ISpatial
 {
+private:
+	Fvector last_sector_point;
 public:
 	struct	_spatial
 	{
@@ -114,7 +117,7 @@ public:
 class 	ISpatial_NODE
 {
 public:
-	typedef	_W64 unsigned		ptrt;
+	typedef __w64 unsigned ptrt;
 public:
 	ISpatial_NODE*				parent;					// parent node for "empty-members" optimization
 	ISpatial_NODE*				children		[8];	// children nodes

@@ -28,9 +28,7 @@ private:
 	typedef		CUIStatic	inherited;
 protected:
 	xr_vector<CUICellItem*> m_childs;
-
 	CUIDragDropListEx*		m_pParentList;
-	CUIProgressBar*			m_pConditionState;
 	Ivector2				m_grid_size;
 	ICustomDrawCellItem*	m_custom_draw;
 	int						m_accelerator;
@@ -59,6 +57,8 @@ public:
 	IC const	Ivector2&	GetGridSize				()						{return m_grid_size;}; //size in grid
 	IC			void		SetAccelerator			(int dik)				{m_accelerator=dik;};
 	IC			int			GetAccelerator			()		const			{return m_accelerator;};
+
+	CUIProgressBar* m_pConditionState;
 
 	virtual		CUIDragItem* CreateDragItem			();
 

@@ -7,6 +7,7 @@
 // Copyright 2005 GSC Game World
 
 #include "StdAfx.h"
+#include <cstdio>
 
 #include "UILines.h"
 #include "UIXmlInit.h"
@@ -151,7 +152,12 @@ void CUILines::ParseText(bool force)
 				{
 					bNewLines = TRUE;
 					*pszTemp = '\0';
-					ptmp_line->AddSubLine( pszSearch , tcolor );
+					CUISubLine subline;
+					subline.m_text = pszSearch;
+					subline.m_color = tcolor;
+					subline.m_last_in_line = true;
+					//ptmp_line->AddSubLine(pszSearch, tcolor);
+					ptmp_line->AddSubLine(&subline);
 					pszSearch = pszTemp + 2;
 				}
 				ptmp_line->AddSubLine( pszSearch , tcolor );			
@@ -184,10 +190,14 @@ void CUILines::ParseText(bool force)
 			}
 			m_lines.push_back( tmp_line );
 			tmp_line.Clear();
-		} else {
-			for ( int i = 0 ; i < vsz ; i++ ) {
-				const char *pszText = line->m_subLines[i].m_text.c_str();
-				const u32 tcolor = line->m_subLines[i].m_color;
+		}
+		else
+		{
+			for (int i = 0; i < vsz; i++)
+			{
+				CUISubLine* pSubLine = &line->m_subLines[i];
+				const char* pszText = pSubLine->m_text.c_str();
+				const u32 tcolor = pSubLine->m_color;
 				u16 uFrom = 0 , uPartLen = 0;
 				VERIFY( pszText );
 				u16 nMarkers = m_pFont->SplitByWidth( aMarkers , UBUFFER_SIZE , fTargetWidth , pszText );
@@ -206,11 +216,15 @@ void CUILines::ParseText(bool force)
 				}
 				strncpy_s( szTempLine , pszText + uFrom , MAX_MB_CHARS );
 				tmp_line.AddSubLine( szTempLine , tcolor );
+				if (pSubLine->m_last_in_line || i == (vsz -1))
+				{
 				m_lines.push_back( tmp_line );
 				tmp_line.Clear();
 			}
 		}
-	} else
+		}
+	}
+	else
 	{
 		float max_width							= m_wndSize.x;
 		u32 sbl_cnt								= line->m_subLines.size();

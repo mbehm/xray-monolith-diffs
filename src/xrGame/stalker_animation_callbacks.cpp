@@ -18,11 +18,17 @@ typedef CStalkerAnimationManager::callback_params	callback_params;
 
 static void	_BCL callback_rotation		(CBoneInstance* bone)
 {
+	if (!_valid( bone->mTransform )) return;
 	R_ASSERT						( _valid( bone->mTransform ) );
 	callback_params*				parameter = static_cast<callback_params*>( bone->callback_param() );
 	VERIFY							(parameter);
 	VERIFY							(parameter->m_rotation);
 	VERIFY							(parameter->m_object);
+
+	if (!parameter || !_valid(*parameter->m_rotation))
+	{
+		return;
+	}
 
 	CAI_Stalker const*				object = parameter->m_object;
 	if (!object->sight().enabled())

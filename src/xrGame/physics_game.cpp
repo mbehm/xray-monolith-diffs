@@ -173,6 +173,7 @@ static void play_object( dxGeomUserData* data, SGameMtlPair* mtl_pair, const dCo
 							FATAL( "bad data->ph_ref_object" );
 						}
 #else
+	if (data->ph_ref_object)
 						sp=data->ph_ref_object->ObjectPhSoundPlayer();
 #endif
 						if(sp)

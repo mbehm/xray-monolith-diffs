@@ -81,7 +81,7 @@
 #include <stdarg.h>
 #include <math.h>
 #include <string.h>
-#include <typeinfo.h>
+#include <typeinfo>
 #include <thread>
 //#include <process.h>
 
@@ -117,6 +117,8 @@
 #else
 # define ICN __declspec (noinline)
 #endif
+
+#define UNUSED(...) (void)(__VA_ARGS__)
 
 #ifndef DEBUG
 #pragma inline_depth ( 254 )
@@ -201,15 +203,17 @@
 #pragma warning (disable : 4100 ) // unreferenced formal parameter
 
 // Our headers
-#ifdef XRCORE_STATIC
-# define XRCORE_API
-#else
+//#ifdef XRCORE_STATIC
+//# define XRCORE_API
+//#else
 # ifdef XRCORE_EXPORTS
-# define XRCORE_API __declspec(dllexport)
+# define XRCORE_API
+//__declspec(dllexport)
 # else
-# define XRCORE_API __declspec(dllimport)
-# endif
+# define XRCORE_API
+//__declspec(dllimport)
 #endif
+//#endif
 
 #include "xrDebug.h"
 #include "vector.h"
@@ -309,6 +313,7 @@ public:
     string64 CompName;
     char* Params;
     DWORD dwFrame;
+	bool april1;
 
 public:
     void _initialize(LPCSTR ApplicationName, LogCallback cb = 0, BOOL init_fs = TRUE, LPCSTR fs_fname = 0);

@@ -54,7 +54,7 @@ void CSoundRender_Source::decompress(u32 line, OggVorbis_File* ovf)
 	i_decompress_fr(ovf,dest,left);
 }
 
-void CSoundRender_Source::LoadWave	(LPCSTR pName)
+bool CSoundRender_Source::LoadWave(LPCSTR pName)
 {
 	pname					= pName;
 
@@ -68,7 +68,15 @@ void CSoundRender_Source::LoadWave	(LPCSTR pName)
 	vorbis_info* ovi		= ov_info(&ovf,-1);
 	// verify
 	R_ASSERT3				(ovi,"Invalid source info:",pName);
-	R_ASSERT3				(ovi->rate==44100,"Invalid source rate:",pName);
+	//R_ASSERT3				(ovi->rate==44100,"Invalid source rate:",pName);
+
+	if (ovi->rate != 44100)
+	{
+		Msg("! Warning: Invalid source rate: %s", pName);
+		ov_clear(&ovf);
+		FS.r_close(wave);
+		return false;
+	}
 
 #ifdef DEBUG
 	if(ovi->channels==2)
@@ -124,6 +132,8 @@ void CSoundRender_Source::LoadWave	(LPCSTR pName)
 
 	ov_clear				(&ovf);
 	FS.r_close				(wave);
+
+	return true;
 }
 
 void CSoundRender_Source::load(LPCSTR name)
@@ -136,14 +146,17 @@ void CSoundRender_Source::load(LPCSTR name)
 	fname				= N;
 
 	strconcat			(sizeof(fn),fn,N,".ogg");
-	if (!FS.exist("$level$",fn))	FS.update_path	(fn,"$game_sounds$",fn);
+	if (!FS.exist("$level$", fn))
+		FS.update_path(fn, "$game_sounds$", fn);
 
-#ifdef _EDITOR
 	if (!FS.exist(fn)){ 
+		{
+			Msg("! Can't find sound '%s'", name);
 		FS.update_path	(fn,"$game_sounds$","$no_sound.ogg");
     }
-#endif
-	LoadWave			(fn);
+    }
+
+	if (LoadWave(fn))
 	SoundRender->cache.cat_create	(CAT, dwBytesTotal);
 }
 

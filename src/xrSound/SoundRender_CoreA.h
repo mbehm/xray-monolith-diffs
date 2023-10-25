@@ -4,7 +4,6 @@
 
 #include "SoundRender_Core.h"            
 #include "OpenALDeviceList.h"
-#include <eax/eax.h>
 
 
 #ifdef DEBUG
@@ -18,14 +17,18 @@
 class CSoundRender_CoreA: public CSoundRender_Core
 {
 	typedef CSoundRender_Core inherited;
-	EAXSet					eaxSet;					// EAXSet function, retrieved if EAX Extension is supported
-	EAXGet					eaxGet;					// EAXGet function, retrieved if EAX Extension is supported
+	//EAXSet					eaxSet;					// EAXSet function, retrieved if EAX Extension is supported
+	//EAXGet					eaxGet;					// EAXGet function, retrieved if EAX Extension is supported
 	ALCdevice* 				pDevice;
     ALCcontext*				pContext;
 	ALDeviceList*			pDeviceList;
 
-	struct SListener{
+	struct SListener
+	{
 		Fvector				position;
+		Fvector prevVelocity;
+		Fvector curVelocity;
+		Fvector accVelocity;
 		Fvector				orientation[2];
 	};
 	SListener				Listener;

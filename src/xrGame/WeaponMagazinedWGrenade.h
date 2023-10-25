@@ -15,7 +15,7 @@ public:
 	virtual			~CWeaponMagazinedWGrenade	();
 
 	virtual void	Load				(LPCSTR section);
-	
+	void LoadLauncherKoeffs();
 	virtual BOOL	net_Spawn			(CSE_Abstract* DC);
 	virtual void	net_Destroy			();
 	virtual void	net_Export			(NET_Packet& P);
@@ -28,9 +28,9 @@ public:
 
 
 	virtual bool	Attach					(PIItem pIItem, bool b_send_event);
-	virtual bool	Detach					(const char* item_section_name, bool b_spawn_item);
+	virtual bool Detach(LPCSTR item_section_name, bool b_spawn_item);
 	virtual bool	CanAttach				(PIItem pIItem);
-	virtual bool	CanDetach				(const char* item_section_name);
+	virtual bool CanDetach(LPCSTR item_section_name);
 	virtual void	InitAddons				();
 	virtual bool	UseScopeTexture			();
 	virtual	float	CurrentZoomFactor		();
@@ -38,9 +38,13 @@ public:
 	virtual void	FireEnd					();
 			void	LaunchGrenade			();
 	
-	virtual void	OnStateSwitch	(u32 S);
+	virtual void OnStateSwitch(u32 S, u32 oldState);
 	
 	virtual void	switch2_Reload	();
+	virtual void switch2_StartAim();
+	virtual void switch2_EndAim();
+
+
 	virtual void	state_Fire		(float dt);
 	virtual void	OnShot			();
 	virtual void	OnEvent			(NET_Packet& P, u16 type);
@@ -58,26 +62,56 @@ public:
 	virtual bool	GetBriefInfo			(II_BriefInfo& info);
 
 	virtual bool	IsNecessaryItem	    (const shared_str& item_sect);
-
-	//виртуальные функции для проигрывания анимации HUD
+	virtual float Weight() const;
+	//РІРёСЂС‚СѓР°Р»СЊРЅС‹Рµ С„СѓРЅРєС†РёРё РґР»С РїСЂРѕРёРіСЂС‹РІР°РЅРёС Р°РЅРёРјР°С†РёРё HUD
 	virtual void	PlayAnimShow		();
 	virtual void	PlayAnimHide		();
 	virtual void	PlayAnimReload		();
 	virtual void	PlayAnimIdle		();
 	virtual void	PlayAnimShoot		();
 	virtual void	PlayAnimModeSwitch	();
-	virtual void	PlayAnimBore		();
+	virtual void PlayAnimFireModeSwitch();
+	virtual bool TryPlayAnimBore();
+
+	//Script exports
+	void SetAmmoElapsed2(int ammo_count);
+	void AmmoTypeForEach2(const luabind::functor<bool>& funct);
+	virtual void SetAmmoType2(u8 type) { m_ammoType2 = type; };
+	u8 GetAmmoType2() { return m_ammoType2; };
+	int GetAmmoCount2(u8 ammo2_type) const;
+
+	IC int GetAmmoElapsed2() const
+	{
+		return iAmmoElapsed2;
+	}
+
+	IC int GetAmmoMagSize2() const
+	{
+		return iMagazineSize2;
+	}
+
+	IC bool GetGrenadeLauncherMode() const
+	{
+		return m_bGrenadeMode;
+	}
+
+	IC void SetGrenadeLauncherMode(bool mode)
+	{
+		if (!IsGrenadeLauncherAttached())
+			return;
+
+		if (mode != m_bGrenadeMode)
+			PerformSwitchGL();
+	}
 	
 private:
 	virtual	void	net_Spawn_install_upgrades	( Upgrades_type saved_upgrades );
 	virtual bool	install_upgrade_impl		( LPCSTR section, bool test );
 	virtual	bool	install_upgrade_ammo_class	( LPCSTR section, bool test );
 	
-			int		GetAmmoCount2				( u8 ammo2_type ) const;
-
 public:
-	//дополнительные параметры патронов 
-	//для подствольника
+	//РґРѕРїРѕР»РЅРёС‚РµР»СЊРЅС‹Рµ РїР°СЂР°РјРµС‚СЂС‹ РїР°С‚СЂРѕРЅРѕРІ 
+	//РґР»С РїРѕРґСС‚РІРѕР»СЊРЅРёРєР°
 //-	CWeaponAmmo*			m_pAmmo2;
 	xr_vector<shared_str>	m_ammoTypes2;
 	u8						m_ammoType2;
@@ -91,4 +125,8 @@ public:
 	u8						iAmmoElapsed2;
 
 	virtual void UpdateGrenadeVisibility(bool visibility);
+
+protected:
+	void ApplyLauncherKoeffs();
+	void ResetLauncherKoeffs();
 };

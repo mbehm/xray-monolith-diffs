@@ -157,12 +157,19 @@ public:
     float wind_velocity;
     float wind_direction;
 
+	float volumetric_intensity_factor;
+	float volumetric_distance_factor;
+
     Fvector3 ambient;
     Fvector4 hemi_color; // w = R2 correction
     Fvector3 sun_color;
     Fvector3 sun_dir;
     float m_fSunShaftsIntensity;
     float m_fWaterIntensity;
+
+	float m_fHemiVibrance;
+	float m_fHemiContrast;
+	float m_fWetSurfaces;
 
 #ifdef TREE_WIND_EFFECT
     float m_fTreeAmplitudeIntensity;
@@ -209,7 +216,9 @@ public:
     float fog_far;
 public:
     CEnvDescriptorMixer(shared_str const& identifier);
-    INGAME_EDITOR_VIRTUAL void lerp(CEnvironment* parent, CEnvDescriptor& A, CEnvDescriptor& B, float f, CEnvModifier& M, float m_power);
+	INGAME_EDITOR_VIRTUAL void lerp(CEnvironment* parent, CEnvDescriptor& A, CEnvDescriptor& B, float f,
+	                                CEnvModifier& M, float m_power);
+	void boost(CEnvironment* env);
     void clear();
     void destroy();
 };
@@ -240,6 +249,7 @@ private:
     void SelectEnv(EnvVec* envs, CEnvDescriptor*& e, float tm);
 
     void calculate_dynamic_sun_dir();
+	void calculate_config_sun_dir();
 public:
     static bool sort_env_pred(const CEnvDescriptor* x, const CEnvDescriptor* y)
     {
@@ -259,6 +269,8 @@ public:
 
     float wind_strength_factor;
     float wind_gust_factor;
+
+	float wetness_factor;
 
     // wind blast params
     float wind_blast_strength;
@@ -305,6 +317,7 @@ public:
 
     INGAME_EDITOR_VIRTUAL void load();
     INGAME_EDITOR_VIRTUAL void unload();
+	INGAME_EDITOR_VIRTUAL void Reload();
 
     void mods_load();
     void mods_unload();
@@ -344,17 +357,35 @@ public:
 # endif // #ifdef INGAME_EDITOR
 
     bool m_paused;
+
+	float GetGameTime() { return fGameTime; }
+
+	struct boost_values
+	{
+		float ambient;
+		float hemi;
+		float clouds_color;
+		float fog_color;
+		float rain_color;
+		float sky_color;
+		float sun_color;
+	} env_boost;
+
+	Fvector2 sun_hp[24];
+
 #endif // #ifdef _EDITOR
 
     CInifile* m_ambients_config;
     CInifile* m_sound_channels_config;
     CInifile* m_effects_config;
     CInifile* m_suns_config;
+	CInifile* m_sun_pos_config;
     CInifile* m_thunderbolt_collections_config;
     CInifile* m_thunderbolts_config;
 
 protected:
     INGAME_EDITOR_VIRTUAL CEnvDescriptor* create_descriptor(shared_str const& identifier, CInifile* config);
+	void load_sun();
     INGAME_EDITOR_VIRTUAL void load_weathers();
     INGAME_EDITOR_VIRTUAL void load_weather_effects();
     INGAME_EDITOR_VIRTUAL void create_mixer();

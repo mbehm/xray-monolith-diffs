@@ -4,7 +4,7 @@
 #include "actorEffector.h"
 #include "inventory.h"
 #include "level.h"
-#include "sleepeffector.h"
+//#include "sleepeffector.h"
 #include "game_base_space.h"
 #include "autosave_manager.h"
 #include "xrserver.h"
@@ -46,6 +46,10 @@ CActorCondition::CActorCondition(CActor *object) :
 	m_fSprintK					= 0.f;
 	m_fAlcohol					= 0.f;
 	m_fSatiety					= 1.0f;
+	m_fSatietyChange = 0.0f;
+
+	m_MaxWalkWeight = 50.0f;
+	m_CarryWeightBoost = 0.0f;
 
 //	m_vecBoosts.clear();
 
@@ -82,6 +86,7 @@ void CActorCondition::LoadCondition(LPCSTR entity_section)
 	inherited::LoadCondition(entity_section);
 
 	LPCSTR						section = READ_IF_EXISTS(pSettings,r_string,entity_section,"condition_sect",entity_section);
+	m_change_v_sleep.load(section, "_sleep");
 
 	m_fJumpPower				= pSettings->r_float(section,"jump_power");
 	m_fStandPower				= pSettings->r_float(section,"stand_power");
@@ -111,16 +116,22 @@ void CActorCondition::LoadCondition(LPCSTR entity_section)
 	R_ASSERT					(m_fCantSprintPowerBegin<=m_fCantSprintPowerEnd);
 
 	m_fPowerLeakSpeed			= pSettings->r_float(section,"max_power_leak_speed");
+	m_fPowerLeakSpeedSleep = pSettings->r_float(section, "max_power_leak_speed_sleep");
 	
 	m_fV_Alcohol				= pSettings->r_float(section,"alcohol_v");
+	m_fV_AlcoholSleep = pSettings->r_float(section, "alcohol_v_sleep");
 
 	m_fSatietyCritical			= pSettings->r_float(section,"satiety_critical");
 	clamp						(m_fSatietyCritical, 0.0f, 1.0f);
 	m_fV_Satiety				= pSettings->r_float(section,"satiety_v");		
+	m_fV_SatietySleep = pSettings->r_float(section, "satiety_v_sleep");
 	m_fV_SatietyPower			= pSettings->r_float(section,"satiety_power_v");
+	m_fV_SatietyPowerSleep = pSettings->r_float(section, "satiety_power_v_sleep");
 	m_fV_SatietyHealth			= pSettings->r_float(section,"satiety_health_v");
+	m_fV_SatietyHealthSleep = pSettings->r_float(section, "satiety_health_v_sleep");
 	
 	m_MaxWalkWeight				= pSettings->r_float(section,"max_walk_weight");
+	m_CarryWeightBoost = 0.0f;
 
 	m_zone_max_power[ALife::infl_rad]	= pSettings->r_float(section, "radio_zone_max_power" );
 	m_zone_max_power[ALife::infl_fire]	= pSettings->r_float(section, "fire_zone_max_power" );
@@ -178,12 +189,14 @@ float CActorCondition::GetZoneMaxPower( ALife::EHitType hit_type ) const
 
 void CActorCondition::UpdateCondition()
 {
+	float v_alcohol = IsSleeping() ? m_fV_AlcoholSleep : m_fV_Alcohol;
+	
 	if(psActorFlags.test(AF_GODMODE_RT))
 	{
 		UpdateSatiety();
 		UpdateBoosters();
 
-		m_fAlcohol		+= m_fV_Alcohol*m_fDeltaTime;
+		m_fAlcohol += v_alcohol * m_fDeltaTime;
 		clamp			(m_fAlcohol,			0.0f,		1.0f);
 		if(IsGameTypeSingle())
 		{
@@ -191,6 +204,10 @@ void CActorCondition::UpdateCondition()
 			if(ce)
 				RemoveEffector(m_object,effAlcohol);
 		}
+	}
+	else if (GodMode())
+	{
+		UpdateBoosters();
 	}
 
 	if (GodMode())				return;
@@ -223,11 +240,12 @@ void CActorCondition::UpdateCondition()
 		{
 			k_max_power = 1.0f;
 		}
-		SetMaxPower		(GetMaxPower() - m_fPowerLeakSpeed * m_fDeltaTime * k_max_power);
+		float power_leak_speed = IsSleeping() ? m_fPowerLeakSpeedSleep : m_fPowerLeakSpeed;
+		SetMaxPower(GetMaxPower() - power_leak_speed * m_fDeltaTime * k_max_power);
 	}
 
 
-	m_fAlcohol		+= m_fV_Alcohol*m_fDeltaTime;
+	m_fAlcohol += v_alcohol * m_fDeltaTime;
 	clamp			(m_fAlcohol,			0.0f,		1.0f);
 
 	if ( IsGameTypeSingle() )
@@ -312,6 +330,27 @@ void CActorCondition::UpdateBoosters()
 
 	if(m_object == Level().CurrentViewEntity())
 		CurrentGameUI()->UIMainIngameWnd->UpdateBoosterIndicators(m_booster_influences);
+}
+
+float CActorCondition::GetBoosterValue(LPCSTR name, bool type)
+{
+	for (u8 i = 0; i < eBoostMaxCount; i++)
+	{
+		if (0 == xr_strcmp(ef_boosters_section_names[i], name))
+		{
+			BOOSTER_MAP::iterator it = m_booster_influences.find((EBoostParams)i);
+			if (it != m_booster_influences.end())
+			{
+				if (type)
+				{
+					return (it->second.fBoostTime);
+				}
+				return (it->second.fBoostValue);
+			}
+		}
+	}
+
+	return 0.f;
 }
 
 void CActorCondition::AffectDamage_InjuriousMaterialAndMonstersInfluence()
@@ -431,23 +470,33 @@ void CActorCondition::UpdateRadiation()
 
 void CActorCondition::UpdateSatiety()
 {
+	float v_satiety_power = IsSleeping() ? m_fV_SatietyPowerSleep : m_fV_SatietyPower;
+	
  	if (!IsGameTypeSingle()) 
 	{
-		m_fDeltaPower += m_fV_SatietyPower * m_fDeltaTime;
+		m_fDeltaPower += v_satiety_power * m_fDeltaTime;
  		return;
 	}
 
+	m_fSatiety += m_fSatietyChange;
+	clamp(m_fSatiety, 0.0f, 1.0f);
+	m_fSatietyChange = 0.0f;
+
 	if(m_fSatiety>0)
 	{
-		m_fSatiety -= m_fV_Satiety*m_fDeltaTime;
+		float v_satiety = IsSleeping() ? m_fV_SatietySleep : m_fV_Satiety;
+		m_fSatiety -= v_satiety * m_fDeltaTime;
 		clamp(m_fSatiety, 0.0f, 1.0f);
 	}
 		
-	float satiety_health_koef = (m_fSatiety-m_fSatietyCritical)/(m_fSatiety>=m_fSatietyCritical?1-m_fSatietyCritical:m_fSatietyCritical);
+	float satiety_health_koef = (m_fSatiety - m_fSatietyCritical) / (m_fSatiety >= m_fSatietyCritical
+		                                                                 ? 1 - m_fSatietyCritical
+		                                                                 : m_fSatietyCritical);
 	if(CanBeHarmed() && !psActorFlags.test(AF_GODMODE_RT) )
 	{
-		m_fDeltaHealth += m_fV_SatietyHealth*satiety_health_koef*m_fDeltaTime;
-		m_fDeltaPower += m_fV_SatietyPower*m_fSatiety*m_fDeltaTime;
+		float v_satiety_health = IsSleeping() ? m_fV_SatietyHealthSleep : m_fV_SatietyHealth;
+		m_fDeltaHealth += v_satiety_health * satiety_health_koef * m_fDeltaTime;
+		m_fDeltaPower += v_satiety_power * m_fSatiety * m_fDeltaTime;
 	}
 }
 
@@ -470,6 +519,7 @@ void CActorCondition::ConditionJump(float weight)
 	float power			=	m_fJumpPower;
 	power				+=	m_fJumpWeightPower*weight*(weight>1.f?m_fOverweightJumpK:1.f);
 	m_fPower			-=	HitPowerEffect(power);
+	clamp(m_fPower, 0.f, 1.f);
 }
 
 void CActorCondition::ConditionWalk(float weight, bool accel, bool sprint)
@@ -478,6 +528,7 @@ void CActorCondition::ConditionWalk(float weight, bool accel, bool sprint)
 	power				+=	m_fWalkWeightPower*weight*(weight>1.f?m_fOverweightWalkK:1.f);
 	power				*=	m_fDeltaTime*(accel?(sprint?m_fSprintK:m_fAccelK):1.f);
 	m_fPower			-=	HitPowerEffect(power);
+	clamp(m_fPower, 0.f, 1.f);
 }
 
 void CActorCondition::ConditionStand(float weight)
@@ -485,6 +536,7 @@ void CActorCondition::ConditionStand(float weight)
 	float power			= m_fStandPower;
 	power				*= m_fDeltaTime;
 	m_fPower			-= power;
+	clamp(m_fPower, 0.f, 1.f);
 }
 
 
@@ -530,6 +582,13 @@ bool CActorCondition::IsLimping() const
 		m_bLimping = false;
 	return m_bLimping;
 }
+
+bool CActorCondition::IsSleeping() const
+{
+	return object().HasInfo("actor_is_sleeping");
+}
+
+
 extern bool g_bShowHudInfo;
 
 void CActorCondition::save(NET_Packet &output_packet)
@@ -595,14 +654,19 @@ void CActorCondition::reinit	()
 	m_fSatiety					= 1.f;
 }
 
+CEntityCondition::SConditionChangeV& CActorCondition::change_v()
+{
+	return IsSleeping() ? m_change_v_sleep : m_change_v;
+}
+
 void CActorCondition::ChangeAlcohol	(float value)
 {
 	m_fAlcohol += value;
 }
+
 void CActorCondition::ChangeSatiety(float value)
 {
-	m_fSatiety += value;
-	clamp		(m_fSatiety, 0.0f, 1.0f);
+	m_fSatietyChange += value;
 }
 
 void CActorCondition::BoostParameters(const SBooster& B)
@@ -662,23 +726,29 @@ void CActorCondition::DisableBoostParameters(const SBooster& B)
 void CActorCondition::BoostHpRestore(const float value)
 {
 	m_change_v.m_fV_HealthRestore += value;
+	m_change_v_sleep.m_fV_HealthRestore += value;
 }
 void CActorCondition::BoostPowerRestore(const float value)
 {
 	m_fV_SatietyPower += value;
+	m_fV_SatietyPowerSleep += value;
 }
 void CActorCondition::BoostRadiationRestore(const float value)
 {
 	m_change_v.m_fV_Radiation += value;
+	m_change_v_sleep.m_fV_Radiation += value;
 }
 void CActorCondition::BoostBleedingRestore(const float value)
 {
 	m_change_v.m_fV_WoundIncarnation += value;
+	m_change_v_sleep.m_fV_WoundIncarnation += value;
 }
+
 void CActorCondition::BoostMaxWeight(const float value)
 {
-	m_object->inventory().SetMaxWeight(object().inventory().GetMaxWeight()+value);
-	m_MaxWalkWeight += value;
+	//m_object->inventory().SetMaxWeight(object().inventory().GetMaxWeight() + value);
+	//m_MaxWalkWeight += value;
+	m_CarryWeightBoost += value;
 }
 void CActorCondition::BoostBurnImmunity(const float value)
 {
@@ -895,7 +965,13 @@ bool CActorCondition::ApplyBooster(const SBooster& B, const shared_str& sect)
 
 		BOOSTER_MAP::iterator it = m_booster_influences.find(B.m_type);
 		if(it!=m_booster_influences.end())
+		{
+			if (B.fBoostValue * B.fBoostTime < (*it).second.fBoostValue * (*it).second.fBoostTime)
+			{
+				return true;
+			}
 			DisableBoostParameters((*it).second);
+		}
 
 		m_booster_influences[B.m_type] = B;
 		BoostParameters(B);

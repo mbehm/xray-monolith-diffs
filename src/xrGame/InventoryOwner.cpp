@@ -26,6 +26,7 @@
 #include "alife_object_registry.h"
 #include "CustomOutfit.h"
 #include "Bolt.h"
+#include "string_table.h"
 
 CInventoryOwner::CInventoryOwner()
 {
@@ -47,6 +48,8 @@ CInventoryOwner::CInventoryOwner()
     m_deadbody_can_take = true;
     m_deadbody_closed = false;
     m_play_show_hide_reload_sounds = true;
+
+	m_trader_flags.zero();
 }
 
 DLL_Pure *CInventoryOwner::_construct()
@@ -141,10 +144,12 @@ BOOL CInventoryOwner::net_Spawn(CSE_Abstract* DC)
             dialog_manager->SetStartDialog(CharacterInfo().StartDialog());
             dialog_manager->SetDefaultStartDialog(CharacterInfo().StartDialog());
         }
+		m_game_name_str = pTrader->m_character_name_str;
         m_game_name = pTrader->m_character_name;
 
         m_deadbody_can_take = pTrader->m_deadbody_can_take;
         m_deadbody_closed = pTrader->m_deadbody_closed;
+		m_trader_flags.assign(pTrader->m_trader_flags.get());
     }
     else
     {
@@ -175,7 +180,7 @@ void	CInventoryOwner::save(NET_Packet &output_packet)
         output_packet.w_u8((u8) inventory().GetActiveSlot());
 
     CharacterInfo().save(output_packet);
-    save_data(m_game_name, output_packet);
+	save_data(m_game_name_str, output_packet);
     save_data(m_money, output_packet);
 }
 void	CInventoryOwner::load(IReader &input_packet)
@@ -189,8 +194,15 @@ void	CInventoryOwner::load(IReader &input_packet)
     m_tmp_active_slot_num = active_slot;
 
     CharacterInfo().load(input_packet);
-    load_data(m_game_name, input_packet);
+	load_data(m_game_name_str, input_packet);
     load_data(m_money, input_packet);
+	if (this->object_id() != Actor()->object_id())
+		m_game_name = TranslateName(m_game_name_str.c_str());
+}
+
+void CInventoryOwner::refresh_npc_name()
+{
+	m_game_name = TranslateName(m_game_name_str.c_str());
 }
 
 void CInventoryOwner::UpdateInventoryOwner(u32 deltaT)
@@ -360,8 +372,10 @@ void CInventoryOwner::spawn_supplies()
     if (smart_cast<CBaseMonster*>(this))	return;
 
     if (use_bolts())
-        Level().spawn_item("bolt", game_object->Position(), game_object->ai_location().level_vertex_id(), game_object->ID());
+		Level().spawn_item("bolt", game_object->Position(), game_object->ai_location().level_vertex_id(),
+		                   game_object->ID());
 
+	/*
     if (!ai().get_alife() && IsGameTypeSingle())
     {
         CSE_Abstract						*abstract = Level().spawn_item("device_pda", game_object->Position(), game_object->ai_location().level_vertex_id(), game_object->ID(), true);
@@ -373,6 +387,7 @@ void CInventoryOwner::spawn_supplies()
         Level().Send(P, net_flags(TRUE));
         F_entity_Destroy(abstract);
     }
+	*/
 }
 
 //игровое имя
@@ -421,6 +436,9 @@ void CInventoryOwner::SetCommunity(CHARACTER_COMMUNITY_INDEX new_community)
     if (!trader) return;
     //	EA->id_Team = CharacterInfo().Community().team();
     trader->m_community_index = new_community;
+
+	if (EA->ID() == Actor()->ID())
+		Actor()->RPC_UpdateFaction();
 }
 
 void CInventoryOwner::SetRank(CHARACTER_RANK_VALUE rank)
@@ -433,6 +451,9 @@ void CInventoryOwner::SetRank(CHARACTER_RANK_VALUE rank)
 
     CharacterInfo().m_CurrentRank.set(rank);
     trader->m_rank = rank;
+
+	if (EA->ID() == Actor()->ID())
+		Actor()->RPC_UpdateRank();
 }
 
 void CInventoryOwner::ChangeRank(CHARACTER_RANK_VALUE delta)
@@ -451,6 +472,9 @@ void CInventoryOwner::SetReputation(CHARACTER_REPUTATION_VALUE reputation)
 
     CharacterInfo().m_CurrentReputation.set(reputation);
     trader->m_reputation = reputation;
+
+	if (EA->ID() == Actor()->ID())
+		Actor()->RPC_UpdateReputation();
 }
 
 void CInventoryOwner::ChangeReputation(CHARACTER_REPUTATION_VALUE delta)

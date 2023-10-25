@@ -11,6 +11,11 @@
 #include "../Include/xrRender/Kinematics.h"
 #include "object_broker.h"
 #include "ActorHelmet.h"
+#include "ActorBackpack.h"
+
+// demonized: add lua callback before hit but after calculations
+#include "script_hit.h"
+#include "script_game_object.h"
 
 #define MAX_HEALTH 1.0f
 #define MIN_HEALTH -0.01f
@@ -19,6 +24,9 @@
 #define MAX_POWER 1.0f
 #define MAX_RADIATION 1.0f
 #define MAX_PSY_HEALTH 1.0f
+
+float f_power_loss_bias = 0.25f;
+float f_power_loss_factor = 0.5f;
 
 CEntityConditionSimple::CEntityConditionSimple()
 {
@@ -122,6 +130,7 @@ void CEntityCondition::LoadCondition(LPCSTR entity_section)
 	m_fKillHitTreshold		= READ_IF_EXISTS(pSettings,r_float,section,"killing_hit_treshold",0.0f);
 	m_fLastChanceHealth		= READ_IF_EXISTS(pSettings,r_float,section,"last_chance_health",0.0f);
 	m_fInvulnerableTimeDelta= READ_IF_EXISTS(pSettings,r_float,section,"invulnerable_time",0.0f)/1000.f;
+	m_fBleedSpeedK = READ_IF_EXISTS(pSettings, r_float, section, "bleed_speed_k", 1.f);
 }
 
 void CEntityCondition::LoadTwoHitsDeathParams(LPCSTR section)
@@ -161,7 +170,11 @@ void CEntityCondition::reinit	()
 	m_iWhoID				= NULL;
 
 	ClearWounds				();
+}
 
+CEntityCondition::SConditionChangeV& CEntityCondition::change_v()
+{
+	return m_change_v;
 }
 
 void CEntityCondition::ChangeHealth(const float value)
@@ -201,7 +214,7 @@ void CEntityCondition::ChangeBleeding(const float percent)
 	for(WOUND_VECTOR_IT it = m_WoundVector.begin(); m_WoundVector.end() != it; ++it)
 	{
 		(*it)->Incarnation			(percent, m_fMinWoundSize);
-		if(0 == (*it)->TotalSize	())
+		if (fis_zero((*it)->TotalSize()))
 			(*it)->SetDestroy		(true);
 	}
 }
@@ -359,11 +372,19 @@ float CEntityCondition::HitPowerEffect(float power_loss)
 	if(!pInvOwner)					 return power_loss;
 
 	CCustomOutfit* pOutfit			= pInvOwner->GetOutfit();
-	if(!pOutfit)					return power_loss*0.5f;
+	CHelmet* pHelmet = (CHelmet*)pInvOwner->inventory().ItemFromSlot(HELMET_SLOT);
+	CBackpack* pBackpack = (CBackpack*)pInvOwner->inventory().ItemFromSlot(BACKPACK_SLOT);
 
-	float new_power_loss			= power_loss*pOutfit->m_fPowerLoss;
+	float power_loss_factor = 0.0f;
+	power_loss_factor += pOutfit ? pOutfit->m_fPowerLoss : EPS;
+	power_loss_factor += pHelmet ? pHelmet->m_fPowerLoss : EPS;
+	power_loss_factor += pBackpack ? pBackpack->m_fPowerLoss : EPS;
+	power_loss_factor /= 3.0f;
+	power_loss_factor *= f_power_loss_factor;
+	power_loss_factor += f_power_loss_bias;
+	clamp(power_loss_factor, 0.0f, 1.0f);
 
-	return							new_power_loss;
+	return power_loss * power_loss_factor;
 }
 
 CWound* CEntityCondition::AddWound(float hit_power, ALife::EHitType hit_type, u16 element)
@@ -399,6 +420,24 @@ CWound* CEntityCondition::AddWound(float hit_power, ALife::EHitType hit_type, u1
 	return pWound;
 }
 
+// demonized: add lua callback before hit but after calculations
+// pHDS and hit_power will be changed after execution
+static inline void applyBeforeHitAfterCalcsCallback(CEntityAlive* target, const luabind::functor<void>& funct, SHit* pHDS, float& hit_power, const float hit_part = 1)
+{
+	CScriptHit tLuaHit(pHDS);
+	tLuaHit.m_fPower = hit_power;
+	if (hit_part > 0)
+		tLuaHit.m_fPower *= hit_part;
+
+	funct(&tLuaHit, target->lua_game_object(), pHDS->boneID);
+
+	if (hit_part > 0)
+		tLuaHit.m_fPower /= hit_part;
+
+	pHDS->ApplyScriptHit(&tLuaHit);
+	hit_power = tLuaHit.m_fPower;
+}
+
 CWound* CEntityCondition::ConditionHit(SHit* pHDS)
 {
 	//кто нанес последний хит
@@ -413,6 +452,11 @@ CWound* CEntityCondition::ConditionHit(SHit* pHDS)
 	float hit_power = hit_power_org;
 	hit_power = HitOutfitEffect( hit_power_org, pHDS->hit_type, pHDS->boneID, pHDS->armor_piercing, bAddWound );
 
+	// demonized: add lua callback before hit but after calculations
+	// don't call if there is no target
+	luabind::functor<void> funct;
+	bool has_func = ai().script_engine().functor("_G.CBeforeHitAfterCalcs", funct);
+
 	switch(pHDS->hit_type)
 	{
 	case ALife::eHitTypeTelepatic:
@@ -420,6 +464,13 @@ CWound* CEntityCondition::ConditionHit(SHit* pHDS)
 		if(hit_power < 0.f)
 			hit_power = 0.f;
 		hit_power *= GetHitImmunity(pHDS->hit_type)-m_fBoostTelepaticImmunity;
+
+		// demonized: add lua callback before hit but after calculations
+		if (has_func)
+		{
+			applyBeforeHitAfterCalcsCallback(m_object, funct, pHDS, hit_power, m_fHealthHitPart);
+		}
+
 		ChangePsyHealth(-hit_power);
 		m_fHealthLost = hit_power*m_fHealthHitPart;
 		m_fDeltaHealth -= CanBeHarmed() ? m_fHealthLost : 0;
@@ -429,6 +480,13 @@ CWound* CEntityCondition::ConditionHit(SHit* pHDS)
 	case ALife::eHitTypeLightBurn:
 	case ALife::eHitTypeBurn:
 		hit_power *= GetHitImmunity(ALife::eHitTypeBurn)-m_fBoostBurnImmunity;
+
+		// demonized: add lua callback before hit but after calculations
+		if (has_func)
+		{
+			applyBeforeHitAfterCalcsCallback(m_object, funct, pHDS, hit_power, m_fHealthHitPart * m_fHitBoneScale);
+		}
+
 		m_fHealthLost = hit_power*m_fHealthHitPart*m_fHitBoneScale;
 		m_fDeltaHealth -= CanBeHarmed() ? m_fHealthLost : 0;
 		m_fDeltaPower -= hit_power*m_fPowerHitPart;
@@ -440,6 +498,13 @@ CWound* CEntityCondition::ConditionHit(SHit* pHDS)
 		if(hit_power < 0.f)
 			hit_power = 0.f;
 		hit_power *= GetHitImmunity(pHDS->hit_type)-m_fBoostChemicalBurnImmunity;
+
+		// demonized: add lua callback before hit but after calculations
+		if (has_func)
+		{
+			applyBeforeHitAfterCalcsCallback(m_object, funct, pHDS, hit_power, m_fHealthHitPart);
+		}
+
 		m_fHealthLost = hit_power*m_fHealthHitPart;
 		m_fDeltaHealth -= CanBeHarmed() ? m_fHealthLost : 0;
 		m_fDeltaPower -= hit_power*m_fPowerHitPart;
@@ -447,6 +512,13 @@ CWound* CEntityCondition::ConditionHit(SHit* pHDS)
 		break;
 	case ALife::eHitTypeShock:
 		hit_power		*= GetHitImmunity(pHDS->hit_type)-m_fBoostShockImmunity;
+
+		// demonized: add lua callback before hit but after calculations
+		if (has_func)
+		{
+			applyBeforeHitAfterCalcsCallback(m_object, funct, pHDS, hit_power, m_fHealthHitPart);
+		}
+
 		m_fHealthLost	=  hit_power*m_fHealthHitPart;
 		m_fDeltaHealth -= CanBeHarmed() ? m_fHealthLost : 0;
 		m_fDeltaPower	-= hit_power*m_fPowerHitPart;
@@ -457,12 +529,26 @@ CWound* CEntityCondition::ConditionHit(SHit* pHDS)
 		if(hit_power < 0.f)
 			hit_power = 0.f;
 		hit_power			*= GetHitImmunity(pHDS->hit_type)-m_fBoostRadiationImmunity;
+
+		// demonized: add lua callback before hit but after calculations
+		if (has_func)
+		{
+			applyBeforeHitAfterCalcsCallback(m_object, funct, pHDS, hit_power, 1);
+		}
+
 		m_fDeltaRadiation	+= hit_power;
 		bAddWound			=  false;
 		return NULL;
 		break;
 	case ALife::eHitTypeExplosion:
 		hit_power *= GetHitImmunity(pHDS->hit_type)-m_fBoostExplImmunity;
+
+		// demonized: add lua callback before hit but after calculations
+		if (has_func)
+		{
+			applyBeforeHitAfterCalcsCallback(m_object, funct, pHDS, hit_power, m_fHealthHitPart);
+		}
+
 		m_fHealthLost = hit_power*m_fHealthHitPart;
 		m_fDeltaHealth -= CanBeHarmed() ? m_fHealthLost : 0;
 		m_fDeltaPower -= hit_power*m_fPowerHitPart;
@@ -470,6 +556,13 @@ CWound* CEntityCondition::ConditionHit(SHit* pHDS)
 	case ALife::eHitTypeStrike:
 //	case ALife::eHitTypePhysicStrike:
 		hit_power *= GetHitImmunity(pHDS->hit_type)-m_fBoostStrikeImmunity;
+
+		// demonized: add lua callback before hit but after calculations
+		if (has_func)
+		{
+			applyBeforeHitAfterCalcsCallback(m_object, funct, pHDS, hit_power, m_fHealthHitPart);
+		}
+
 		m_fHealthLost = hit_power*m_fHealthHitPart;
 		m_fDeltaHealth -= CanBeHarmed() ? m_fHealthLost : 0;
 		m_fDeltaPower -= hit_power*m_fPowerHitPart;
@@ -477,12 +570,26 @@ CWound* CEntityCondition::ConditionHit(SHit* pHDS)
 		break;
 	case ALife::eHitTypeFireWound:
 		hit_power *= GetHitImmunity(pHDS->hit_type)-m_fBoostFireWoundImmunity;
+
+		// demonized: add lua callback before hit but after calculations
+		if (has_func)
+		{
+			applyBeforeHitAfterCalcsCallback(m_object, funct, pHDS, hit_power, m_fHealthHitPart * m_fHitBoneScale);
+		}
+
 		m_fHealthLost = hit_power*m_fHealthHitPart*m_fHitBoneScale;
 		m_fDeltaHealth -= CanBeHarmed() ? m_fHealthLost : 0;
 		m_fDeltaPower -= hit_power*m_fPowerHitPart;
 		break;
 	case ALife::eHitTypeWound:
 		hit_power *= GetHitImmunity(pHDS->hit_type)-m_fBoostWoundImmunity;
+
+		// demonized: add lua callback before hit but after calculations
+		if (has_func)
+		{
+			applyBeforeHitAfterCalcsCallback(m_object, funct, pHDS, hit_power, m_fHealthHitPart * m_fHitBoneScale);
+		}
+
 		m_fHealthLost = hit_power*m_fHealthHitPart*m_fHitBoneScale;
 		m_fDeltaHealth -= CanBeHarmed() ? m_fHealthLost : 0;
 		m_fDeltaPower -= hit_power*m_fPowerHitPart;
@@ -510,25 +617,25 @@ CWound* CEntityCondition::ConditionHit(SHit* pHDS)
 
 float CEntityCondition::BleedingSpeed()
 {
-	float bleeding_speed		=0;
+	float bleeding_speed = 0.f;
 
 	for(WOUND_VECTOR_IT it = m_WoundVector.begin(); m_WoundVector.end() != it; ++it)
 		bleeding_speed			+= (*it)->TotalSize();
-	
-	
-	return (m_WoundVector.empty() ? 0.f : bleeding_speed / m_WoundVector.size());
+	bleeding_speed *= m_fBleedSpeedK;
+	clamp(bleeding_speed, 0.0f, 10.f);
+	return bleeding_speed;
 }
 
 
 void CEntityCondition::UpdateHealth()
 {
-	float bleeding_speed		= BleedingSpeed() * m_fDeltaTime * m_change_v.m_fV_Bleeding;
+	float bleeding_speed = BleedingSpeed() * m_fDeltaTime * change_v().m_fV_Bleeding;
 	m_bIsBleeding				= fis_zero(bleeding_speed)?false:true;
 	m_fDeltaHealth				-= CanBeHarmed() ? bleeding_speed : 0;
-	m_fDeltaHealth				+= m_fDeltaTime * m_change_v.m_fV_HealthRestore;
+	m_fDeltaHealth += m_fDeltaTime * change_v().m_fV_HealthRestore;
 	
 	VERIFY						(_valid(m_fDeltaHealth));
-	ChangeBleeding				(m_change_v.m_fV_WoundIncarnation * m_fDeltaTime);
+	ChangeBleeding(change_v().m_fV_WoundIncarnation * m_fDeltaTime);
 }
 
 void CEntityCondition::UpdatePower()
@@ -537,17 +644,17 @@ void CEntityCondition::UpdatePower()
 
 void CEntityCondition::UpdatePsyHealth()
 {
-	m_fDeltaPsyHealth += m_change_v.m_fV_PsyHealth*m_fDeltaTime;
+	m_fDeltaPsyHealth += change_v().m_fV_PsyHealth * m_fDeltaTime;
 }
 
 void CEntityCondition::UpdateRadiation()
 {
 	if(m_fRadiation>0)
 	{
-		m_fDeltaRadiation -= m_change_v.m_fV_Radiation*
+		m_fDeltaRadiation -= change_v().m_fV_Radiation *
 							m_fDeltaTime;
 
-		m_fDeltaHealth -= CanBeHarmed() ? m_change_v.m_fV_RadiationHealth*m_fRadiation*m_fDeltaTime : 0.0f;
+		m_fDeltaHealth -= CanBeHarmed() ? change_v().m_fV_RadiationHealth * m_fRadiation * m_fDeltaTime : 0.0f;
 	}
 }
 
@@ -555,7 +662,7 @@ void CEntityCondition::UpdateEntityMorale()
 {
 	if(m_fEntityMorale<m_fEntityMoraleMax)
 	{
-		m_fDeltaEntityMorale += m_change_v.m_fV_EntityMorale*m_fDeltaTime;
+		m_fDeltaEntityMorale += change_v().m_fV_EntityMorale * m_fDeltaTime;
 	}
 }
 

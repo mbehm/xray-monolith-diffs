@@ -3,20 +3,33 @@
 #define CMD_START	(1<<0)
 #define CMD_STOP	(1<<1)
 
-enum{
+enum
+{
 	NO_ACTIVE_SLOT	= 0,
-	KNIFE_SLOT		= 1,//btn1			was (0)			!!!
-	INV_SLOT_2,		//btn2 PISTOL_SLOT	was (1)
-	INV_SLOT_3,		//btn3 RIFLE_SLOT	was (2)
-	GRENADE_SLOT,	//btn4 GRENADE_SLOT	was (3)
-	BINOCULAR_SLOT,	//btn5 BINOCULAR_SLOT
-	BOLT_SLOT,		//btn6 BOLT_SLOT
-	OUTFIT_SLOT,	// outfit
-	PDA_SLOT,		// pda
-	DETECTOR_SLOT,	// detector
-	TORCH_SLOT,		// torch
-	ARTEFACT_SLOT,	// artefact
+	KNIFE_SLOT = 1,
+	//btn1			was (0)			!!!
+	INV_SLOT_2,
+	//btn2 PISTOL_SLOT	was (1)
+	INV_SLOT_3,
+	//btn3 RIFLE_SLOT	was (2)
+	GRENADE_SLOT,
+	//btn4 GRENADE_SLOT	was (3)
+	BINOCULAR_SLOT,
+	//btn5 BINOCULAR_SLOT
+	BOLT_SLOT,
+	//btn6 BOLT_SLOT
+	OUTFIT_SLOT,
+	// outfit
+	PDA_SLOT,
+	// pda
+	DETECTOR_SLOT,
+	// detector
+	TORCH_SLOT,
+	// torch
+	ARTEFACT_SLOT,
+	// artefact
 	HELMET_SLOT,
+	BACKPACK_SLOT,
 	//Alundaio: More slots for custom uses
 #ifdef MORE_INVENTORY_SLOTS
 	CUSTOM_SLOT_1,
@@ -26,7 +39,7 @@ enum{
 	CUSTOM_SLOT_5,
 	LAST_SLOT = CUSTOM_SLOT_5
 #else
-	LAST_SLOT = HELMET_SLOT
+	LAST_SLOT = BACKPACK_SLOT
 #endif
 	//-Alundaio
 };

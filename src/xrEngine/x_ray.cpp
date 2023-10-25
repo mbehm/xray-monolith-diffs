@@ -25,11 +25,17 @@
 #include <process.h>
 #include <locale.h>
 
+#include <unicode\unistr.h>
+#include <unicode\ucnv.h>
+#include <discord\discord.h>
+
 #include "xrSash.h"
 
 //#include "securom_api.h"
 
+
 //---------------------------------------------------------------------
+#define XRAY_MONOLITH_VERSION "X-Ray Monolith v1.5.2"
 ENGINE_API CInifile* pGameIni = NULL;
 BOOL g_bIntroFinished = FALSE;
 extern void Intro(void* fn);
@@ -45,6 +51,27 @@ XRCORE_API u32 build_id;
 # define NO_MULTI_INSTANCES
 #endif // #ifdef MASTER_GOLD
 
+
+//Discord
+discord::Core* discord_core{};
+discord::Activity discordPresence{};
+static int64_t StartTime;
+bool use_discord = true;
+#pragma comment(lib, "discord_game_sdk.lib")
+rpc_info discord_gameinfo;
+rpc_strings discord_strings;
+float discord_update_rate = .5f;
+
+//UTF-8 (ICU)
+#pragma comment(lib, "icuuc.lib")
+//#pragma comment(lib, "sicuuc.lib")
+//#pragma comment(lib, "sicudt.lib")
+
+//Reshade
+#pragma comment(lib, "reshadecompat.lib")
+bool use_reshade = false;
+extern bool init_reshade();
+extern void unregister_reshade();
 
 static LPSTR month_id[12] =
 {
@@ -64,67 +91,11 @@ static int start_year = 1999; // 1999
 
 #ifndef DEDICATED_SERVER
 
-#include "../xrGameSpy/gamespy/md5c.c"
 #include <ctype.h>
 
 #define DEFAULT_MODULE_HASH "3CAABCFCFF6F3A810019C6A72180F166"
 static char szEngineHash[33] = DEFAULT_MODULE_HASH;
 
-PROTECT_API char* ComputeModuleHash(char* pszHash)
-{
-    //SECUROM_MARKER_HIGH_SECURITY_ON(3)
-
-    char szModuleFileName[MAX_PATH];
-    HANDLE hModuleHandle = NULL, hFileMapping = NULL;
-    LPVOID lpvMapping = NULL;
-    MEMORY_BASIC_INFORMATION MemoryBasicInformation;
-
-    if (!GetModuleFileName(NULL, szModuleFileName, MAX_PATH))
-        return pszHash;
-
-    hModuleHandle = CreateFile(szModuleFileName, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
-
-    if (hModuleHandle == INVALID_HANDLE_VALUE)
-        return pszHash;
-
-    hFileMapping = CreateFileMapping(hModuleHandle, NULL, PAGE_READONLY, 0, 0, NULL);
-
-    if (hFileMapping == NULL)
-    {
-        CloseHandle(hModuleHandle);
-        return pszHash;
-    }
-
-    lpvMapping = MapViewOfFile(hFileMapping, FILE_MAP_READ, 0, 0, 0);
-
-    if (lpvMapping == NULL)
-    {
-        CloseHandle(hFileMapping);
-        CloseHandle(hModuleHandle);
-        return pszHash;
-    }
-
-    ZeroMemory(&MemoryBasicInformation, sizeof(MEMORY_BASIC_INFORMATION));
-
-    VirtualQuery(lpvMapping, &MemoryBasicInformation, sizeof(MEMORY_BASIC_INFORMATION));
-
-    if (MemoryBasicInformation.RegionSize)
-    {
-        char szHash[33];
-        MD5Digest((unsigned char*)lpvMapping, (unsigned int)MemoryBasicInformation.RegionSize, szHash);
-        MD5Digest((unsigned char*)szHash, 32, pszHash);
-        for (int i = 0; i < 32; ++i)
-            pszHash[i] = (char)toupper(pszHash[i]);
-    }
-
-    UnmapViewOfFile(lpvMapping);
-    CloseHandle(hFileMapping);
-    CloseHandle(hModuleHandle);
-
-    //SECUROM_MARKER_HIGH_SECURITY_OFF(3)
-
-    return pszHash;
-}
 #endif // DEDICATED_SERVER
 
 void compute_build_id()
@@ -210,12 +181,10 @@ struct path_excluder_predicate
     xr_auth_strings_t const* m_ignore;
 };
 
+extern float g_fTimeFactor;
+
 PROTECT_API void InitSettings()
 {
-#ifndef DEDICATED_SERVER
-    Msg("EH: %s\n", ComputeModuleHash(szEngineHash));
-#endif // DEDICATED_SERVER
-
     string_path fname;
     FS.update_path(fname, "$game_config$", "system.ltx");
 #ifdef DEBUG
@@ -242,7 +211,10 @@ PROTECT_API void InitSettings()
 
     FS.update_path(fname, "$game_config$", "game.ltx");
     pGameIni = xr_new<CInifile>(fname, TRUE);
-    CHECK_OR_EXIT(0 != pGameIni->section_count(), make_string("Cannot find file %s.\nReinstalling application may fix this problem.", fname));
+	CHECK_OR_EXIT(0 != pGameIni->section_count(),
+	              make_string("Cannot find file %s.\nReinstalling application may fix this problem.", fname));
+
+	g_fTimeFactor = pSettings->r_float("alife", "time_factor");
 }
 PROTECT_API void InitConsole()
 {
@@ -273,7 +245,7 @@ PROTECT_API void InitConsole()
 
 PROTECT_API void InitInput()
 {
-    BOOL bCaptureInput = !strstr(Core.Params, "-i");
+	BOOL bCaptureInput = FALSE; // !strstr(Core.Params, "-i");
 
     pInput = xr_new<CInput>(bCaptureInput);
 }
@@ -351,6 +323,234 @@ void CheckPrivilegySlowdown()
 #endif // DEBUG
 }
 
+LPCSTR xr_ToUTF8(LPCSTR input, int max_length)
+{
+	UErrorCode errorCode = U_ZERO_ERROR;
+	UConverter *conv_from = ucnv_open("cp1251", &errorCode);
+	R_ASSERT3(conv_from, "[Discord RPC] Error creating UConverter!\n", std::to_string(errorCode).c_str());
+
+	std::vector<UChar> converted(strlen(input) * 2);
+	int32_t conv_len = ucnv_toUChars(conv_from, &converted[0], converted.size(), input, strlen(input), &errorCode);
+	if (errorCode != U_ZERO_ERROR)
+	{
+		Msg("[Discord RPC] Failed to convert string! (%s)", std::to_string(errorCode).c_str());
+		return input;
+	}
+
+	converted.resize(conv_len);
+	ucnv_close(conv_from);
+
+	// needs to be static so the data buffer is still valid after this function returns
+	static std::string g;
+	g.clear();
+
+	g.resize(converted.size() * 4);
+
+	UConverter *conv_u8 = ucnv_open("UTF-8", &errorCode);
+	int32_t u8_len = ucnv_fromUChars(conv_u8, &g[0], g.size(), &converted[0], converted.size(), &errorCode);
+	if (errorCode != U_ZERO_ERROR)
+	{
+		Msg("[Discord RPC] Failed to convert string! (%s)", std::to_string(errorCode).c_str());
+		return input;
+	}
+
+	g.resize(_min(u8_len, max_length));
+	ucnv_close(conv_u8);
+
+	return g.data();
+}
+
+//Discord Rich Presence - Rezy ------------------------------------------------
+
+void DiscordLog(discord::LogLevel level, std::string message)
+{
+	Msg("[Discord RPC]: %s", message.c_str());
+}
+
+void updateDiscordPresence()
+{
+	if (!use_discord)
+		return;
+
+	static char details_buffer[128];
+	static char state_buffer[128];
+
+	// Main Menu
+	if (discord_gameinfo.mainmenu)
+	{
+		snprintf(state_buffer, 128, discord_strings.mainmenu);
+		discordPresence.GetAssets().SetLargeImage("gamelogo");
+		discordPresence.GetAssets().SetLargeText("");
+		discordPresence.GetAssets().SetSmallImage("");
+		discordPresence.GetAssets().SetSmallText("");
+			
+		// Pause Menu
+		if (discord_gameinfo.ingame)
+			snprintf(state_buffer, 128, discord_strings.paused);
+		else
+			discordPresence.SetDetails("");
+	}	
+
+	// Loading
+	else if (discord_gameinfo.loadscreen)
+	{
+		snprintf(state_buffer, 128, discord_strings.loading);
+		discordPresence.SetDetails("");
+		discordPresence.GetAssets().SetLargeImage("gamelogo");
+		discordPresence.GetAssets().SetLargeText("");
+		discordPresence.GetAssets().SetSmallImage("");
+		discordPresence.GetAssets().SetSmallText("");
+		discord_gameinfo.ex_update = true;
+	}
+
+	// In Game
+	else if (discord_gameinfo.ingame)
+	{
+		// Time + Level Name
+		char levelname_time[128];
+		if (discord_gameinfo.level_name && discord_gameinfo.currenttime)
+		{
+			snprintf(levelname_time, 128, "%s | %s", discord_gameinfo.level_name, discord_gameinfo.currenttime);
+			discordPresence.GetAssets().SetLargeText(levelname_time);
+		}
+		else if (discord_gameinfo.level_name)
+		{
+			snprintf(levelname_time, 128, discord_gameinfo.level_name);
+			discordPresence.GetAssets().SetLargeText(levelname_time);
+		}
+		else
+			discord_gameinfo.ex_update = true;
+
+		//Faction, Rank, Rep
+		if (discord_gameinfo.faction && discord_gameinfo.faction_name)
+		{
+			discordPresence.GetAssets().SetSmallImage(discord_gameinfo.faction);
+			char rank_faction_rep[128];
+			if (discord_gameinfo.rank_name && discord_gameinfo.reputation)
+				snprintf(rank_faction_rep, 128, "%s | %s", discord_gameinfo.rank_name, discord_gameinfo.reputation);
+			else
+				snprintf(rank_faction_rep, 128, discord_gameinfo.faction_name);
+			discordPresence.GetAssets().SetSmallText(rank_faction_rep);
+		}
+
+		// GameMode + Active Task
+		if (discord_gameinfo.gamemode)
+		{
+			if (discord_gameinfo.task_name && 0 != xr_strcmp(discord_gameinfo.task_name, ""))
+				snprintf(details_buffer, 128, "%s | %s", discord_gameinfo.gamemode, discord_gameinfo.task_name);
+			else
+				snprintf(details_buffer, 128, discord_gameinfo.gamemode);
+			discordPresence.SetDetails(details_buffer);
+		}
+
+		// God Mode
+		if (discord_gameinfo.godmode)
+			snprintf(state_buffer, 128, discord_strings.godmode);
+
+		// Health
+		else if (discord_gameinfo.health)
+		{
+			// Iron Man
+			if (discord_gameinfo.ironman && discord_gameinfo.lives_left)
+			{
+				if (discord_gameinfo.lives_left == 0 || discord_gameinfo.lives_left > 1)
+					snprintf(state_buffer, 128, "%s: %i | %i %s", discord_strings.health, discord_gameinfo.health,
+					        discord_gameinfo.lives_left, discord_strings.livesleft);
+				else
+					snprintf(state_buffer, 128, "%s: %i | %i %s", discord_strings.health, discord_gameinfo.health,
+					        discord_gameinfo.lives_left, discord_strings.livesleftsingle);
+			}
+
+			// Azazel
+			else if (discord_gameinfo.possessed_lives)
+			{
+				if (discord_gameinfo.possessed_lives == 0 || discord_gameinfo.possessed_lives > 1)
+					snprintf(state_buffer, 128, "%s: %i | %i %s", discord_strings.health, discord_gameinfo.health,
+					        discord_gameinfo.possessed_lives, discord_strings.livespossessed);
+				else
+					snprintf(state_buffer, 128, "%s: %i | %i %s", discord_strings.health, discord_gameinfo.health,
+					        discord_gameinfo.possessed_lives, discord_strings.livespossessedsingle);
+			}
+
+			// No Iron Man or Azazel
+			else
+				snprintf(state_buffer, 128, "%s: %i", discord_strings.health, discord_gameinfo.health);
+
+			discordPresence.SetState(state_buffer);
+		}
+		else
+		{
+			// Iron Man
+			if (discord_gameinfo.ironman && discord_gameinfo.lives_left)
+			{
+				int real_lives = discord_gameinfo.lives_left - 1;
+				if (real_lives == 0 || real_lives > 1)
+					snprintf(state_buffer, 128, "%s | %i %s", discord_strings.dead, real_lives, discord_strings.livesleft);
+				else
+					snprintf(state_buffer, 128, "%s | %i %s", discord_strings.dead, real_lives,
+						discord_strings.livesleftsingle);
+			}
+
+
+			// Azazel
+			else if (discord_gameinfo.possessed_lives)
+			{
+				if (discord_gameinfo.possessed_lives == 0 || discord_gameinfo.possessed_lives > 1)
+					snprintf(state_buffer, 128, "%s | %i %s", discord_strings.dead, discord_gameinfo.possessed_lives,
+						discord_strings.livespossessed);
+				else
+					snprintf(state_buffer, 128, "%s | %i %s", discord_strings.dead, discord_gameinfo.possessed_lives,
+						discord_strings.livespossessedsingle);
+			}
+
+			// No Iron Man or Azazel
+			else
+				snprintf(state_buffer, 128, "%s", discord_strings.dead);
+
+			discordPresence.SetState(state_buffer);
+		}
+
+		// Level Icon
+		if (discord_gameinfo.level && discord_gameinfo.level_icon_index)
+		{
+			char icon_buffer[32];
+			snprintf(icon_buffer, 32, "%s_%i", discord_gameinfo.level, discord_gameinfo.level_icon_index);
+			discordPresence.GetAssets().SetLargeImage(icon_buffer);
+		}
+	}
+
+	discordPresence.SetState(state_buffer);
+	discord_core->ActivityManager().UpdateActivity(discordPresence, [](discord::Result result) {});
+}
+
+void Init_Discord()
+{
+	auto result = discord::Core::Create(477910171964801060, DiscordCreateFlags_NoRequireDiscord, &discord_core);
+	
+	if (result != discord::Result::Ok)
+	{
+		Msg("[Discord RPC] Failed to create Discord RPC");
+		use_discord = false;
+		return;
+	}
+
+	discord_core->SetLogHook(discord::LogLevel::Error, DiscordLog);
+	Msg("[Discord RPC] Created successfully!");
+
+	//Set up basic RPC
+	StartTime = time(0);
+	discordPresence.SetType(discord::ActivityType::Playing);
+	discordPresence.GetTimestamps().SetStart(StartTime);
+	discordPresence.GetAssets().SetLargeImage("gamelogo");
+	discord_core->ActivityManager().UpdateActivity(discordPresence, [](discord::Result result) {});
+}
+
+void clearDiscordPresence()
+{
+	if (discord_core)
+		discord_core->ActivityManager().ClearActivity([](discord::Result result) {});
+}
+
 void Startup()
 {
     InitSound1();
@@ -382,9 +582,28 @@ void Startup()
     DestroyWindow(logoWindow);
     logoWindow = NULL;
 
+	//Discord Rich Presence - Rezy
+	Init_Discord();
+
+	//Reshade
+	use_reshade = init_reshade();
+	if (use_reshade)
+		Msg("[ReShade]: Loaded compatibility addon");
+	else
+		Msg("[ReShade]: ReShade not installed or version too old - didn't load compatibility addon");
+
     // Main cycle
+	Msg("* [x-ray]: Starting Main Loop");
     Memory.mem_usage();
+
     Device.Run();
+
+	// Discord
+	clearDiscordPresence();
+
+	//Reshade
+	if (use_reshade)
+		unregister_reshade();
 
     // Destroy APP
     xr_delete(g_SpatialSpacePhysic);
@@ -430,6 +649,17 @@ static INT_PTR CALLBACK logDlgProc(HWND hw, UINT msg, WPARAM wp, LPARAM lp)
     }
     return TRUE;
 }
+
+// Always request high performance GPU
+extern "C"
+{
+	// https://docs.nvidia.com/gameworks/content/technologies/desktop/optimus.htm
+	_declspec(dllexport) DWORD NvOptimusEnablement = 0x00000001; // NVIDIA Optimus
+
+	// https://gpuopen.com/amdpowerxpressrequesthighperformance/
+	_declspec(dllexport) DWORD AmdPowerXpressRequestHighPerformance = 0x00000001; // PowerXpress or Hybrid Graphics
+}
+
 /*
 void test_rtc ()
 {
@@ -605,49 +835,6 @@ struct damn_keys_filter
 #undef dwFilterKeysStructSize
 #undef dwToggleKeysStructSize
 
-// Фунция для тупых требований THQ и тупых американских пользователей
-BOOL IsOutOfVirtualMemory()
-{
-#define VIRT_ERROR_SIZE 256
-#define VIRT_MESSAGE_SIZE 512
-
-    //SECUROM_MARKER_HIGH_SECURITY_ON(1)
-
-    MEMORYSTATUSEX statex;
-    DWORD dwPageFileInMB = 0;
-    DWORD dwPhysMemInMB = 0;
-    HINSTANCE hApp = 0;
-    char pszError[VIRT_ERROR_SIZE];
-    char pszMessage[VIRT_MESSAGE_SIZE];
-
-    ZeroMemory(&statex, sizeof(MEMORYSTATUSEX));
-    statex.dwLength = sizeof(MEMORYSTATUSEX);
-
-    if (!GlobalMemoryStatusEx(&statex))
-        return 0;
-
-    dwPageFileInMB = (DWORD)(statex.ullTotalPageFile / (1024 * 1024));
-    dwPhysMemInMB = (DWORD)(statex.ullTotalPhys / (1024 * 1024));
-
-    // Довольно отфонарное условие
-    if ((dwPhysMemInMB > 500) && ((dwPageFileInMB + dwPhysMemInMB) > 2500))
-        return 0;
-
-    hApp = GetModuleHandle(NULL);
-
-    if (!LoadString(hApp, RC_VIRT_MEM_ERROR, pszError, VIRT_ERROR_SIZE))
-        return 0;
-
-    if (!LoadString(hApp, RC_VIRT_MEM_TEXT, pszMessage, VIRT_MESSAGE_SIZE))
-        return 0;
-
-    MessageBox(NULL, pszMessage, pszError, MB_OK | MB_ICONHAND);
-
-    //SECUROM_MARKER_HIGH_SECURITY_OFF(1)
-
-    return 1;
-}
-
 #include "xr_ioc_cmd.h"
 
 //typedef void DUMMY_STUFF (const void*,const u32&,void*);
@@ -730,16 +917,14 @@ int APIENTRY WinMain_impl(HINSTANCE hInstance,
                     &HeapFragValue,
                     sizeof(HeapFragValue)
                 );
+#ifdef DEBUG
             VERIFY2(result, "can't set process heap low fragmentation");
+#endif
         }
     }
 
     // foo();
 #ifndef DEDICATED_SERVER
-
-    // Check for virtual memory
-    if ((strstr(lpCmdLine, "--skipmemcheck") == NULL) && IsOutOfVirtualMemory())
-        return 0;
 
     // Check for another instance
 #ifdef NO_MULTI_INSTANCES
@@ -765,8 +950,6 @@ int APIENTRY WinMain_impl(HINSTANCE hInstance,
 #else // DEDICATED_SERVER
     g_dedicated_server = true;
 #endif // DEDICATED_SERVER
-
-    SetThreadAffinityMask(GetCurrentThread(), 1);
 
     // Title window
     logoWindow = CreateDialog(GetModuleHandle(NULL), MAKEINTRESOURCE(IDD_STARTUP), 0, logDlgProc);
@@ -812,6 +995,32 @@ int APIENTRY WinMain_impl(HINSTANCE hInstance,
     Core._initialize("xray", NULL, TRUE, fsgame[0] ? fsgame : NULL);
 
     InitSettings();
+	Msg(XRAY_MONOLITH_VERSION);
+
+	{
+		FS_FileSet fset;
+		FS.file_list(fset, "$game_data$", FS_ListFiles, "*");
+
+		// list all files in gamedata folder
+		u32 count = 0;
+		for (FS_FileSet::iterator it = fset.begin(); it != fset.end(); it++)
+		{
+			// skip virtual files from .db? archives, only interested in loose files
+			if ((*it).attrib != 0) continue;
+			Msg("gamedata: '%s'", (*it).name.c_str());
+
+			const u32 cutoff = 100;
+			if (++count >= cutoff)
+			{
+				u32 total = fset.size();
+				if (total > cutoff)
+				{
+					Msg("gamedata: ... %d more ...", total - cutoff);
+				}
+				break;
+			}
+		}
+	}
 
     // Adjust player & computer name for Asian
     if (pSettings->line_exist("string_table", "no_native_input"))
@@ -845,7 +1054,10 @@ int APIENTRY WinMain_impl(HINSTANCE hInstance,
             return 0;
         }
 
-        Msg("command line %s", lpCmdLine);
+		extern bool ignore_verify;
+		ignore_verify = !strstr(Core.Params, "-dbgdev");
+
+		Msg("command line %s", Core.Params);
         LPCSTR sashName = "-openautomate ";
         if (strstr(lpCmdLine, sashName))
         {
@@ -929,26 +1141,27 @@ int stack_overflow_exception_filter(int exception_code)
 
 #include <boost/crc.hpp>
 
+extern BOOL DllMainOpenAL32(HANDLE module, DWORD reason, LPVOID reserved);
+extern BOOL DllMainXrCore(HANDLE hinstDLL, DWORD ul_reason_for_call, LPVOID lpvReserved);
+extern BOOL DllMainXrPhysics(HANDLE hModule, DWORD ul_reason_for_call, LPVOID lpReserved);
+
+//extern BOOL DllMainXrGame(HANDLE hModule, u32 ul_reason_for_call, LPVOID lpReserved);
+//
+//extern BOOL DllMainXrRenderR1(HANDLE hModule, DWORD  ul_reason_for_call, LPVOID lpReserved);
+//extern BOOL DllMainXrRenderR2(HANDLE hModule, DWORD  ul_reason_for_call, LPVOID lpReserved);
+//extern BOOL DllMainXrRenderR3(HANDLE hModule, DWORD  ul_reason_for_call, LPVOID lpReserved);
+//extern BOOL DllMainXrRenderR4(HANDLE hModule, DWORD  ul_reason_for_call, LPVOID lpReserved);
+
 int APIENTRY WinMain(HINSTANCE hInstance,
                      HINSTANCE hPrevInstance,
                      char* lpCmdLine,
                      int nCmdShow)
 {
-    //FILE* file = 0;
-    //fopen_s ( &file, "z:\\development\\call_of_prypiat\\resources\\gamedata\\shaders\\r3\\objects\\r4\\accum_sun_near_msaa_minmax.ps\\2048__1___________4_11141_", "rb" );
-    //u32 const file_size = 29544;
-    //char* buffer = (char*)malloc(file_size);
-    //fread ( buffer, file_size, 1, file );
-    //fclose ( file );
+	DllMainOpenAL32(NULL, DLL_PROCESS_ATTACH, NULL);
+	DllMainXrCore(NULL, DLL_PROCESS_ATTACH, NULL);
+	DllMainXrPhysics(NULL, DLL_PROCESS_ATTACH, NULL);
 
-    //u32 const& crc = *(u32*)buffer;
-
-    //boost::crc_32_type processor;
-    //processor.process_block ( buffer + 4, buffer + file_size );
-    //u32 const new_crc = processor.checksum( );
-    //VERIFY ( new_crc == crc );
-
-    //free (buffer);
+	DllMainXrCore(NULL, DLL_THREAD_ATTACH, NULL);
 
     __try
     {
@@ -960,12 +1173,16 @@ int APIENTRY WinMain(HINSTANCE hInstance,
         FATAL("stack overflow");
     }
 
+	DllMainXrPhysics(NULL, DLL_PROCESS_DETACH, NULL);
+	DllMainXrCore(NULL, DLL_PROCESS_DETACH, NULL);
+	DllMainOpenAL32(NULL, DLL_PROCESS_DETACH, NULL);
+
     return (0);
 }
 
 LPCSTR _GetFontTexName(LPCSTR section)
 {
-    static char* tex_names[] = {"texture800", "texture", "texture1600"};
+	static char* tex_names[] = {"texture800", "texture", "texture1600", "texture2160"};
     int def_idx = 1;//default 1024x768
     int idx = def_idx;
 
@@ -980,7 +1197,8 @@ LPCSTR _GetFontTexName(LPCSTR section)
 
     if (h <= 600) idx = 0;
     else if (h < 1024) idx = 1;
-    else idx = 2;
+	else if (h < 1440) idx = 2;
+	else idx = 3;
 #endif
 
     while (idx >= 0)
@@ -1273,7 +1491,7 @@ void CApplication::LoadStage()
     phase_timer.Start();
     Msg("* phase cmem: %lld K", Memory.mem_usage() / 1024);
 
-    if (g_pGamePersistent->GameType() == 1 && strstr(Core.Params, "alife"))
+	if (g_pGamePersistent->GameType() == 1 && !xr_strcmp(g_pGamePersistent->m_game_params.m_alife, "alife"))
         max_load_stage = 17;
     else
         max_load_stage = 14;

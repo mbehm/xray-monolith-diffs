@@ -9,6 +9,8 @@
 #include <direct.h>
 #include <fcntl.h>
 #include <sys\stat.h>
+#define _SILENCE_EXPERIMENTAL_FILESYSTEM_DEPRECATION_WARNING
+#include <experimental\filesystem>
 #pragma warning(default:4995)
 
 #include "FS_internal.h"
@@ -32,6 +34,8 @@ CLocatorAPI* xr_FS = NULL;
 #else
 # define FSLTX "fsgame.ltx"
 #endif
+
+std::experimental::filesystem::path fsRoot;
 
 struct _open_file
 {
@@ -246,14 +250,15 @@ void CLocatorAPI::Register(LPCSTR name, u32 vfs, u32 crc, u32 ptr, u32 size_real
     xr_strcpy(temp, sizeof(temp), desc.name);
     string_path path;
     string_path folder;
-    while (temp[0])
+	u32 vfs_id = vfs;
+	while (temp[0] && temp[1])
     {
         _splitpath(temp, path, folder, 0, 0);
         xr_strcat(path, folder);
         if (!exist(path))
         {
             desc.name = xr_strdup(path);
-            desc.vfs = 0xffffffff;
+			desc.vfs = vfs_id;
             desc.ptr = 0;
             desc.size_real = 0;
             desc.size_compressed = 0;
@@ -262,8 +267,9 @@ void CLocatorAPI::Register(LPCSTR name, u32 vfs, u32 crc, u32 ptr, u32 size_real
 
             R_ASSERT(I.second);
         }
-        xr_strcpy(temp, sizeof(temp), folder);
+		xr_strcpy(temp, sizeof(temp), path);
         if (xr_strlen(temp)) temp[xr_strlen(temp) - 1] = 0;
+		vfs_id = 0xffffffff;
     }
 }
 
@@ -631,7 +637,7 @@ bool CLocatorAPI::Recurse(const char* path)
 bool file_handle_internal(LPCSTR file_name, u32& size, int& file_handle);
 void* FileDownload(LPCSTR file_name, const int& file_handle, u32& file_size);
 
-void CLocatorAPI::setup_fs_path(LPCSTR fs_name, string_path& fs_path)
+/*void CLocatorAPI::setup_fs_path(LPCSTR fs_name, string_path& fs_path)
 {
     xr_strcpy(fs_path, fs_name ? fs_name : "");
     LPSTR slash = strrchr(fs_path, '\\');
@@ -644,63 +650,85 @@ void CLocatorAPI::setup_fs_path(LPCSTR fs_name, string_path& fs_path)
     }
 
     *(slash + 1) = 0;
+}*/
+
+static void searchForFsltx(const char* fs_name, string_path& fsltxPath)
+{
+	//#TODO: Update code, when std::filesystem is out (not much work, standards don't change dramatically)
+	const char* realFsltxName = nullptr;
+	if (fs_name)
+	{
+		realFsltxName = fs_name;
+	}
+	else
+	{
+		realFsltxName = FSLTX;
 }
 
-void CLocatorAPI::setup_fs_path(LPCSTR fs_name)
+	//try in working dir
+	if (std::experimental::filesystem::exists(realFsltxName))
 {
-    string_path fs_path;
-    setup_fs_path(fs_name, fs_path);
+		xr_strcpy(fsltxPath, realFsltxName);
+		return;
+	}
 
+	auto tryPathFunc = [realFsltxName](std::experimental::filesystem::path possibleLocationFsltx,
+	                                   string_path& fsltxPath) -> bool
+	{
+		possibleLocationFsltx.append(realFsltxName);
 
-    string_path full_current_directory;
-    _fullpath(full_current_directory, fs_path, sizeof(full_current_directory));
+		if (std::experimental::filesystem::exists(possibleLocationFsltx))
+		{
+			xr_strcpy(fsltxPath, possibleLocationFsltx.generic_string().c_str());
+			return true;
+		}
+		return false;
+	};
 
-    FS_Path* path = xr_new<FS_Path>(full_current_directory, "", "", "", 0);
-#ifdef DEBUG
-    Msg("$fs_root$ = %s", full_current_directory);
-#endif // #ifdef DEBUG
+	//try parent directory
+	if (tryPathFunc("../", fsltxPath)) return;
 
-    pathes.insert(
-        std::make_pair(
-        xr_strdup("$fs_root$"),
-        path
-        )
-        );
+	//same for application path (fix for launching the game from discord)
+	if (tryPathFunc(Core.ApplicationPath, fsltxPath)) return;
+
+	//parent directory again
+	std::experimental::filesystem::path test_path;
+	test_path.assign(Core.ApplicationPath);
+	test_path.append("../");
+
+	if (tryPathFunc(test_path, fsltxPath)) return;
 }
 
 IReader* CLocatorAPI::setup_fs_ltx(LPCSTR fs_name)
 {
-    setup_fs_path(fs_name);
+	string_path fs_path;
+	memset(fs_path, 0, sizeof(fs_path));
+	searchForFsltx(fs_name, fs_path);
+	CHECK_OR_EXIT(fs_path[0] != 0,
+	              make_string("Cannot find fsltx file: \"%s\"\nCheck your working directory", fs_name));
+	xr_strlwr(fs_path);
+	fsRoot = fs_path;
+	fsRoot = std::experimental::filesystem::absolute(fsRoot);
+	fsRoot = fsRoot.parent_path();
 
-    // if (m_Flags.is(flTargetFolderOnly)) {
-    // append_path ("$fs_root$", "", 0, FALSE);
-    // return (0);
-    // }
-
-    LPCSTR fs_file_name = FSLTX;
-    if (fs_name && *fs_name)
-        fs_file_name = fs_name;
-
-    Log("using fs-ltx", fs_file_name);
+	Msg("using fs-ltx %s", fs_path);
 
     int file_handle;
     u32 file_size;
-    IReader* result = 0;
-    CHECK_OR_EXIT(
-        file_handle_internal(fs_file_name, file_size, file_handle),
-        make_string("Cannot open file \"%s\".\nCheck your working folder.", fs_file_name)
-        );
+	IReader* result = nullptr;
+	CHECK_OR_EXIT(file_handle_internal(fs_path, file_size, file_handle),
+	              make_string("Cannot open file \"%s\".\nCheck your working folder.", fs_name));
 
-    void* buffer = FileDownload(fs_file_name, file_handle, file_size);
-    result = xr_new<CTempReader>(buffer, file_size, 0);
+	void* buffer = FileDownload(fs_path, file_handle, file_size);
+	result = new CTempReader(buffer, (int)file_size, 0);
 
 #ifdef DEBUG
     if (result && m_Flags.is(flBuildCopy | flReady))
-        copy_file_to_build(result, fs_file_name);
+		copy_file_to_build(result, fs_path);
 #endif // DEBUG
 
     if (m_Flags.test(flDumpFileActivity))
-        _register_open_file(result, fs_file_name);
+		_register_open_file(result, fs_path);
 
     return (result);
 }
@@ -722,7 +750,7 @@ void CLocatorAPI::_initialize(u32 flags, LPCSTR target_folder, LPCSTR fs_name)
 
     // append application path
     if (m_Flags.is(flScanAppRoot))
-        append_path("$app_root$", Core.ApplicationPath, 0, FALSE);
+		append_path("$app_root$", Core.ApplicationPath, nullptr, FALSE);
 
 
     //-----------------------------------------------------------
@@ -730,39 +758,14 @@ void CLocatorAPI::_initialize(u32 flags, LPCSTR target_folder, LPCSTR fs_name)
     // target folder
     if (m_Flags.is(flTargetFolderOnly))
     {
-        append_path("$target_folder$", target_folder, 0, TRUE);
+		append_path("$target_folder$", target_folder, nullptr, TRUE);
     }
     else
     {
         IReader* pFSltx = setup_fs_ltx(fs_name);
-        /*
-         LPCSTR fs_ltx = (fs_name&&fs_name[0])?fs_name:FSLTX;
-         F = r_open(fs_ltx);
-         if (!F&&m_Flags.is(flScanAppRoot))
-         F = r_open("$app_root$",fs_ltx);
-
-         if (!F)
-         {
-         string_path tmpAppPath = "";
-         xr_strcpy(tmpAppPath,sizeof(tmpAppPath), Core.ApplicationPath);
-         if (xr_strlen(tmpAppPath))
-         {
-         tmpAppPath[xr_strlen(tmpAppPath)-1] = 0;
-         if (strrchr(tmpAppPath, '\\'))
-         *(strrchr(tmpAppPath, '\\')+1) = 0;
-
-         FS_Path* pFSRoot = FS.get_path("$fs_root$");
-         pFSRoot->_set_root (tmpAppPath);
-         rescan_path (pFSRoot->m_Path, pFSRoot->m_Flags.is(FS_Path::flRecurse));
-         }
-         F = r_open("$fs_root$",fs_ltx);
-         }
-
-         Log ("using fs-ltx",fs_ltx);
-         */
         // append all pathes
         string_path id, root, add, def, capt;
-        LPCSTR lp_add, lp_def, lp_capt;
+		const char *lp_add, *lp_def, *lp_capt;
         string16 b_v;
         string4096 temp;
 
@@ -795,30 +798,39 @@ void CLocatorAPI::_initialize(u32 flags, LPCSTR target_folder, LPCSTR fs_name)
             _GetItem(temp, 5, capt, _delimiter);
             xr_strlwr(id);
 
-
             xr_strlwr(root);
-            lp_add = (cnt >= 4) ? xr_strlwr(add) : 0;
-            lp_def = (cnt >= 5) ? def : 0;
-            lp_capt = (cnt >= 6) ? capt : 0;
+			lp_add = (cnt >= 4) ? xr_strlwr(add) : nullptr;
+			lp_def = (cnt >= 5) ? def : nullptr;
+			lp_capt = (cnt >= 6) ? capt : nullptr;
 
-            PathPairIt p_it = pathes.find(root);
+			auto p_it = pathes.find(root);
 
-            std::pair<PathPairIt, bool> I;
-            FS_Path* P = xr_new<FS_Path>((p_it != pathes.end()) ? p_it->second->m_Path : root, lp_add, lp_def, lp_capt, fl);
+			if (p_it == pathes.end() && xr_strcmp(root, "$fs_root$") == 0)
+			{
+				//Old good fsltx
+				//replace root with predefined path
+				//xr_strcpy(root, fsRoot.generic_string().c_str());
+				FS_Path* P = new FS_Path(xr_strdup(fsRoot.generic_string().c_str()), nullptr, nullptr, nullptr, 0);
+				pathes.insert(std::make_pair(xr_strdup("$fs_root$"), P));
+				p_it = pathes.find(root);
+			}
+
+			FS_Path* P = new FS_Path((p_it != pathes.end()) ? p_it->second->m_Path : root, lp_add, lp_def, lp_capt, fl);
             bNoRecurse = !(fl&FS_Path::flRecurse);
             Recurse(P->m_Path);
-            I = pathes.insert(mk_pair(xr_strdup(id), P));
+			auto I = pathes.insert(std::make_pair(xr_strdup(id), P));
 #ifndef DEBUG
             m_Flags.set(flCacheFiles, FALSE);
 #endif // DEBUG
 
-            CHECK_OR_EXIT(I.second, "The file 'fsgame.ltx' is corrupted (it contains duplicated lines).\nPlease reinstall the game or fix the problem manually.");
+			//CHECK_OR_EXIT		(I.second,"The file 'fsgame.ltx' is corrupted (it contains duplicated lines).\nPlease reinstall the game or fix the problem manually.");
         }
         r_close(pFSltx);
         R_ASSERT(path_exist("$app_data_root$"));
     };
 
 
+	Msg("File System Ready...");
 	size_t M2 = Memory.mem_usage();
     Msg("FS: %d files cached %d archives, %lldKb memory used.", m_files.size(), m_archives.size(), (M2 - M1) / 1024);
 
@@ -840,9 +852,6 @@ void CLocatorAPI::_initialize(u32 flags, LPCSTR target_folder, LPCSTR fs_name)
             pAppdataPath->_set_root(c_newAppPathRoot);
             rescan_path(pAppdataPath->m_Path, pAppdataPath->m_Flags.is(FS_Path::flRecurse));
         }
-
-        int x = 0;
-        x = x;
     }
 
     rec_files.clear();
@@ -1320,6 +1329,8 @@ bool CLocatorAPI::check_for_file(LPCSTR path, LPCSTR _fname, string_path& fname,
     return (true);
 }
 
+#include "..\xrGame\Actor_Flags.h"
+
 template <typename T>
 T* CLocatorAPI::r_open_impl(LPCSTR path, LPCSTR _fname)
 {
@@ -1329,7 +1340,11 @@ T* CLocatorAPI::r_open_impl(LPCSTR path, LPCSTR _fname)
     LPCSTR source_name = &fname[0];
 
     if (!check_for_file(path, _fname, fname, desc))
+	{
+		if (m_Flags.test(flPrintLTX))
+			Log("Warning : Unable to find", _fname);
         return (0);
+	}
 
     // OK, analyse
     if (0xffffffff == desc->vfs)

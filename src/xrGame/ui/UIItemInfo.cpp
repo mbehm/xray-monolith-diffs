@@ -24,6 +24,8 @@
 #include "../ActorHelmet.h"
 #include "../eatable_item.h"
 #include "UICellItem.h"
+#include "luabind/luabind.hpp"
+#include "script_game_object.h"
 
 extern const LPCSTR g_inventory_upgrade_xml;
 
@@ -182,6 +184,45 @@ void CUIItemInfo::InitItemInfo(Fvector2 pos, Fvector2 size, LPCSTR xml_name)
     InitItemInfo			(xml_name);
 }
 
+//-- Tronex
+LPCSTR CUIItemInfo::GetItemName(CInventoryItem& pInvItem, LPCSTR m_item_name)
+{
+	luabind::functor<LPCSTR> functorGetName;
+	if (ai().script_engine().functor("ui_item.item_name", functorGetName))
+	{
+		CGameObject* GO = pInvItem.cast_game_object();
+		if (GO)
+			return functorGetName(GO->lua_game_object(), m_item_name);
+	}
+	return m_item_name;
+}
+
+LPCSTR CUIItemInfo::GetItemShortName(CInventoryItem& pInvItem, LPCSTR m_item_short_name)
+{
+	luabind::functor<LPCSTR> functorGetShortName;
+	if (ai().script_engine().functor("ui_item.item_short_name", functorGetShortName))
+	{
+		CGameObject* GO = pInvItem.cast_game_object();
+		if (GO)
+			return functorGetShortName(GO->lua_game_object(), m_item_short_name);
+	}
+	return m_item_short_name;
+}
+
+LPCSTR CUIItemInfo::GetItemDescription(CInventoryItem& pInvItem, LPCSTR m_item_description)
+{
+	luabind::functor<LPCSTR> functorGetDescription;
+	if (ai().script_engine().functor("ui_item.item_description", functorGetDescription))
+	{
+		CGameObject* GO = pInvItem.cast_game_object();
+		if (GO)
+			return functorGetDescription(GO->lua_game_object(), m_item_description);
+	}
+	return m_item_description;
+}
+
+//-- Tronex
+
 bool	IsGameTypeSingle();
 
 void CUIItemInfo::InitItem(CUICellItem* pCellItem, CInventoryItem* pCompareItem, u32 item_price, LPCSTR trade_tip)
@@ -202,7 +243,7 @@ void CUIItemInfo::InitItem(CUICellItem* pCellItem, CInventoryItem* pCompareItem,
 	string256				str;
 	if ( UIName )
 	{
-		UIName->SetText		(pInvItem->NameItem());
+		UIName->SetText(GetItemName(*pInvItem, pInvItem->NameItem())); //(pInvItem->NameItem());
 		UIName->AdjustHeightToText();
 		pos.y = UIName->GetWndPos().y + UIName->GetHeight() + 4.0f;
 	}
@@ -294,7 +335,8 @@ void CUIItemInfo::InitItem(CUICellItem* pCellItem, CInventoryItem* pCompareItem,
 			pItem->SetFont						(m_desc_info.pDescFont);
 			pItem->SetWidth						(UIDesc->GetDesiredChildWidth());
 			pItem->SetTextComplexMode			(true);
-			pItem->SetText						(*pInvItem->ItemDescription());
+			pItem->SetText(GetItemDescription(*pInvItem, *pInvItem->ItemDescription()));
+			//(*pInvItem->ItemDescription());
 			pItem->AdjustHeightToText			();
 			UIDesc->AddWindow					(pItem, true);
 		}
@@ -324,6 +366,12 @@ void CUIItemInfo::InitItem(CUICellItem* pCellItem, CInventoryItem* pCompareItem,
 	if(UIItemImage)
 	{
 		// Загружаем картинку
+		if (pSettings->line_exist(m_pInvItem->m_section_id.c_str(), "icons_texture"))
+		{
+			LPCSTR icons_texture = pSettings->r_string(m_pInvItem->m_section_id.c_str(), "icons_texture");
+			UIItemImage->SetShader(InventoryUtilities::GetCustomIconTextureShader(icons_texture));
+		}
+		else
 		UIItemImage->SetShader				(InventoryUtilities::GetEquipmentIconsShader());
 
 		Irect item_grid_rect				= pInvItem->GetInvGridRect();

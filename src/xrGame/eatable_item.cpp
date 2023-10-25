@@ -53,7 +53,7 @@ void CEatableItem::Load(LPCSTR section)
 	if (IsUsingCondition())
 	{
 		if (m_iMaxUses > 0)
-			SetCondition((float)(m_iRemainingUses / m_iMaxUses));
+			SetCondition(1);
 		else
 			SetCondition(0);
 	}
@@ -81,7 +81,7 @@ BOOL CEatableItem::net_Spawn				(CSE_Abstract* DC)
 	if (IsUsingCondition())
 	{
 		if (m_iMaxUses > 0)
-			SetCondition((float)(m_iRemainingUses / m_iMaxUses));
+			SetCondition(1);
 		else
 			SetCondition(0);
 	}
@@ -164,7 +164,7 @@ bool CEatableItem::UseBy (CEntityAlive* entity_alive)
 	if (IsUsingCondition())
 	{
 		if (m_iMaxUses > 0)
-			SetCondition((float)(m_iRemainingUses / m_iMaxUses));
+			SetCondition(1);
 		else
 			SetCondition(0);
 	}

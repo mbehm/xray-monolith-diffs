@@ -65,7 +65,7 @@ void CWrapper::setup				(CScriptGameObject *object)
 }
 
 TEMPLATE_SPECIALIZATION
-IC	_object_type &CWrapper::object	() const
+_object_type&CWrapper::object() const
 {
 	VERIFY				(m_object);
 	return				(*m_object);

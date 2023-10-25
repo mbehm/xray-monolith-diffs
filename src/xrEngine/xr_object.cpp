@@ -147,11 +147,27 @@ void CObject::setVisible(BOOL _visible)
 }
 
 //void CObject::Center (Fvector& C) const { VERIFY2(renderable.visual,*cName()); renderable.xform.transform_tiny(C,renderable.visual->vis.sphere.P); }
-void CObject::Center(Fvector& C) const { VERIFY2(renderable.visual, *cName()); renderable.xform.transform_tiny(C, renderable.visual->getVisData().sphere.P); }
+void CObject::Center(Fvector& C) const
+{
+	VERIFY2(renderable.visual, *cName());
+	if (renderable.visual)
+		renderable.xform.transform_tiny(C, renderable.visual->getVisData().sphere.P);
+}
+
 //float CObject::Radius () const { VERIFY2(renderable.visual,*cName()); return renderable.visual->vis.sphere.R; }
-float CObject::Radius() const { VERIFY2(renderable.visual, *cName()); return renderable.visual->getVisData().sphere.R; }
+float CObject::Radius() const
+{
+	VERIFY2(renderable.visual, *cName());
+	return renderable.visual ? renderable.visual->getVisData().sphere.R : 0.0f;
+}
+
 //const Fbox& CObject::BoundingBox () const { VERIFY2(renderable.visual,*cName()); return renderable.visual->vis.box; }
-const Fbox& CObject::BoundingBox() const { VERIFY2(renderable.visual, *cName()); return renderable.visual->getVisData().box; }
+const Fbox& CObject::BoundingBox() const
+{
+	static const Fbox NULL_BOX = Fbox{}.null();
+	VERIFY2(renderable.visual, *cName());
+	return renderable.visual ? renderable.visual->getVisData().box : NULL_BOX;
+}
 
 //----------------------------------------------------------------------
 // Class : CXR_Object
@@ -163,6 +179,7 @@ CObject::CObject() :
 {
     // Transform
     Props.storage = 0;
+	setID((u16)-1);
 
     Parent = NULL;
 
@@ -217,7 +234,7 @@ BOOL CObject::net_Spawn(CSE_Abstract* data)
     {
         if (pSettings->line_exist(cNameSect(), "cform"))
         {
-            VERIFY3(*NameVisual, "Model isn't assigned for object, but cform requisted", *cName());
+			R_ASSERT3(*NameVisual, "Model isn't assigned for object, but cform requisted", *cName());
             collidable.model = xr_new<CCF_Skeleton>(this);
         }
     }
@@ -446,7 +463,11 @@ void CObject::setDestroy(BOOL _destroy)
 #endif //#ifdef MP_LOGGING
     }
     else
+	{
+#ifdef DEBUG
         VERIFY(!g_pGameLevel->Objects.registered_object_to_destroy(this));
+#endif
+	}
 }
 
 Fvector CObject::get_new_local_point_on_mesh(u16& bone_id) const

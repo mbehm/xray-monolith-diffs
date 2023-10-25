@@ -236,8 +236,7 @@ struct CWrapperAbstractItem : public T, public luabind::wrap_base {
 	DEFINE_LUABIND_VIRTUAL_FUNCTION_EXPLICIT_CONST_0(a,b,can_switch_offline,bool) \
 	DEFINE_LUABIND_VIRTUAL_FUNCTION_EXPLICIT_CONST_0(a,b,interactive,bool) \
 	DEFINE_LUABIND_VIRTUAL_FUNCTION(a,b,used_ai_locations	) \
-	DEFINE_LUABIND_VIRTUAL_FUNCTION(a,b,can_save			) \
-
+	DEFINE_LUABIND_VIRTUAL_FUNCTION(a,b,can_save			)
 #ifdef XRGAME_EXPORTS
 #	define luabind_virtual_dynamic_alife(a,b) \
 	DEFINE_LUABIND_VIRTUAL_FUNCTION(a,b,on_spawn			) \

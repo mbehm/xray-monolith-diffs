@@ -179,8 +179,17 @@ public:
         SM_FOR_MPSENDING = 4,
         SM_forcedword = u32(-1)
     };
+
+	enum RRT
+	{
+		rtPDA = 1,
+		rtSVP,
+	};
+
+
 public:
     // options
+	bool hud_loading;
     s32 m_skinning;
     s32 m_MSAASample;
 
@@ -244,12 +253,16 @@ public:
     // virtual void add_StaticWallmark (ref_shader& S, const Fvector& P, float s, CDB::TRI* T, Fvector* V)=0;
     virtual void add_StaticWallmark(const wm_shader& S, const Fvector& P, float s, CDB::TRI* T, Fvector* V) = 0;
     // Prefer this function when possible
-    virtual void add_StaticWallmark(IWallMarkArray* pArray, const Fvector& P, float s, CDB::TRI* T, Fvector* V) = 0;
+	virtual void add_StaticWallmark(IWallMarkArray* pArray, const Fvector& P, float s, CDB::TRI* T, Fvector* V, float ttl = 0.f, bool ignore_opt = false, bool random_rotation = true) = 0;
+
+	// demonized: add user defined rotation to wallmark
+	virtual void add_StaticWallmark(IWallMarkArray* pArray, const Fvector& P, float s, CDB::TRI* T, Fvector* V, float ttl, bool ignore_opt, float rotation) = 0;
     virtual void clear_static_wallmarks() = 0;
     //virtual void add_SkeletonWallmark (intrusive_ptr<CSkeletonWallmark> wm) = 0;
     //virtual void add_SkeletonWallmark (const Fmatrix* xf, CKinematics* obj, ref_shader& sh, const Fvector& start, const Fvector& dir, float size)=0;
     // Prefer this function when possible
-    virtual void add_SkeletonWallmark(const Fmatrix* xf, IKinematics* obj, IWallMarkArray* pArray, const Fvector& start, const Fvector& dir, float size) = 0;
+	virtual void add_SkeletonWallmark(const Fmatrix* xf, IKinematics* obj, IWallMarkArray* pArray, const Fvector& start,
+	                                  const Fvector& dir, float size, float ttl = 0.f, bool ignore_opt = false) = 0;
 
     //virtual IBlender* blender_create (CLASS_ID cls) = 0;
     //virtual void blender_destroy (IBlender* &) = 0;
@@ -276,6 +289,7 @@ public:
     // virtual void model_Delete (IRender_DetailModel* & F) = 0;
     virtual void model_Logging(BOOL bEnable) = 0;
     virtual void models_Prefetch() = 0;
+	virtual void models_PrefetchOne(LPCSTR name) = 0;
     virtual void models_Clear(BOOL b_complete) = 0;
 
     // Occlusion culling
@@ -292,12 +306,22 @@ public:
     virtual void ScreenshotAsyncBegin() = 0;
     virtual void ScreenshotAsyncEnd(CMemoryWriter& memory_writer) = 0;
 
+	// Particles
+	virtual void ExportParticles()
+	{
+	}
+
+	virtual void ImportParticles()
+	{
+	}
+
     // Render mode
     virtual void rmNear() = 0;
     virtual void rmFar() = 0;
     virtual void rmNormal() = 0;
     virtual u32 memory_usage() = 0;
     virtual u32 active_phase() = 0; //Swartz: actor shadow
+	virtual void RenderToTarget(RRT target) = 0;
     // Constructor/destructor
     virtual ~IRender_interface();
 protected:

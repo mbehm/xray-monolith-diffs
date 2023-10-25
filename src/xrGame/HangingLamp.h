@@ -27,6 +27,8 @@ private:
 	ref_light		light_render;
 	ref_light		light_ambient;
 	CLAItem*		lanim;
+	LPCSTR def_lanim;
+	Fcolor def_clr;
 	float			ambient_power;
 	BOOL			m_bState;
 	
@@ -38,13 +40,21 @@ private:
 	void			Init();
 	void			RespawnInit		();
 	bool			Alive			(){return fHealth>0.f;}
-
+	bool NeedUpdate;
+	bool isFlickering;
+	float lastFlicker;
+	int l_flickerChance;
+	float l_flickerDelay;
 
 public:
 					CHangingLamp	();
 	virtual			~CHangingLamp	();
+	void SetLanim(LPCSTR name, bool bFlicker, int flickerChance, float flickerDelay, float framerate);
+	void ResetLanim();
 	void			TurnOn			();
 	void			TurnOff			();
+	bool IsOn() { return m_bState; }
+	bool IsFlickering() { return isFlickering; }
 	virtual void	Load			( LPCSTR section);
 	virtual BOOL	net_Spawn		( CSE_Abstract* DC);
 	virtual void	net_Destroy		();

@@ -38,8 +38,21 @@ IC static void generate_orthonormal_basis1(const Fvector& dir,Fvector& updir, Fv
 void CActor::g_cl_ValidateMState(float dt, u32 mstate_wf)
 {
 	// Lookout
-	if (mstate_wf&mcLookout)	mstate_real		|= mstate_wf&mcLookout;
-	else						mstate_real		&= ~mcLookout;
+	if (((mstate_wf & mcLLookout) && (mstate_wf & mcRLookout)) || ((mstate_real & mcLLookout) && (mstate_real & mcRLookout)))
+	{
+		// It's impossible to perform right and left lookouts in the same time
+		mstate_real &= ~mcLookout;
+	}
+	else if (mstate_wf & mcLookout)
+	{
+		// Activate one of lookouts
+		mstate_real |= mstate_wf & mcLookout;
+	}
+	else
+	{
+		// No lookouts needed
+		mstate_real &= ~mcLookout;
+	}
 	
 	if (mstate_real&(mcJump|mcFall|mcLanding|mcLanding2))
 		mstate_real		&= ~mcLookout;
@@ -64,6 +77,10 @@ void CActor::g_cl_ValidateMState(float dt, u32 mstate_wf)
 					mstate_real		|= mcLanding2;
 				}
 			}
+
+			luabind::functor<bool> on_land;
+			if (ai().script_engine().functor("_G.CActor_on_land", on_land))
+				on_land(character_physics_support()->movement()->GetContactSpeed());
 		}
 		m_bJumpKeyPressed	=	TRUE;
 		m_fJumpTime			=	s_fJumpTime;
@@ -73,7 +90,8 @@ void CActor::g_cl_ValidateMState(float dt, u32 mstate_wf)
 		m_bJumpKeyPressed	=	FALSE;
 
 	// «ажало-ли мен€/уперс€ - не двигаюсь
-	if (((character_physics_support()->movement()->GetVelocityActual()<0.2f)&&(!(mstate_real&(mcFall|mcJump)))) || character_physics_support()->movement()->bSleep) 
+	if (((character_physics_support()->movement()->GetVelocityActual() < 0.2f) && (!(mstate_real & (mcFall | mcJump | mcLanding | mcLanding2)) || (!(mstate_real & mcClimb) && character_physics_support()->movement()->Environment() == CPHMovementControl::peAtWall)))
+		|| character_physics_support()->movement()->bSleep)
 	{
 		mstate_real				&=~ mcAnyMove;
 	}
@@ -124,7 +142,7 @@ void CActor::g_cl_ValidateMState(float dt, u32 mstate_wf)
 
 		if (bOnClimbNow != bOnClimbOld )
 		{
-			SetWeaponHideState		(INV_STATE_LADDER, bOnClimbNow );
+			SetWeaponHideState(/*INV_STATE_LADDER*/ INV_STATE_BLOCK_ALL, bOnClimbNow);
 		};
 	};
 };
@@ -158,8 +176,8 @@ void CActor::g_cl_CheckControls(u32 mstate_wf, Fvector &vControlAccel, float &Ju
 	// update player accel
 	if (mstate_wf&mcFwd)		vControlAccel.z +=  1;
 	if (mstate_wf&mcBack)		vControlAccel.z += -1;
-	if (mstate_wf&mcLStrafe)	vControlAccel.x += -1;
-	if (mstate_wf&mcRStrafe)	vControlAccel.x +=  1;
+	if (mstate_wf & mcLStrafe) mstate_wf & mcSprint ? vControlAccel.x += -0.5 : vControlAccel.x += -1;
+	if (mstate_wf & mcRStrafe) mstate_wf & mcSprint ? vControlAccel.x += 0.5 : vControlAccel.x += 1;
 
 	CPHMovementControl::EEnvironment curr_env = character_physics_support()->movement()->Environment();
 	if(curr_env==CPHMovementControl::peOnGround || curr_env==CPHMovementControl::peAtWall)
@@ -194,6 +212,9 @@ void CActor::g_cl_CheckControls(u32 mstate_wf, Fvector &vControlAccel, float &Ju
 			Jump				= m_fJumpSpeed;
 			m_fJumpTime			= s_fJumpTime;
 
+			luabind::functor<bool> on_jump;
+			if (ai().script_engine().functor("_G.CActor_on_jump", on_jump))
+				on_jump();
 
 			//уменьшить силу игрока из-за выполненого прыжка
 			if (!GodMode())
@@ -228,9 +249,11 @@ void CActor::g_cl_CheckControls(u32 mstate_wf, Fvector &vControlAccel, float &Ju
 			mstate_real|=mcSprint;
 		else
 			mstate_real&=~mcSprint;
-		if(!(mstate_real&(mcFwd|mcLStrafe|mcRStrafe))||mstate_real&(mcCrouch|mcClimb)|| !isActorAccelerated(mstate_wf, IsZoomAimingMode()))
+		if (!(mstate_real & (mcFwd)) || mstate_real & (mcCrouch | mcClimb) || !isActorAccelerated(
+			mstate_wf, IsZoomAimingMode()))
 		{
 			mstate_real&=~mcSprint;
+			if (!(mstate_real & (mcCrouch) && !(mstate_wf & mcCrouch)))
 			mstate_wishful&=~mcSprint;
 		}
 				
@@ -248,7 +271,7 @@ void CActor::g_cl_CheckControls(u32 mstate_wf, Fvector &vControlAccel, float &Ju
 			if(scale>EPS)	
 			{
 				scale	=	m_fWalkAccel/scale;
-				if (bAccelerated)
+				if (bAccelerated && !IsZoomAimingMode())
 					if (mstate_real&mcBack)
 						scale *= m_fRunBackFactor;
 					else
@@ -265,7 +288,9 @@ void CActor::g_cl_CheckControls(u32 mstate_wf, Fvector &vControlAccel, float &Ju
 
 				if (mstate_real&(mcLStrafe|mcRStrafe) && !(mstate_real&mcCrouch))
 				{
-					if (bAccelerated)
+					if (mstate_real & mcSprint)
+						scale *= m_fSprint_StrafeFactor;
+					else if (bAccelerated)
 						scale *= m_fRun_StrafeFactor;
 					else
 						scale *= m_fWalk_StrafeFactor;
@@ -297,8 +322,11 @@ void CActor::g_cl_CheckControls(u32 mstate_wf, Fvector &vControlAccel, float &Ju
 		state_anm					= "move_back";
 
 		if(state_anm)
-		{ //play moving cam effect
+		{
+			//play moving cam effect
 			CActor*	control_entity		= static_cast_checked<CActor*>(Level().CurrentControlEntity());
+			if (control_entity)
+			{
 			R_ASSERT2					(control_entity, "current control entity is NULL");
 			CEffectorCam* ec			= control_entity->Cameras().GetCamEffector(eCEActorMoving);
 			if(NULL==ec)
@@ -322,6 +350,7 @@ void CActor::g_cl_CheckControls(u32 mstate_wf, Fvector &vControlAccel, float &Ju
 				}
 			}
 		}
+	}
 	}
 	//transform local dir to world dir
 	Fmatrix				mOrient;
@@ -389,11 +418,15 @@ void CActor::g_Orientate	(u32 mstate_rl, float dt)
 	{
 		tgt_roll		=	(mstate_rl&mcLLookout)?-ACTOR_LLOOKOUT_ANGLE:ACTOR_RLOOKOUT_ANGLE;
 		
+		// demonized: add lookout modifier
+		tgt_roll *= m_fLookoutFactor;
+
 		if( (mstate_rl&mcLLookout) && (mstate_rl&mcRLookout) )
 			tgt_roll	= 0.0f;
 	}
-	if (!fsimilar(tgt_roll,r_torso_tgt_roll,EPS)){
-		angle_lerp		(r_torso_tgt_roll,tgt_roll,PI_MUL_2,dt);
+	if (!fsimilar(tgt_roll, r_torso_tgt_roll, EPS))
+	{
+		r_torso_tgt_roll = angle_inertion_var(r_torso_tgt_roll, tgt_roll, 0.f, CurrentHeight * PI_MUL_2, PI_DIV_2, dt);
 		r_torso_tgt_roll= angle_normalize_signed(r_torso_tgt_roll);
 	}
 }
@@ -447,8 +480,19 @@ void CActor::g_cl_Orientate	(u32 mstate_rl, float dt)
 	// capture camera into torso (only for FirstEye & LookAt cameras)
 	if (eacFreeLook!=cam_active)
 	{
+		if (cam_freelook == eflDisabled)
+		{
 		r_torso.yaw		=	cam_Active()->GetWorldYaw	();
 		r_torso.pitch	=	cam_Active()->GetWorldPitch	();
+	}
+	else
+	{
+			CCameraBase* C = cam_Active();
+			r_torso.yaw = angle_lerp(cam_Active()->GetWorldYaw(), -old_torso_yaw, freelook_cam_control);
+			float old_pitch = cam_Active()->GetWorldPitch();
+			float new_pitch = old_pitch > 0.f ? old_pitch * .6f : old_pitch *.8f;
+			r_torso.pitch = angle_lerp(old_pitch, new_pitch, freelook_cam_control);
+		}
 	}
 	else
 	{
@@ -470,13 +514,17 @@ void CActor::g_cl_Orientate	(u32 mstate_rl, float dt)
 	}
 	
 	// если есть движение - выровн€ть модель по камере
-	if (mstate_rl&mcAnyMove)	{
+	if (mstate_rl & mcAnyMove)
+	{
 		r_model_yaw		= angle_normalize(r_torso.yaw);
 		mstate_real		&=~mcTurn;
-	} else {
+	}
+	else
+	{
 		// if camera rotated more than 45 degrees - align model with it
 		float ty = angle_normalize(r_torso.yaw);
-		if (_abs(r_model_yaw-ty)>PI_DIV_4)	{
+		if (_abs(r_model_yaw - ty) > PI_DIV_4 - 30)
+		{
 			r_model_yaw_dest = ty;
 			// 
 			mstate_real	|= mcTurn;
@@ -545,9 +593,11 @@ bool CActor::CanSprint()
 	bool can_Sprint = CanAccelerate() && !conditions().IsCantSprint() &&
 						Game().PlayerCanSprint(this)
 						&& CanRun()
-						&& !(mstate_real&mcLStrafe || mstate_real&mcRStrafe)
-						&& InventoryAllowSprint()
-						;
+		/*&& !(mstate_real&mcLStrafe || mstate_real&mcRStrafe)*/
+		&& InventoryAllowSprint();
+
+	if ((mstate_real & mcLStrafe || mstate_real & mcRStrafe) && !(mstate_real & mcFwd))
+		can_Sprint = false;
 
 	return can_Sprint && (m_block_sprint_counter<=0);
 }
@@ -619,15 +669,23 @@ float CActor::MaxWalkWeight() const
 	max_w      += get_additional_weight();
 	return max_w;
 }
+
 #include "artefact.h"
+#include "ActorBackpack.h"
+
 float CActor::get_additional_weight() const
 {
-	float res = 0.0f ;
+	float res = conditions().GetCarryWeightBoost();
+
 	CCustomOutfit* outfit	= GetOutfit();
 	if ( outfit )
-	{
+
 		res				+= outfit->m_additional_weight;
-	}
+
+
+	CBackpack* pBackpack = smart_cast<CBackpack*>(inventory().ItemFromSlot(BACKPACK_SLOT));
+	if (pBackpack)
+		res += pBackpack->m_additional_weight;
 
 	for(TIItemContainer::const_iterator it = inventory().m_belt.begin(); 
 		inventory().m_belt.end() != it; ++it) 

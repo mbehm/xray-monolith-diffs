@@ -60,6 +60,11 @@ void CUIHudStatesWnd::reset_ui()
 	{
 		Level().hud_zones_list->clear();
 	}
+
+	for (int i = 0; i < ALife::infl_max_count; ++i)
+	{
+		m_zone_cur_power[i] = 0.f;
+	}
 }
 
 ALife::EInfluenceType CUIHudStatesWnd::get_indik_type( ALife::EHitType hit_type )
@@ -98,7 +103,11 @@ void CUIHudStatesWnd::InitFromXml( CUIXml& xml, LPCSTR path )
 
 	m_back            = UIHelper::CreateStatic( xml, "back", this );
 	m_ui_health_bar   = UIHelper::CreateProgressBar( xml, "progress_bar_health", this );
+	m_ui_health_bar_show = true;
 	m_ui_stamina_bar  = UIHelper::CreateProgressBar( xml, "progress_bar_stamina", this );
+	m_ui_stamina_bar_show = true;
+	m_ui_psy_bar = UIHelper::CreateProgressBar(xml, "progress_bar_psy", this);
+	m_ui_psy_bar_show = true;
 //	m_back_v          = UIHelper::CreateStatic( xml, "back_v", this );
 //	m_static_armor    = UIHelper::CreateStatic( xml, "static_armor", this );
 	
@@ -242,6 +251,14 @@ void CUIHudStatesWnd::UpdateHealth( CActor* actor )
 //		m_timer_1sec = Device.dwTimeGlobal;
 //	}
 	
+	// Health bar
+	if (m_ui_health_bar_show == false)
+	{
+		if (m_ui_health_bar->IsShown())
+			m_ui_health_bar->Show(false);
+	}
+	else
+	{
 	float cur_health = actor->GetfHealth();
 	m_ui_health_bar->SetProgressPos(iCeil(cur_health * 100.0f * 35.f) / 35.f);
 	if ( _abs(cur_health - m_last_health) > m_health_blink )
@@ -249,12 +266,42 @@ void CUIHudStatesWnd::UpdateHealth( CActor* actor )
 		m_last_health = cur_health;
 		m_ui_health_bar->m_UIProgressItem.ResetColorAnimation();
 	}
+		if (!m_ui_health_bar->IsShown())
+			m_ui_health_bar->Show(true);
+	}
 	
+	// Stamina bar
+	if (m_ui_stamina_bar_show == false)
+	{
+		if (m_ui_stamina_bar->IsShown())
+			m_ui_stamina_bar->Show(false);
+	}
+	else
+	{
 	float cur_stamina = actor->conditions().GetPower();
+		clamp(cur_stamina, 0.0f, 1.0f);
 	m_ui_stamina_bar->SetProgressPos(iCeil(cur_stamina * 100.0f * 35.f) / 35.f);
 	if ( !actor->conditions().IsCantSprint() )
 	{
 		m_ui_stamina_bar->m_UIProgressItem.ResetColorAnimation();
+	}
+		if (!m_ui_stamina_bar->IsShown())
+			m_ui_stamina_bar->Show(true);
+	}
+
+	// Psy bar
+	if (m_ui_psy_bar_show == false)
+	{
+		if (m_ui_psy_bar->IsShown())
+			m_ui_psy_bar->Show(false);
+	}
+	else
+	{
+		float cur_psy = actor->conditions().GetPsyBar();
+		clamp(cur_psy, 0.0f, 1.0f);
+		m_ui_psy_bar->SetProgressPos(iCeil(cur_psy * 100.0f * 35.f) / 35.f);
+		if (!m_ui_psy_bar->IsShown())
+			m_ui_psy_bar->Show(true);
 	}
 
 /*
@@ -394,6 +441,14 @@ void CUIHudStatesWnd::SetAmmoIcon(const shared_str& sect_name)
 	m_ui_weapon_icon->GetUIStaticItem().SetTextureRect(texture_rect);
 	m_ui_weapon_icon->SetStretchTexture(true);
 
+	if (pSettings->line_exist(sect_name, "icons_texture"))
+	{
+		LPCSTR icons_texture = pSettings->r_string(sect_name, "icons_texture");
+		m_ui_weapon_icon->SetShader(InventoryUtilities::GetCustomIconTextureShader(icons_texture));
+	}
+	else
+		m_ui_weapon_icon->SetShader(InventoryUtilities::GetEquipmentIconsShader());
+
 	float h = texture_rect.height() * 0.8f;
 	float w = texture_rect.width() * 0.8f;
 
@@ -404,9 +459,19 @@ void CUIHudStatesWnd::SetAmmoIcon(const shared_str& sect_name)
 	m_ui_weapon_icon->SetWidth( w*UI().get_current_kx() );
 	m_ui_weapon_icon->SetHeight( h );
 }
+
 // ------------------------------------------------------------------------------------------------
+#include <script_game_object.h>
+
+static float dwLastFrame;
+
 void CUIHudStatesWnd::UpdateZones()
 {
+	if (Device.dwFrame == dwLastFrame)
+		return;
+
+	dwLastFrame = Device.dwFrame;
+
 	//float actor_radia = m_actor->conditions().GetRadiation() * m_actor_radia_factor;
 	//m_radia_hit = _max( m_zone_cur_power[it_rad], actor_radia );
 
@@ -476,7 +541,7 @@ void CUIHudStatesWnd::UpdateZones()
 	}
 
 	Fvector posf; 
-	posf.set( Device.vCameraPosition );
+	posf.set(Level().CurrentControlEntity()->Position());
 	Level().hud_zones_list->feel_touch_update( posf, m_zone_feel_radius_max );
 	
 	if ( Level().hud_zones_list->m_ItemInfos.size() == 0 )
@@ -500,7 +565,7 @@ void CUIHudStatesWnd::UpdateZones()
 		}
 */
 
-		Fvector P			= Device.vCameraPosition;
+		Fvector P = Level().CurrentControlEntity()->Position();
 		P.y					-= 0.5f;
 		float dist_to_zone	= 0.0f;
 		float rad_zone		= 0.0f;
@@ -539,8 +604,13 @@ void CUIHudStatesWnd::UpdateZones()
 		if( zone_info.snd_time > zone_info.cur_period )
 		{
 			zone_info.snd_time = 0.0f;
+			luabind::functor<bool> funct;
+			if (ai().script_engine().functor("_G.CZone_Touch", funct))
+			{
+				if (funct(pZone->lua_game_object()))
 			HUD_SOUND_ITEM::PlaySound( zone_type->detect_snds, Fvector().set(0,0,0), NULL, true, false );
 		} 
+		}
 		else
 		{
 			zone_info.snd_time += Device.fTimeDelta;

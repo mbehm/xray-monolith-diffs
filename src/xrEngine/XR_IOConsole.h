@@ -169,6 +169,8 @@ protected:
     void Register_callbacks();
 
 protected:
+	void xr_stdcall Screenshot();
+
     void xr_stdcall Prev_log();
     void xr_stdcall Next_log();
     void xr_stdcall Begin_log();

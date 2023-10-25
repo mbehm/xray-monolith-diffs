@@ -53,19 +53,51 @@ cphysics_joint_scripted	*cphysics_shell_scripted::get_JointByStoreOrder( u16 idx
 	return get_script_wrapper<cphysics_joint_scripted>( *J ) ;
 }
 
+void cphysics_shell_scripted::freeze()
+{
+	u16 max_elements = get_ElementsNumber();
+	for (u16 i = 0; i < max_elements; ++i)
+	{
+		get_ElementByStoreOrder(i)->Fix();
+	}
+	physics_impl().collide_class_bits().set(2, TRUE); //cbNCStatic
+}
+
+void cphysics_shell_scripted::unfreeze()
+{
+	u16 max_elements = get_ElementsNumber();
+	for (u16 i = 0; i < max_elements; ++i)
+	{
+		get_ElementByStoreOrder(i)->ReleaseFixed();
+	}
+	physics_impl().collide_class_bits().set(2, FALSE); //cbNCStatic
+}
+
 #pragma optimize("s",on)
 void cphysics_shell_scripted::script_register( lua_State *L )
 {
 	module(L)
 		[
 			class_<cphysics_shell_scripted>("physics_shell")
-			.def("apply_force",					(void (cphysics_shell_scripted::*)(float,float,float))(&cphysics_shell_scripted::applyForce))
-			.def("get_element_by_bone_name",	(cphysics_element_scripted*(cphysics_shell_scripted::*)(LPCSTR))(&cphysics_shell_scripted::get_Element))
-			.def("get_element_by_bone_id",		(cphysics_element_scripted*(cphysics_shell_scripted::*)(u16))(&cphysics_shell_scripted::get_Element))
-			.def("get_element_by_order",		(cphysics_element_scripted*(cphysics_shell_scripted::*)(u16))(&cphysics_shell_scripted::get_ElementByStoreOrder))
+		.def("apply_force",
+		     (void (cphysics_shell_scripted::*)(float, float, float))(&cphysics_shell_scripted::applyForce))
+
+		// demonized: apply_torque
+		.def("apply_torque",
+			(void (cphysics_shell_scripted::*)(float, float, float))(&cphysics_shell_scripted::applyTorque))
+
+		.def("get_element_by_bone_name",
+		     (cphysics_element_scripted*(cphysics_shell_scripted::*)(LPCSTR))(&cphysics_shell_scripted::get_Element))
+		.def("get_element_by_bone_id",
+		     (cphysics_element_scripted*(cphysics_shell_scripted::*)(u16))(&cphysics_shell_scripted::get_Element))
+		.def("get_element_by_order",
+		     (cphysics_element_scripted*(cphysics_shell_scripted::*)(u16))(&cphysics_shell_scripted::
+			     get_ElementByStoreOrder))
 			.def("get_elements_number",			&cphysics_shell_scripted::get_ElementsNumber)
-			.def("get_joint_by_bone_name",		(cphysics_joint_scripted*(cphysics_shell_scripted::*)(LPCSTR))(&cphysics_shell_scripted::get_Joint))
-			.def("get_joint_by_bone_id",		(cphysics_joint_scripted*(cphysics_shell_scripted::*)(u16))(&cphysics_shell_scripted::get_Joint))
+		.def("get_joint_by_bone_name",
+		     (cphysics_joint_scripted*(cphysics_shell_scripted::*)(LPCSTR))(&cphysics_shell_scripted::get_Joint))
+		.def("get_joint_by_bone_id",
+		     (cphysics_joint_scripted*(cphysics_shell_scripted::*)(u16))(&cphysics_shell_scripted::get_Joint))
 			.def("get_joint_by_order",			&cphysics_shell_scripted::get_JointByStoreOrder)
 			.def("get_joints_number",			&cphysics_shell_scripted::get_JointsNumber)
 			.def("block_breaking",				&cphysics_shell_scripted::BlockBreaking)
@@ -74,37 +106,12 @@ void cphysics_shell_scripted::script_register( lua_State *L )
 			.def("is_breakable",				&cphysics_shell_scripted::isBreakable)
 			.def("get_linear_vel",				&cphysics_shell_scripted::get_LinearVel)
 			.def("get_angular_vel",				&cphysics_shell_scripted::get_AngularVel)
+		.def("freeze", &cphysics_shell_scripted::freeze)
+		.def("unfreeze", &cphysics_shell_scripted::unfreeze)
 		];
 }
-
 
 /*
-Fmatrix	global_transform(CPhysicsElement* E)
-{
-	Fmatrix m;
-	E->GetGlobalTransformDynamic(&m);
-	return m;
-}
-
-void CPhysicsElement::script_register(lua_State *L)
-{
-	module(L)
-		[
-			class_<CPhysicsElement>("physics_element")
-			.def("apply_force",					(void (CPhysicsElement::*)(float,float,float))(&CPhysicsElement::applyForce))
-			.def("is_breakable",				&CPhysicsElement::isBreakable)
-			.def("get_linear_vel",				&CPhysicsElement::get_LinearVel)
-			.def("get_angular_vel",				&CPhysicsElement::get_AngularVel)
-			.def("get_mass",					&CPhysicsElement::getMass)
-			.def("get_density",					&CPhysicsElement::getDensity)
-			.def("get_volume",					&CPhysicsElement::getVolume)
-			.def("fix",							&CPhysicsElement::Fix)
-			.def("release_fixed",				&CPhysicsElement::ReleaseFixed)
-			.def("is_fixed",					&CPhysicsElement::isFixed)
-			.def("global_transform",			&global_transform)
-		];
-}
-
 void CPhysicsJoint::script_register(lua_State *L)
 {
 	module(L)

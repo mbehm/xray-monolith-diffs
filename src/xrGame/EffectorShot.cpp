@@ -21,6 +21,11 @@ void CWeaponShotEffector::Initialize( const CameraRecoil& cam_recoil )
 	Reset();
 }
 
+void CWeaponShotEffector::UpdateCameraRecoil(const CameraRecoil& cam_recoil)
+{
+	m_cam_recoil.Clone(cam_recoil);
+}
+
 void CWeaponShotEffector::Reset()
 {
 	m_angle_vert	= 0.0f;
@@ -33,6 +38,7 @@ void CWeaponShotEffector::Reset()
 	m_delta_horz	= 0.0f;
 
 	m_LastSeed		= 0;
+	m_shot_numer = 0;
 	m_single_shot	= false;
 	m_first_shot	= false;
 	m_actived		= false;
@@ -45,13 +51,23 @@ void CWeaponShotEffector::Shot( CWeapon* weapon )
 	m_shot_numer = weapon->ShotsFired() - 1;
 	if ( m_shot_numer <= 0 )
 	{
-		m_shot_numer = 0;
+		// m_shot_numer = 0; // it's now done in Reset()
 		Reset();
 	}
 	m_single_shot = (weapon->GetCurrentFireMode() == 1);
 
-	float angle	= m_cam_recoil.Dispersion    * weapon->cur_silencer_koef.cam_dispersion;
-	angle      += m_cam_recoil.DispersionInc * weapon->cur_silencer_koef.cam_disper_inc * (float)m_shot_numer;
+	CCartridge* ammo = !weapon->m_magazine.empty() ? &weapon->m_magazine.back() : (0);
+	float k_cam_disp = ammo ? ammo->param_s.k_cam_dispersion : 1.0f;
+	float angle = m_cam_recoil.Dispersion
+		* weapon->cur_silencer_koef.cam_dispersion
+		* weapon->cur_scope_koef.cam_dispersion
+		* weapon->cur_launcher_koef.cam_dispersion
+		* k_cam_disp;
+	angle += m_cam_recoil.DispersionInc
+		* weapon->cur_silencer_koef.cam_disper_inc
+		* weapon->cur_scope_koef.cam_disper_inc
+		* weapon->cur_launcher_koef.cam_disper_inc
+		* (float)m_shot_numer;
 	Shot2( angle );
 }
 
@@ -184,6 +200,7 @@ CCameraShotEffector::CCameraShotEffector(const CameraRecoil& cam_recoil)
 {
 	CWeaponShotEffector::Initialize( cam_recoil );
 	m_pActor		= NULL;
+	m_WeaponID = (u16)-1;
 }
 
 CCameraShotEffector::~CCameraShotEffector()

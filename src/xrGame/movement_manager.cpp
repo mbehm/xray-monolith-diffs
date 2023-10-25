@@ -341,9 +341,15 @@ void CMovementManager::on_restrictions_change	()
 	level_path().on_restrictions_change	();
 }
 
+BOOL monsterStuckFix = FALSE;
 bool CMovementManager::can_use_distributed_computations(u32 option) const
 {
-	return							(!m_build_at_once && g_mt_config.test(option) && !object().getDestroy());
+	//return (!m_build_at_once && g_mt_config.test(option) && !object().getDestroy());
+
+	// Fix for bug which makes mutants running in one place. Something happens with the thread, and the mutants will wait for a thread which will never finish running.
+	// Many thanks to Arszi for finding this <3
+	// demonized: add cvar switch for toggling it
+	return (!monsterStuckFix && !m_build_at_once && g_mt_config.test(option) && !object().getDestroy());
 }
 
 void CMovementManager::on_frame					(CPHMovementControl *movement_control, Fvector &dest_position)
@@ -356,6 +362,9 @@ void CMovementManager::on_frame					(CPHMovementControl *movement_control, Fvect
 		update_path					();
 			
 	move_along_path					(movement_control,dest_position,object().client_update_fdelta());
+
+	// Update Grass benders
+	g_pGamePersistent->GrassBendersUpdate(object().ID(), grassbender_id, grassbender_frame, object().Position(), -1.0f, 1.0f, true);
 }
 
 void CMovementManager::on_travel_point_change	(const u32 &previous_travel_point_index)

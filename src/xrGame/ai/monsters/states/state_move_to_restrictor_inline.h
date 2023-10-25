@@ -14,6 +14,7 @@ void CStateMonsterMoveToRestrictorAbstract::initialize()
 
 	Fvector position;
 	u32		node = object->control().path_builder().restrictions().accessible_nearest(object->Position(), position);
+	if (node != (u32)-1 && object->control().path_builder().restrictions().accessible(node))
 	object->path().set_target_point	(ai().level_graph().vertex_position(node), node);
 }
 

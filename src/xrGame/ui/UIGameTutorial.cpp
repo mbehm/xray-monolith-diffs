@@ -409,9 +409,9 @@ void CUISequencer::IR_OnKeyboardPress	(int dik)
 			CurrentGameUI()->HideActorMenu();
 			return;
 		}
-		if(CurrentGameUI()->GetPdaMenu().IsShown())
+		if (CurrentGameUI()->TopInputReceiver() && CurrentGameUI()->TopInputReceiver()->IsShown())
 		{
-			CurrentGameUI()->HidePdaMenu();
+			CurrentGameUI()->TopInputReceiver()->OnKeyboardAction(dik, WINDOW_KEY_PRESSED);
 			return;
 		}
 		Console->Execute("main_menu");

@@ -38,8 +38,11 @@ TEMPLATE_SPEZIALIZATION
 IC	void CSSafeMapIterator::add					(const _key_type &id, _data_type *value, bool no_assert)
 {
 	_const_iterator			I = m_objects.find(id);
-	if (I != m_objects.end()) {
+	if (I != m_objects.end())
+	{
+#ifdef DEBUG
 		THROW2				(no_assert,"Specified object has been already found in the registry!");
+#endif
 		return;
 	}
 
@@ -55,8 +58,11 @@ TEMPLATE_SPEZIALIZATION
 IC	void CSSafeMapIterator::remove				(const _key_type &id, bool no_assert)
 {
 	_iterator				I = m_objects.find(id);
-	if (I == m_objects.end()) {
+	if (I == m_objects.end())
+	{
+#ifdef DEBUG
 		THROW2				(no_assert,"Specified object hasn't been found in the registry!");
+#endif
 		return;
 	}
 
@@ -122,7 +128,9 @@ IC	u32 CSSafeMapIterator::update				(const _update_predicate &predicate, bool co
 	++m_cycle_count;
 	_iterator			I = next();
 	VERIFY				(I != m_objects.end());
-	for (u32 i=0; (I != m_objects.end()) && !time_over() && predicate(I,m_cycle_count,true); ++i) {
+	u32 i = 0;
+	for (; (I != m_objects.end()) && !time_over() && predicate(I, m_cycle_count, true); ++i)
+	{
 		update_next		();
 		predicate		(I,m_cycle_count);
 		I				= next();

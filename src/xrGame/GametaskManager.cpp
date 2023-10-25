@@ -11,6 +11,8 @@
 #include "ui/UIPDAWnd.h"
 #include "encyclopedia_article.h"
 #include "ui/UIMapWnd.h"
+#include "..\..\xrEngine\x_ray.h"
+#include "string_table.h"
 
 #pragma warning(push)
 #pragma warning(disable:4995)
@@ -209,8 +211,19 @@ void CGameTaskManager::UpdateActiveTask()
 		}
 	}
 
+	//Discord
+	if (psDeviceFlags2.test(rsDiscord))
+		RPC_UpdateTaskName();
+
 	m_flags.set					(eChanged, FALSE);
 	m_actual_frame				= Device.dwFrame;
+}
+
+void CGameTaskManager::RPC_UpdateTaskName()
+{
+	CGameTask* tr = ActiveTask();
+	if (tr)
+		snprintf(discord_gameinfo.task_name, 128, xr_ToUTF8(*CStringTable().translate(tr->m_Title)));
 }
 
 CGameTask* CGameTaskManager::ActiveTask()

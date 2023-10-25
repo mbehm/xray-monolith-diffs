@@ -25,6 +25,7 @@
 #include "clsid_game.h"
 #include "static_cast_checked.hpp"
 #include "player_hud.h"
+#include "PDA.h"
 
 using namespace InventoryUtilities;
 //Alundaio
@@ -100,6 +101,7 @@ CInventory::CInventory()
 	
 	InitPriorityGroupsForQSwitch				();
 	m_next_item_iteration_time					= 0;
+	m_change_after_deactivate = false;
 }
 
 
@@ -287,7 +289,7 @@ bool CInventory::DropItem(CGameObject *pObj, bool just_before_destroy, bool dont
 	};
 	TIItemContainer::iterator it = std::find(m_all.begin(), m_all.end(), pIItem);
 	if(it!=m_all.end())
-		m_all.erase(std::find(m_all.begin(), m_all.end(), pIItem));
+		m_all.erase(it);
 	else
 		Msg("! CInventory::Drop item not found in inventory!!!");
 
@@ -307,7 +309,16 @@ bool CInventory::DropItem(CGameObject *pObj, bool just_before_destroy, bool dont
 		if (Level().CurrentViewEntity() == pActor_owner)
 			CurrentGameUI()->OnInventoryAction(pIItem, GE_OWNERSHIP_REJECT);
 	};
-	pObj->H_SetParent(0, dont_create_shell);
+	if (smart_cast<CWeapon*>(pObj))
+	{
+		Fvector dir = Actor()->Direction();
+		dir.y = sin(-45.f * PI / 180.f);
+		dir.normalize();
+		smart_cast<CWeapon*>(pObj)->SetActivationSpeedOverride(dir.mul(7));
+		pObj->H_SetParent(nullptr, dont_create_shell);
+	}
+	else
+		pObj->H_SetParent(nullptr, dont_create_shell);
 	return							true;
 }
 
@@ -316,7 +327,7 @@ bool CInventory::Slot(u16 slot_id, PIItem pIItem, bool bNotActivate, bool strict
 {
 	VERIFY(pIItem);
 	
-	if(ItemFromSlot(slot_id) == pIItem)
+	if (slot_id == NO_ACTIVE_SLOT || ItemFromSlot(slot_id) == pIItem)
 		return false;
 
 	if (!IsGameTypeSingle())
@@ -393,7 +404,8 @@ bool CInventory::Slot(u16 slot_id, PIItem pIItem, bool bNotActivate, bool strict
 		m_slots[pIItem->CurrSlot()].m_pIItem = NULL;
 	}
 
-	if (((m_iActiveSlot==slot_id) ||(m_iActiveSlot==NO_ACTIVE_SLOT) && m_iNextActiveSlot==NO_ACTIVE_SLOT) && (!bNotActivate))
+	if (((m_iActiveSlot == slot_id) || (m_iActiveSlot == NO_ACTIVE_SLOT) && m_iNextActiveSlot == NO_ACTIVE_SLOT) && (!
+		bNotActivate) && !smart_cast<CPda*>(pIItem))
 	{
 #ifdef DEBUG
 		Msg("---To Slot: activating slot [%d], Frame[%d]", slot_id, Device.dwFrame);
@@ -622,7 +634,9 @@ void CInventory::Activate(u16 slot, bool bForce)
 
 PIItem CInventory::ItemFromSlot(u16 slot) const
 {
-	VERIFY(NO_ACTIVE_SLOT != slot);
+	if (slot == NO_ACTIVE_SLOT)
+		return nullptr;
+
 	return m_slots[slot].m_pIItem;
 }
 
@@ -730,7 +744,26 @@ bool CInventory::Action(u16 cmd, u32 flags)
 					Activate(ARTEFACT_SLOT);
 				}
 			}
-		}break;
+	}
+	break;
+	case kACTIVE_JOBS:
+	{
+		b_send_event = true;
+		if (flags & CMD_START)
+		{
+			if (!psActorFlags.test(AF_3D_PDA)) return false;
+
+			if (smart_cast<CPda*>(ActiveItem()))
+			{
+				Activate(NO_ACTIVE_SLOT);
+			}
+			else
+			{
+				Activate(PDA_SLOT);
+			}
+		}
+	}
+	break;
 	}
 
 	if(b_send_event && g_pGameLevel && OnClient() && pActor)
@@ -744,35 +777,11 @@ void CInventory::ActiveWeapon( u16 slot )
 	// weapon is in active slot
 	if ( GetActiveSlot() == slot && ActiveItem() )
 	{
-		if ( IsGameTypeSingle() )
 			Activate(NO_ACTIVE_SLOT);
-		else
-			ActivateNextItemInActiveSlot();
 
 		return;
 	}
 	Activate(slot);
-/*
-	if ( IsGameTypeSingle() )
-	{
-		Activate(slot);
-		return;
-	}
-	if ( GetActiveSlot() == slot )
-	{
-		return;
-	}
-
-	Activate(slot);
-	if ( slot != NO_ACTIVE_SLOT && ItemFromSlot(slot) == NULL )
-	{
-		u16 prev_activ = GetActiveSlot();
-		m_iActiveSlot  = slot;
-		if ( !ActivateNextItemInActiveSlot() )
-		{
-			m_iActiveSlot = prev_activ;
-		}
-	}*/
 }
 
 void CInventory::Update() 
@@ -804,6 +813,9 @@ void CInventory::Update()
 				}
 			}
 			
+			if (m_change_after_deactivate)
+				ActivateNextGrenage();
+
 			if (GetNextActiveSlot() != NO_ACTIVE_SLOT)
 			{
 				PIItem tmp_next_active = ItemFromSlot(GetNextActiveSlot());
@@ -820,15 +832,18 @@ void CInventory::Update()
 				}
 			}
 			
-//			if ( m_iActiveSlot != GetNextActiveSlot() ) {
-//				LPCSTR const name = smart_cast<CGameObject const*>(m_pOwner)->cName().c_str();
-//				if ( !xr_strcmp("jup_b43_stalker_assistant_pri6695", name) )
-//					LogStackTrace	("");
-//				Msg					("[%6d][%s] CInventory::Activate changing active slot from %d to next active slot %d", Device.dwTimeGlobal, name, m_iActiveSlot, GetNextActiveSlot() );
-//			}
+			// demonized: add on changed slot callback
+			luabind::functor<void> funct;
+			auto prev_obj = ActiveItem() ? ActiveItem()->object().lua_game_object() : NULL;
+			auto prev_slot = m_iActiveSlot;
 			m_iActiveSlot			= GetNextActiveSlot();
+			auto obj = ActiveItem() ? ActiveItem()->object().lua_game_object() : NULL;
+			if (ai().script_engine().functor("_G.CActor_OnChangedSlot", funct))
+			{
+				funct(m_iActiveSlot, obj, prev_slot, prev_obj);
 		}
-		if((GetNextActiveSlot()!=NO_ACTIVE_SLOT) && ActiveItem() && ActiveItem()->cast_hud_item()->IsHidden())
+		}
+		else if ((GetNextActiveSlot() != NO_ACTIVE_SLOT) && ActiveItem() && ActiveItem()->cast_hud_item()->IsHidden())
 				ActiveItem()->ActivateItem();
 	}
 	UpdateDropTasks	();
@@ -844,7 +859,7 @@ void CInventory::UpdateDropTasks()
 			UpdateDropItem		(itm);
 	}
 
-	for(i = 0; i < 2; ++i)	
+	for (u16 i = 0; i < 2; ++i)
 	{
 		TIItemContainer &list			= i?m_ruck:m_belt;
 		TIItemContainer::iterator it	= list.begin();
@@ -1075,14 +1090,14 @@ bool CInventory::Eat(PIItem pIItem)
 #ifdef MP_LOGGING
 	Msg( "--- Actor [%d] use or eat [%d][%s]", entity_alive->ID(), pItemToEat->object().ID(), pItemToEat->object().cNameSect().c_str() );
 #endif // MP_LOGGING
-
+	/*
 	luabind::functor<bool>	funct;
 	if (ai().script_engine().functor("_G.CInventory__eat", funct))
 	{
 		if (!funct(smart_cast<CGameObject*>(pItemToEat->object().H_Parent())->lua_game_object(), (smart_cast<CGameObject*>(pIItem))->lua_game_object()))
 			return false;
 	}
-	
+	*/
 	if (Actor()->m_inventory == this)
 	{
 		if (IsGameTypeSingle())
@@ -1164,6 +1179,13 @@ bool CInventory::CanPutInSlot(PIItem pIItem, u16 slot_id) const
 			return false;
 	}
 
+	if (slot_id == BACKPACK_SLOT)
+	{
+		CCustomOutfit* pOutfit = m_pOwner->GetOutfit();
+		if (pOutfit && !pOutfit->bIsBackpackAvaliable)
+			return false;
+	}
+
 	if(slot_id!=NO_ACTIVE_SLOT && 
 		NULL==ItemFromSlot(slot_id) )
 		return true;
@@ -1235,7 +1257,8 @@ bool CInventory::CanTakeItem(CInventoryItem *inventory_item) const
 
 	if(!inventory_item->CanTake()) return false;
 
-	for(TIItemContainer::const_iterator it = m_all.begin(); it != m_all.end(); it++)
+	TIItemContainer::const_iterator it;
+	for (it = m_all.begin(); it != m_all.end(); it++)
 		if((*it)->object().ID() == inventory_item->object().ID()) break;
 	VERIFY3(it == m_all.end(), "item already exists in inventory",*inventory_item->object().cName());
 
@@ -1247,6 +1270,16 @@ bool CInventory::CanTakeItem(CInventoryItem *inventory_item) const
 	return	true;
 }
 
+CInventoryItem* CInventory::GetItemFromInventory(u16 id)
+{
+	TIItemContainer& l_list = m_all;
+
+	for (TIItemContainer::iterator l_it = l_list.begin(); l_list.end() != l_it; ++l_it)
+		if ((*l_it)->object().ID() == id)
+			return (*l_it);
+
+	return (0);
+}
 
 u32  CInventory::BeltWidth() const
 {

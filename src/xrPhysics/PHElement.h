@@ -161,7 +161,7 @@ public:																																				//
 			void						BoneGlPos								(Fmatrix &m, const Fmatrix &BoneTransform)const;
 			void						ToBonePos								(const CBoneInstance* B, motion_history_state history_state );
 			void						ToBonePos								(const Fmatrix &BoneTransform, motion_history_state history_state );
-	IC		void						ActivatingPos							(const Fmatrix &BoneTransform);
+	void ActivatingPos(const Fmatrix& BoneTransform);
 	IC		void						CalculateBoneTransform					( Fmatrix &bone_transform )const;
 			
 #ifdef		DEBUG
@@ -197,7 +197,13 @@ public:																																				//
 	virtual	void						ReleaseFixed					();
 	virtual bool						isFixed							(){return !!(m_flags.test(flFixed));}
 	virtual void						applyForce						(const Fvector& dir, float val);															//aux
-	virtual void						applyForce						(float x,float y,float z);																//called anywhere ph state influent
+	virtual void applyForce(float x, float y, float z);
+
+	// demonized: applyTorque
+	virtual void applyTorque(const Fvector& dir, float val);
+	virtual void applyTorque(float x, float y, float z);
+
+	//called anywhere ph state influent
 	virtual void						applyImpulse					(const Fvector& dir, float val);//aux
 	virtual void						applyImpulseVsMC				(const Fvector& pos,const Fvector& dir, float val);										//
 	virtual void						applyImpulseVsGF				(const Fvector& pos,const Fvector& dir, float val);										//

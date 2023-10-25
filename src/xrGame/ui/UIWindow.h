@@ -180,6 +180,8 @@ public:
 	DEF_UILIST				(WINDOW_LIST, CUIWindow*);
 	WINDOW_LIST&			GetChildWndList		()							{return m_ChildWndList; }
 
+	virtual bool NeedCursor() const { return true; }
+
 
 	IC bool					IsAutoDelete		()							{return m_bAutoDelete;}
 	IC void					SetAutoDelete		(bool auto_delete)			{m_bAutoDelete = auto_delete;}

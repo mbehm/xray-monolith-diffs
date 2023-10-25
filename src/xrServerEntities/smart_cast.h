@@ -64,10 +64,16 @@
 
 #		ifndef DO_NOT_DECLARE_TYPE_LIST
 			class ENGINE_API ISpatial;
-			namespace Feel { class ENGINE_API Sound; }
+
+namespace Feel
+{
+	class ENGINE_API Sound;
+}
+
 			typedef Feel::Sound Feel__Sound;
-			template <> extern\
-			Feel::Sound* SmartDynamicCast::smart_cast<Feel::Sound,ISpatial>(ISpatial *p);\
+template <>
+extern
+Feel::Sound* SmartDynamicCast::smart_cast<Feel::Sound, ISpatial>(ISpatial* p);
 			add_to_cast_list(Feel__Sound,ISpatial);
 #			undef cast_type_list
 #			define cast_type_list save_cast_list	(Feel__Sound,		ISpatial)
@@ -132,6 +138,10 @@
 		DECLARE_SPECIALIZATION	(CMissile,			CInventoryItem,			cast_missile);
 #		undef cast_type_list
 #		define cast_type_list save_cast_list	(CMissile,			CInventoryItem)
+
+DECLARE_SPECIALIZATION(CFlashlight, CInventoryItem, cast_flashlight);
+#		undef cast_type_list
+#		define cast_type_list save_cast_list	(CFlashlight,		CInventoryItem)
 
 		DECLARE_SPECIALIZATION	(CCustomZone,		CGameObject,			cast_custom_zone);
 #		undef cast_type_list

@@ -1,4 +1,4 @@
-#pragma once
+п»ї#pragma once
 
 #include "../xrphysics/PhysicsShell.h"
 #include "weaponammo.h"
@@ -14,6 +14,8 @@
 
 #include "CameraRecoil.h"
 
+#include "NewZoomFlag.h"
+
 class CEntity;
 class ENGINE_API CMotionDef;
 class CSE_ALifeItemWeapon;
@@ -23,6 +25,26 @@ class CParticlesObject;
 class CUIWindow;
 class CBinocularsVision;
 class CNightVisionEffector;
+
+extern float f_weapon_deterioration;
+
+extern std::map<shared_str, float> listScopeRadii;
+
+extern float scope_scrollpower;
+extern float sens_multiple;
+
+struct PickParam
+{
+	collide::rq_result RQ;
+	float power;
+	u32 pass;
+};
+
+struct SafemodeAnm
+{
+	LPCSTR name;
+	float power, speed;
+};
 
 class CWeapon : public CHudItemObject,
     public CShootingObject
@@ -59,6 +81,23 @@ public:
         return inherited::net_SaveRelevant();
     }
 
+	float CWeapon::GetSecondVPFov() const;
+	IC float GetZRotatingFactor()    const { return m_zoom_params.m_fZoomRotationFactor; }
+	IC float GetSecondVPZoomFactor() const { return m_zoom_params.m_fSecondVPFovFactor; }
+	IC float IsSecondVPZoomPresent() const { return GetSecondVPZoomFactor() > 0.005f; }
+
+
+	// Up
+	// Magazine system & etc
+	xr_vector<shared_str> bullets_bones;
+	int bullet_cnt;
+	int last_hide_bullet;
+	bool bHasBulletsToHide;
+
+	virtual void HUD_VisualBulletUpdate(bool force = false, int force_idx = -1);
+
+	void UpdateSecondVP();
+
     virtual void			UpdateCL();
     virtual void			shedule_Update(u32 dt);
 
@@ -79,6 +118,14 @@ public:
 
     virtual void			reinit();
     virtual void			reload(LPCSTR section);
+
+	// demonized: World model on stalkers adjustments
+	void set_mOffset(Fvector position, Fvector orientation);
+	void set_mStrapOffset(Fvector position, Fvector orientation);
+	void set_mFirePoint(Fvector &fire_point);
+	void set_mFirePoint2(Fvector &fire_point);
+	void set_mShellPoint(Fvector &fire_point);
+
     virtual void			create_physic_shell();
     virtual void			activate_physic_shell();
     virtual void			setup_physic_shell();
@@ -88,6 +135,8 @@ public:
     virtual void			OnActiveItem();
     virtual void			OnHiddenItem();
     virtual void			SendHiddenItem();	//same as OnHiddenItem but for client... (sends message to a server)...
+
+	virtual bool NeedBlendAnm();
 
 public:
     virtual bool			can_kill() const;
@@ -102,6 +151,8 @@ protected:
     ALife::_TIME_ID			m_dwWeaponIndependencyTime;
 
     virtual bool			IsHudModeNow();
+	virtual bool SOParentIsActor() { return ParentIsActor(); }
+	u8 last_idx;
 public:
     void					signal_HideComplete();
     virtual bool			Action(u16 cmd, u32 flags);
@@ -112,14 +163,17 @@ public:
         eFire2,
         eReload,
         eMisfire,
-        eMagEmpty,
         eSwitch,
+		eSwitchMode,
+		eAimStart,
+		eAimEnd,
     };
     enum EWeaponSubStates
     {
         eSubstateReloadBegin = 0,
         eSubstateReloadInProcess,
         eSubstateReloadEnd,
+		eSubstateReloadInProcessEmptyEnd,
     };
     enum
     {
@@ -133,7 +187,8 @@ public:
     // Does weapon need's update?
     BOOL					IsUpdating();
 
-    BOOL					IsMisfire() const;
+	bool IsMisfire() const;
+	void SetMisfireScript(bool b);
     BOOL					CheckForMisfire();
 
     BOOL					AutoSpawnAmmo() const
@@ -153,11 +208,14 @@ protected:
    
     // a misfire happens, you'll need to rearm weapon
     bool					bMisfire;
+	bool bClearJamOnly; //used for "reload" misfire animation
 
     BOOL					m_bAutoSpawnAmmo;
     virtual bool			AllowBore();
 public:
 	u8						m_sub_state;
+
+	bool IsCustomReloadAvaible;
 
     bool IsGrenadeLauncherAttached() const;
     bool IsScopeAttached() const;
@@ -221,8 +279,13 @@ public:
     {
         return m_sGrenadeLauncherName;
     }
+
     const shared_str GetScopeName() const
     {
+		if (m_scopes.size() < 1)
+		{
+			return {};
+		}
         return pSettings->r_string(m_scopes[m_cur_scope], "scope_name");
     }
     const shared_str& GetSilencerName() const
@@ -243,16 +306,17 @@ public:
     {
         m_flagsAddOnState = st;
     }//dont use!!! for buy menu only!!!
+	
 protected:
-    //состояние подключенных аддонов
+	//Г±Г®Г±ГІГ®ГїГ­ГЁГҐ ГЇГ®Г¤ГЄГ«ГѕГ·ГҐГ­Г­Г»Гµ Г Г¤Г¤Г®Г­Г®Гў
     u8 m_flagsAddOnState;
 
-    //возможность подключения различных аддонов
+	//ГўГ®Г§Г¬Г®Г¦Г­Г®Г±ГІГј ГЇГ®Г¤ГЄГ«ГѕГ·ГҐГ­ГЁГї Г°Г Г§Г«ГЁГ·Г­Г»Гµ Г Г¤Г¤Г®Г­Г®Гў
     ALife::EWeaponAddonStatus	m_eScopeStatus;
     ALife::EWeaponAddonStatus	m_eSilencerStatus;
     ALife::EWeaponAddonStatus	m_eGrenadeLauncherStatus;
 
-    //названия секций подключаемых аддонов
+
     shared_str		m_sScopeName;
     shared_str		m_sSilencerName;
     shared_str		m_sGrenadeLauncherName;
@@ -266,23 +330,24 @@ protected:
 
     struct SZoomParams
     {
-        bool			m_bZoomEnabled;			//разрешение режима приближения
+        float m_fMinBaseZoomFactor;
+		bool m_bZoomEnabled;
         bool			m_bHideCrosshairInZoom;
         bool			m_bZoomDofEnabled;
-
-        bool			m_bIsZoomModeNow;		//когда режим приближения включен
-        float			m_fCurrentZoomFactor;	//текущий фактор приближения
-        float			m_fZoomRotateTime;		//время приближения
-
-        float			m_fIronSightZoomFactor;	//коэффициент увеличения прицеливания
-        float			m_fScopeZoomFactor;		//коэффициент увеличения прицела
-
+		bool m_bIsZoomModeNow;
+		float m_fCurrentZoomFactor;
+		float m_fZoomRotateTime;
+		float m_fBaseZoomFactor;
+		float m_fScopeZoomFactor;
         float			m_fZoomRotationFactor;
-
+		float m_fSecondVPFovFactor;
         Fvector			m_ZoomDof;
         Fvector4		m_ReloadDof;
         Fvector4		m_ReloadEmptyDof; //Swartz: reload when empty mag. DOF
         BOOL			m_bUseDynamicZoom;
+		BOOL m_bUseDynamicZoom_Primary;
+		BOOL m_bUseDynamicZoom_Alt;
+		BOOL m_bUseDynamicZoom_GL;
         shared_str		m_sUseZoomPostprocess;
         shared_str		m_sUseBinocularVision;
         CBinocularsVision*		m_pVision;
@@ -307,10 +372,7 @@ public:
     };
     CUIWindow*				ZoomTexture();
 
-    bool			ZoomHideCrosshair()
-    {
-        return m_zoom_params.m_bHideCrosshairInZoom || ZoomTexture();
-    }
+	bool ZoomHideCrosshair();
 
     IC float				GetZoomFactor() const
     {
@@ -329,6 +391,26 @@ public:
     }
 
     virtual	u8				GetCurrentHudOffsetIdx();
+
+	// Tronex script exports
+	void AmmoTypeForEach(const luabind::functor<bool>& funct);
+	float GetMagazineWeightScript() const { return GetMagazineWeight(m_magazine); }
+	int GetAmmoCount_forType_Script(LPCSTR type) const { return GetAmmoCount_forType(type); }
+	LPCSTR GetGrenadeLauncherNameScript() const { return *GetGrenadeLauncherName(); }
+	LPCSTR GetSilencerNameScript() const { return *GetSilencerName(); }
+	LPCSTR GetScopeNameScript() const { return *GetScopeName(); }
+	float GetFireDispersionScript() const { return fireDispersionBase; }
+	float RPMScript() const { return fOneShotTime; }
+	float RealRPMScript() const { return 60.0f / fOneShotTime; } // Return actual RPM like in configs
+	float ModeRPMScript() const { return fModeShotTime; }
+	float ModeRealRPMScript() const { return 60.0f / fModeShotTime; }
+
+	//Setters
+	void SetFireDispersionScript(float val) { fireDispersionBase = val; }
+	void SetRPM(float newOneShotTime) { fOneShotTime = newOneShotTime; } // Input - time between shots like received from getter
+	void SetRealRPM(float rpm) { fOneShotTime = 60.0f / rpm; } // Input - actual RPM like in configs
+	void SetModeRPM(float newOneShotTime) { fModeShotTime = newOneShotTime; } // Input - time between shots like received from getter
+	void SetModeRealRPM(float rpm) { fModeShotTime = 60.0f / rpm; } // Input - actual RPM like in configs
 
     virtual float				Weight() const;
     virtual	u32					Cost() const;
@@ -366,28 +448,44 @@ protected:
     Fmatrix					m_StrapOffset;
     bool					m_strapped_mode;
     bool					m_can_be_strapped;
+	float m_fSafeModeRotateTime;
+	SafemodeAnm m_safemode_anm[2];
 
     Fmatrix					m_Offset;
-    // 0-используется без участия рук, 1-одна рука, 2-две руки
+	Fvector m_hud_offset[2];
+	// 0-ГЁГ±ГЇГ®Г«ГјГ§ГіГҐГІГ±Гї ГЎГҐГ§ ГіГ·Г Г±ГІГЁГї Г°ГіГЄ, 1-Г®Г¤Г­Г  Г°ГіГЄГ , 2-Г¤ГўГҐ Г°ГіГЄГЁ
     EHandDependence			eHandDependence;
     bool					m_bIsSingleHanded;
 
 public:
-    //загружаемые параметры
+	//Г§Г ГЈГ°ГіГ¦Г ГҐГ¬Г»ГҐ ГЇГ Г°Г Г¬ГҐГІГ°Г»
     Fvector					vLoadedFirePoint;
     Fvector					vLoadedFirePoint2;
+	bool m_bCanBeLowered;
 
 private:
     firedeps				m_current_firedeps;
+	//collide::rq_results RQS;
+	//PickParam PP;
+
+public:
+	//virtual collide::rq_result& GetRQ() { return PP.RQ; }
+	//virtual void net_Relcase(CObject* object);
+	Fmatrix m_shoot_shake_mat;
+	void UpdateZoomParams();
 
 protected:
     virtual void			UpdateFireDependencies_internal();
+	void UpdateUIScope();
+	void SwitchZoomType();
+	float GetHudFov();
     virtual void			UpdatePosition(const Fmatrix& transform);	//.
     virtual void			UpdateXForm();
-    virtual void			UpdateHudAdditonal(Fmatrix&);
+	virtual void UpdateHudAdditional(Fmatrix& trans);
     IC		void			UpdateFireDependencies()
     {
-        if (dwFP_Frame == Device.dwFrame) return; UpdateFireDependencies_internal();
+		if (dwFP_Frame == Device.dwFrame) return;
+		UpdateFireDependencies_internal();
     };
 
     virtual void			LoadFireParams(LPCSTR section);
@@ -428,17 +526,15 @@ protected:
     virtual void			SetDefaults();
 
     virtual bool			MovingAnimAllowedNow();
-    virtual void			OnStateSwitch(u32 S);
+	virtual void OnStateSwitch(u32 S, u32 oldState);
     virtual void			OnAnimationEnd(u32 state);
 
-    //трассирование полета пули
+	//ГІГ°Г Г±Г±ГЁГ°Г®ГўГ Г­ГЁГҐ ГЇГ®Г«ГҐГІГ  ГЇГіГ«ГЁ
     virtual	void			FireTrace(const Fvector& P, const Fvector& D);
     virtual float			GetWeaponDeterioration();
 
-    virtual void			FireStart()
-    {
-        CShootingObject::FireStart();
-    }
+	virtual void FireStart();
+
     virtual void			FireEnd();
 
     virtual void			Reload();
@@ -474,21 +570,57 @@ public:
     CameraRecoil			cam_recoil;			// simple mode (walk, run)
     CameraRecoil			zoom_cam_recoil;	// using zoom =(ironsight or scope)
 
+	// Getters
+	float GetCamRelaxSpeed() { return cam_recoil.RelaxSpeed; };
+	float GetCamRelaxSpeed_AI() { return cam_recoil.RelaxSpeed_AI; };
+	float GetCamDispersion() { return cam_recoil.Dispersion; };
+	float GetCamDispersionInc() { return cam_recoil.DispersionInc; };
+	float GetCamDispersionFrac() { return cam_recoil.DispersionFrac; };
+	float GetCamMaxAngleVert() { return cam_recoil.MaxAngleVert; };
+	float GetCamMaxAngleHorz() { return cam_recoil.MaxAngleHorz; };
+	float GetCamStepAngleHorz() { return cam_recoil.StepAngleHorz; };
+	float GetZoomCamRelaxSpeed() { return zoom_cam_recoil.RelaxSpeed; };
+	float GetZoomCamRelaxSpeed_AI() { return zoom_cam_recoil.RelaxSpeed_AI; };
+	float GetZoomCamDispersion() { return zoom_cam_recoil.Dispersion; };
+	float GetZoomCamDispersionInc() { return zoom_cam_recoil.DispersionInc; };
+	float GetZoomCamDispersionFrac() { return zoom_cam_recoil.DispersionFrac; };
+	float GetZoomCamMaxAngleVert() { return zoom_cam_recoil.MaxAngleVert; };
+	float GetZoomCamMaxAngleHorz() { return zoom_cam_recoil.MaxAngleHorz; };
+	float GetZoomCamStepAngleHorz() { return zoom_cam_recoil.StepAngleHorz; };
+
+	// Setters
+	void SetCamRelaxSpeed(float val) { cam_recoil.RelaxSpeed = val; };
+	void SetCamRelaxSpeed_AI(float val) { cam_recoil.RelaxSpeed_AI = val; };
+	void SetCamDispersion(float val) { cam_recoil.Dispersion = val; };
+	void SetCamDispersionInc(float val) { cam_recoil.DispersionInc = val; };
+	void SetCamDispersionFrac(float val) { cam_recoil.DispersionFrac = val; };
+	void SetCamMaxAngleVert(float val) { cam_recoil.MaxAngleVert = val; };
+	void SetCamMaxAngleHorz(float val) { cam_recoil.MaxAngleHorz = val; };
+	void SetCamStepAngleHorz(float val) { cam_recoil.StepAngleHorz = val; };
+	void SetZoomCamRelaxSpeed(float val) { zoom_cam_recoil.RelaxSpeed = val; };
+	void SetZoomCamRelaxSpeed_AI(float val) { zoom_cam_recoil.RelaxSpeed_AI = val; };
+	void SetZoomCamDispersion(float val) { zoom_cam_recoil.Dispersion = val; };
+	void SetZoomCamDispersionInc(float val) { zoom_cam_recoil.DispersionInc = val; };
+	void SetZoomCamDispersionFrac(float val) { zoom_cam_recoil.DispersionFrac = val; };
+	void SetZoomCamMaxAngleVert(float val) { zoom_cam_recoil.MaxAngleVert = val; };
+	void SetZoomCamMaxAngleHorz(float val) { zoom_cam_recoil.MaxAngleHorz = val; };
+	void SetZoomCamStepAngleHorz(float val) { zoom_cam_recoil.StepAngleHorz = val; };
+
 protected:
-    //фактор увеличения дисперсии при максимальной изношености
-    //(на сколько процентов увеличится дисперсия)
+	//ГґГ ГЄГІГ®Г° ГіГўГҐГ«ГЁГ·ГҐГ­ГЁГї Г¤ГЁГ±ГЇГҐГ°Г±ГЁГЁ ГЇГ°ГЁ Г¬Г ГЄГ±ГЁГ¬Г Г«ГјГ­Г®Г© ГЁГ§Г­Г®ГёГҐГ­Г®Г±ГІГЁ
+	//(Г­Г  Г±ГЄГ®Г«ГјГЄГ® ГЇГ°Г®Г¶ГҐГ­ГІГ®Гў ГіГўГҐГ«ГЁГ·ГЁГІГ±Гї Г¤ГЁГ±ГЇГҐГ°Г±ГЁГї)
     float					fireDispersionConditionFactor;
-    //вероятность осечки при максимальной изношености
+	//ГўГҐГ°Г®ГїГІГ­Г®Г±ГІГј Г®Г±ГҐГ·ГЄГЁ ГЇГ°ГЁ Г¬Г ГЄГ±ГЁГ¬Г Г«ГјГ­Г®Г© ГЁГ§Г­Г®ГёГҐГ­Г®Г±ГІГЁ
 
     // modified by Peacemaker [17.10.08]
     //	float					misfireProbability;
     //	float					misfireConditionK;
-    float misfireStartCondition;			//изношенность, при которой появляется шанс осечки
-    float misfireEndCondition;				//изношеность при которой шанс осечки становится константным
-    float misfireStartProbability;			//шанс осечки при изношености больше чем misfireStartCondition
-    float misfireEndProbability;			//шанс осечки при изношености больше чем misfireEndCondition
-    float conditionDecreasePerQueueShot;	//увеличение изношености при выстреле очередью
-    float conditionDecreasePerShot;			//увеличение изношености при одиночном выстреле
+	float misfireStartCondition; //ГЁГ§Г­Г®ГёГҐГ­Г­Г®Г±ГІГј, ГЇГ°ГЁ ГЄГ®ГІГ®Г°Г®Г© ГЇГ®ГїГўГ«ГїГҐГІГ±Гї ГёГ Г­Г± Г®Г±ГҐГ·ГЄГЁ
+	float misfireEndCondition; //ГЁГ§Г­Г®ГёГҐГ­Г®Г±ГІГј ГЇГ°ГЁ ГЄГ®ГІГ®Г°Г®Г© ГёГ Г­Г± Г®Г±ГҐГ·ГЄГЁ Г±ГІГ Г­Г®ГўГЁГІГ±Гї ГЄГ®Г­Г±ГІГ Г­ГІГ­Г»Г¬
+	float misfireStartProbability; //ГёГ Г­Г± Г®Г±ГҐГ·ГЄГЁ ГЇГ°ГЁ ГЁГ§Г­Г®ГёГҐГ­Г®Г±ГІГЁ ГЎГ®Г«ГјГёГҐ Г·ГҐГ¬ misfireStartCondition
+	float misfireEndProbability; //ГёГ Г­Г± Г®Г±ГҐГ·ГЄГЁ ГЇГ°ГЁ ГЁГ§Г­Г®ГёГҐГ­Г®Г±ГІГЁ ГЎГ®Г«ГјГёГҐ Г·ГҐГ¬ misfireEndCondition
+	float conditionDecreasePerQueueShot; //ГіГўГҐГ«ГЁГ·ГҐГ­ГЁГҐ ГЁГ§Г­Г®ГёГҐГ­Г®Г±ГІГЁ ГЇГ°ГЁ ГўГ»Г±ГІГ°ГҐГ«ГҐ Г®Г·ГҐГ°ГҐГ¤ГјГѕ
+	float conditionDecreasePerShot; //ГіГўГҐГ«ГЁГ·ГҐГ­ГЁГҐ ГЁГ§Г­Г®ГёГҐГ­Г®Г±ГІГЁ ГЇГ°ГЁ Г®Г¤ГЁГ­Г®Г·Г­Г®Г¬ ГўГ»Г±ГІГ°ГҐГ«ГҐ
 
 public:
     float GetMisfireStartCondition() const
@@ -508,22 +640,24 @@ protected:
         float					m_fPDM_disp_accel_factor;
         float					m_fPDM_disp_crouch;
         float					m_fPDM_disp_crouch_no_acc;
+		float m_fPDM_disp_buckShot;
     };
     SPDM					m_pdm;
 
     float					m_crosshair_inertion;
     first_bullet_controller	m_first_bullet_controller;
 protected:
-    //для отдачи оружия
+	//Г¤Г«Гї Г®ГІГ¤Г Г·ГЁ Г®Г°ГіГ¦ГЁГї
     Fvector					m_vRecoilDeltaAngle;
 
-    //для сталкеров, чтоб они знали эффективные границы использования
-    //оружия
+	//Г¤Г«Гї Г±ГІГ Г«ГЄГҐГ°Г®Гў, Г·ГІГ®ГЎ Г®Г­ГЁ Г§Г­Г Г«ГЁ ГЅГґГґГҐГЄГІГЁГўГ­Г»ГҐ ГЈГ°Г Г­ГЁГ¶Г» ГЁГ±ГЇГ®Г«ГјГ§Г®ГўГ Г­ГЁГї
+	//Г®Г°ГіГ¦ГЁГї
     float					m_fMinRadius;
     float					m_fMaxRadius;
+	float m_fZoomRotateModifier;
 
 protected:
-    //для второго ствола
+	//Г¤Г«Гї ГўГІГ®Г°Г®ГЈГ® Г±ГІГўГ®Г«Г 
     void			StartFlameParticles2();
     void			StopFlameParticles2();
     void			UpdateFlameParticles2();
@@ -532,13 +666,24 @@ protected:
     //объект партиклов для стрельбы из 2-го ствола
     CParticlesObject*		m_pFlameParticles2;
 
+	// Setters
+	void SetMisfireStartCondition(float val)
+	{
+		misfireStartCondition = val;
+	};
+
+	void SetMisfireEndCondition(float val)
+	{
+		misfireEndCondition = val;
+	};
+
 protected:
     int						GetAmmoCount(u8 ammo_type) const;
 
 public:
     IC int					GetAmmoElapsed()	const
     {
-        return /*int(m_magazine.size())*/iAmmoElapsed;
+		return iAmmoElapsed;
     }
     IC int					GetAmmoMagSize()	const
     {
@@ -554,18 +699,73 @@ public:
         u32 ParentID = 0xffffffff);
     bool			SwitchAmmoType(u32 flags);
 
+	float m_APk;
+
     virtual	float			Get_PDM_Base()	const
     {
         return m_pdm.m_fPDM_disp_base;
     };
+
+	virtual float Get_Silencer_PDM_Base() const
+	{
+		return cur_silencer_koef.pdm_base;
+	};
+
+	virtual float Get_Scope_PDM_Base() const
+	{
+		return cur_scope_koef.pdm_base;
+	};
+
+	virtual float Get_Launcher_PDM_Base() const
+	{
+		return cur_launcher_koef.pdm_base;
+	};
+
+	virtual float Get_PDM_BuckShot() const
+	{
+		return m_pdm.m_fPDM_disp_buckShot;
+	};
+
     virtual	float			Get_PDM_Vel_F()	const
     {
         return m_pdm.m_fPDM_disp_vel_factor;
     };
+
+	virtual float Get_Silencer_PDM_Vel() const
+	{
+		return cur_silencer_koef.pdm_vel;
+	};
+
+	virtual float Get_Scope_PDM_Vel() const
+	{
+		return cur_scope_koef.pdm_vel;
+	};
+
+	virtual float Get_Launcher_PDM_Vel() const
+	{
+		return cur_launcher_koef.pdm_vel;
+	};
+
     virtual	float			Get_PDM_Accel_F()	const
     {
         return m_pdm.m_fPDM_disp_accel_factor;
     };
+
+	virtual float Get_Silencer_PDM_Accel() const
+	{
+		return cur_silencer_koef.pdm_accel;
+	};
+
+	virtual float Get_Scope_PDM_Accel() const
+	{
+		return cur_scope_koef.pdm_accel;
+	};
+
+	virtual float Get_Launcher_PDM_Accel() const
+	{
+		return cur_launcher_koef.pdm_accel;
+	};
+
     virtual	float			Get_PDM_Crouch()	const
     {
         return m_pdm.m_fPDM_disp_crouch;
@@ -578,49 +778,157 @@ public:
     {
         return m_crosshair_inertion;
     };
+
+	virtual float Get_Silencer_CrosshairInertion() const
+	{
+		return cur_silencer_koef.crosshair_inertion;
+	};
+
+	virtual float Get_Scope_CrosshairInertion() const
+	{
+		return cur_scope_koef.crosshair_inertion;
+	};
+
+	virtual float Get_Launcher_CrosshairInertion() const
+	{
+		return cur_launcher_koef.crosshair_inertion;
+	};
+
     float			GetFirstBulletDisp()	const
     {
         return m_first_bullet_controller.get_fire_dispertion();
     };
+
+	// Setters
+	virtual void Set_PDM_Base(float val) 
+	{
+		m_pdm.m_fPDM_disp_base = val;
+	};
+
+	virtual void Set_Silencer_PDM_Base(float val) 
+	{
+		cur_silencer_koef.pdm_base = val;
+	};
+
+	virtual void Set_Scope_PDM_Base(float val) 
+	{
+		cur_scope_koef.pdm_base = val;
+	};
+
+	virtual void Set_Launcher_PDM_Base(float val) 
+	{
+		cur_launcher_koef.pdm_base = val;
+	};
+
+	virtual void Set_PDM_BuckShot(float val) 
+	{
+		m_pdm.m_fPDM_disp_buckShot = val;
+	};
+
+	virtual void Set_PDM_Vel_F(float val) 
+	{
+		m_pdm.m_fPDM_disp_vel_factor = val;
+	};
+
+	virtual void Set_Silencer_PDM_Vel(float val) 
+	{
+		cur_silencer_koef.pdm_vel = val;
+	};
+
+	virtual void Set_Scope_PDM_Vel(float val) 
+	{
+		cur_scope_koef.pdm_vel = val;
+	};
+
+	virtual void Set_Launcher_PDM_Vel(float val) 
+	{
+		cur_launcher_koef.pdm_vel = val;
+	};
+
+	virtual void Set_PDM_Accel_F(float val) 
+	{
+		m_pdm.m_fPDM_disp_accel_factor = val;
+	};
+
+	virtual void Set_Silencer_PDM_Accel(float val) 
+	{
+		cur_silencer_koef.pdm_accel = val;
+	};
+
+	virtual void Set_Scope_PDM_Accel(float val) 
+	{
+		cur_scope_koef.pdm_accel = val;
+	};
+
+	virtual void Set_Launcher_PDM_Accel(float val) 
+	{
+		cur_launcher_koef.pdm_accel = val;
+	};
+
+	virtual void Set_PDM_Crouch(float val) 
+	{
+		m_pdm.m_fPDM_disp_crouch = val;
+	};
+
+	virtual void Set_PDM_Crouch_NA(float val) 
+	{
+		m_pdm.m_fPDM_disp_crouch_no_acc = val;
+	};
+
+	virtual void SetCrosshairInertion(float val) 
+	{
+		m_crosshair_inertion = val;
+	};
+
+	virtual void Set_Silencer_CrosshairInertion(float val) 
+	{
+		cur_silencer_koef.crosshair_inertion = val;
+	};
+
+	virtual void Set_Scope_CrosshairInertion(float val) 
+	{
+		cur_scope_koef.crosshair_inertion = val;
+	};
+
+	virtual void Set_Launcher_CrosshairInertion(float val)
+	{
+		cur_launcher_koef.crosshair_inertion = val;
+	};
+
+	void SetFirstBulletDisp(float val)
+	{
+		m_first_bullet_controller.set_fire_dispertion(val);
+	};
 protected:
     int						iAmmoElapsed;		// ammo in magazine, currently
     int						iMagazineSize;		// size (in bullets) of magazine
 
-    //для подсчета в GetSuitableAmmoTotal
+	//Г¤Г«Гї ГЇГ®Г¤Г±Г·ГҐГІГ  Гў GetSuitableAmmoTotal
     mutable int				m_iAmmoCurrentTotal;
-    mutable u32				m_BriefInfo_CalcFrame;	//кадр на котором просчитали кол-во патронов
+	mutable u32 m_BriefInfo_CalcFrame; //ГЄГ Г¤Г° Г­Г  ГЄГ®ГІГ®Г°Г®Г¬ ГЇГ°Г®Г±Г·ГЁГІГ Г«ГЁ ГЄГ®Г«-ГўГ® ГЇГ ГІГ°Г®Г­Г®Гў
     bool					m_bAmmoWasSpawned;
 
     virtual bool			IsNecessaryItem(const shared_str& item_sect);
 
 public:
     xr_vector<shared_str>	m_ammoTypes;
-    /*
-        struct SScopes
-        {
-        shared_str			m_sScopeName;
-        int					m_iScopeX;
-        int					m_iScopeY;
-        };
-        DEFINE_VECTOR(SScopes*, SCOPES_VECTOR, SCOPES_VECTOR_IT);
-        SCOPES_VECTOR			m_scopes;
-
-        u8						cur_scope;
-        */
 
     DEFINE_VECTOR(shared_str, SCOPES_VECTOR, SCOPES_VECTOR_IT);
     SCOPES_VECTOR			m_scopes;
     u8						m_cur_scope;
 
+	bool m_altAimPos;
+	u8 m_zoomtype;
+
     CWeaponAmmo*			m_pCurrentAmmo;
     u8						m_ammoType;
-    //-	shared_str				m_ammoName; <== deleted
     bool					m_bHasTracers;
     u8						m_u8TracerColorID;
     u8						m_set_next_ammoType_on_reload;
     // Multitype ammo support
     xr_vector<CCartridge>	m_magazine;
     CCartridge				m_DefaultCartridge;
+	CCartridge m_lastCartridge;
     float					m_fCurrentCartirdgeDisp;
 
     bool				unlimited_ammo();
@@ -645,6 +953,33 @@ public:
 	u8						GetAmmoType() { return m_ammoType; };
 	//-Alundaio
 
+	const decltype(m_magazine)& GetMagazine() { return m_magazine; };
+	float GetMagazineWeight(const decltype(m_magazine)& mag) const;
+
+	virtual float GetHitPower() { return fvHitPower[g_SingleGameDifficulty]; };
+	virtual float GetHitPowerCritical() { return fvHitPowerCritical[g_SingleGameDifficulty]; };
+	virtual float GetHitImpulse() { return fHitImpulse; };
+	virtual float GetFireDistance() { return fireDistance; };
+
+	// Setters
+	virtual void SetHitPower(float val) {
+		for (int i = ESingleGameDifficulty::egdNovice; i < ESingleGameDifficulty::egdCount; i++) {
+			fvHitPower[i] = val;
+		}
+	};
+	virtual void SetHitPowerCritical(float val) {
+		for (int i = ESingleGameDifficulty::egdNovice; i < ESingleGameDifficulty::egdCount; i++) {
+			fvHitPowerCritical[i] = val;
+		}
+	};
+	virtual void SetHitImpulse(float val) { fHitImpulse = val; };
+	virtual void SetFireDistance(float val) { fireDistance = val; };
+	
+	IC u8 GetZoomType() const
+	{
+		return m_zoomtype;
+	}
+	
 protected:
     // This is because when scope is attached we can't ask scope for these params
     // therefore we should hold them by ourself :-((
@@ -660,12 +995,12 @@ public:
     bool			show_crosshair();
     bool			show_indicators();
     virtual BOOL			ParentMayHaveAimBullet();
-    virtual BOOL			ParentIsActor();
 
 private:
     virtual	bool			install_upgrade_ammo_class(LPCSTR section, bool test);
     bool			install_upgrade_disp(LPCSTR section, bool test);
     bool			install_upgrade_hit(LPCSTR section, bool test);
+	bool install_upgrade_hud(LPCSTR section, bool test);
     bool			install_upgrade_addon(LPCSTR section, bool test);
 protected:
     virtual bool			install_upgrade_impl(LPCSTR section, bool test);
@@ -683,16 +1018,26 @@ private:
 
     bool					m_bRememberActorNVisnStatus;
 public:
+	float m_fLR_ShootingFactor; // Р¤Р°РєС‚РѕСЂ РіРѕСЂРёР·РѕРЅС‚Р°Р»СЊРЅРѕРіРѕ СРґРІРёРіР° С…СѓРґР° РїСЂРё СС‚СЂРµР»СЊР±Рµ [-1; +1]
+	float m_fUD_ShootingFactor; // Р¤Р°РєС‚РѕСЂ РІРµСЂС‚РёРєР°Р»СЊРЅРѕРіРѕ СРґРІРёРіР° С…СѓРґР° РїСЂРё СС‚СЂРµР»СЊР±Рµ [-1; +1]
+	float m_fBACKW_ShootingFactor; // Р¤Р°РєС‚РѕСЂ СРґРІРёРіР° С…СѓРґР° РІ СС‚РѕСЂРѕРЅСѓ Р»РёС†Р° РїСЂРё СС‚СЂРµР»СЊР±Рµ [0; +1]
+public:
     virtual void			SetActivationSpeedOverride(Fvector const& speed);
+	void AddHUDShootingEffect();
+
     bool			GetRememberActorNVisnStatus()
     {
         return m_bRememberActorNVisnStatus;
     };
     virtual void			EnableActorNVisnAfterZoom();
+	virtual float GetInertionAimFactor() { return 1.f - m_zoom_params.m_fZoomRotationFactor; };
+	//--> [РћС‚ 1.0 - РРЅРµСЂС†РёС РѕС‚ Р±РµРґСЂР°, РґРѕ 0.0 - РРЅРµСЂС†РёС РїСЂРё Р·СѓРјРјРµ] РљР°РєСѓСЋ РёРЅРµСЂС†РёСЋ РёСРїРѕР»СЊР·РѕРІР°С‚СЊ
 
     virtual void				DumpActiveParams(shared_str const & section_name, CInifile & dst_ini) const;
     virtual shared_str const	GetAnticheatSectionName() const
     {
         return cNameSect();
     };
+    
+    float SDS_Radius(bool alt = false);
 };

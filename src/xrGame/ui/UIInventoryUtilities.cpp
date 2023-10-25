@@ -52,6 +52,9 @@ ui_shader	*g_MPCharIconsShader		= NULL;
 ui_shader	*g_OutfitUpgradeIconsShader	= NULL;
 ui_shader	*g_WeaponUpgradeIconsShader	= NULL;
 ui_shader	*g_tmpWMShader				= NULL;
+
+xr_map<LPCSTR, ui_shader*> g_CustomIconShaders;
+
 static CUIStatic*	GetUIStatic				();
 
 typedef				std::pair<CHARACTER_RANK_VALUE, shared_str>	CharInfoStringID;
@@ -87,6 +90,8 @@ void InventoryUtilities::DestroyShaders()
 
 	xr_delete(g_tmpWMShader);
 	g_tmpWMShader = 0;
+
+	delete_data(g_CustomIconShaders);
 }
 
 bool InventoryUtilities::GreaterRoomInRuck(PIItem item1, PIItem item2)
@@ -208,6 +213,25 @@ const ui_shader& InventoryUtilities::GetEquipmentIconsShader()
 	}
 
 	return *g_EquipmentIconsShader;
+}
+
+ui_shader& InventoryUtilities::GetCustomIconTextureShader(LPCSTR name)
+{
+	xr_map<LPCSTR, ui_shader*>::iterator it = g_CustomIconShaders.find(name);
+
+	if (it != g_CustomIconShaders.end())
+		return *(it)->second;
+
+	ui_shader* shader = xr_new<ui_shader>();
+	(*shader)->create("hud\\default", name);
+
+	std::pair<LPCSTR, ui_shader*> name_shader;
+	name_shader.first = name;
+	name_shader.second = shader;
+
+	g_CustomIconShaders.insert(name_shader);
+
+	return *shader;
 }
 
 const ui_shader&	InventoryUtilities::GetMPCharIconsShader()

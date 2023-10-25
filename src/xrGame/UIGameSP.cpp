@@ -21,6 +21,8 @@
 #include "ui/UITalkWnd.h"
 #include "ui/UIMessageBox.h"
 
+#include "Inventory.h"
+
 
 CUIGameSP::CUIGameSP()
 :m_game(NULL),m_game_objective(NULL)
@@ -38,7 +40,7 @@ CUIGameSP::~CUIGameSP()
 void CUIGameSP::HideShownDialogs()
 {
 	HideActorMenu();
-	HidePdaMenu();
+	//HidePdaMenu();
 	CUIDialogWnd* mir = TopInputReceiver();
 	if ( mir && mir == TalkMenu )
 	{
@@ -111,16 +113,27 @@ bool CUIGameSP::IR_UIOnKeyboardPress(int dik)
 	{
 	case kACTIVE_JOBS:
 		{
-			if ( !pActor->inventory_disabled() )
+			if (!psActorFlags.test(AF_3D_PDA) && !pActor->inventory_disabled())
+			{
+				luabind::functor<bool> funct;
+				if (ai().script_engine().functor("pda.pda_use", funct))
+				{
+					if (funct())
 				ShowPdaMenu();
+				}
+			}
 			break;
 		}
 
 	case kINVENTORY:
 		{
 			if ( !pActor->inventory_disabled() )
-				ShowActorMenu();
+			{
+				if (psActorFlags.test(AF_3D_PDA) && CurrentGameUI()->GetPdaMenu().IsShown())
+					pActor->inventory().Activate(NO_ACTIVE_SLOT);
 
+				ShowActorMenu();
+			}
 			break;
 		}
 
@@ -155,6 +168,16 @@ void  CUIGameSP::StartTrade(CInventoryOwner* pActorInv, CInventoryOwner* pOtherO
 {
 //.	if( MainInputReceiver() )	return;
 
+	//---- before trade mode ---------------------------
+	luabind::functor<bool> funct1;
+	if (ai().script_engine().functor("actor_menu_inventory.CUIActorMenu_OnMode_Trade", funct1))
+	{
+		CGameObject* GO = smart_cast<CGameObject*>(pOtherOwner);
+		if (funct1(GO->lua_game_object()))
+			return;
+	}
+	//---------------------------------------------------------
+	
 	ActorMenu->SetActor		(pActorInv);
 	ActorMenu->SetPartner		(pOtherOwner);
 
@@ -166,6 +189,16 @@ void  CUIGameSP::StartUpgrade(CInventoryOwner* pActorInv, CInventoryOwner* pMech
 {
 //.	if( MainInputReceiver() )	return;
 
+	//---- before upgrade mode ---------------------------
+	luabind::functor<bool> funct1;
+	if (ai().script_engine().functor("actor_menu_inventory.CUIActorMenu_OnMode_Upgrade", funct1))
+	{
+		CGameObject* GO = smart_cast<CGameObject*>(pMech);
+		if (funct1(GO->lua_game_object()))
+			return;
+	}
+	//---------------------------------------------------------
+	
 	ActorMenu->SetActor		(pActorInv);
 	ActorMenu->SetPartner		(pMech);
 
@@ -187,6 +220,16 @@ void CUIGameSP::StartCarBody(CInventoryOwner* pActorInv, CInventoryOwner* pOther
 {
 	if( TopInputReceiver() )		return;
 
+	//---- before Loot mode ---------------------------
+	luabind::functor<bool> funct1;
+	if (ai().script_engine().functor("actor_menu_inventory.CUIActorMenu_OnMode_DeadBodySearch", funct1))
+	{
+		CGameObject* GO = smart_cast<CGameObject*>(pOtherOwner);
+		if (funct1(GO->lua_game_object()))
+			return;
+	}
+	//---------------------------------------------------------
+		
 	ActorMenu->SetActor		(pActorInv);
 	ActorMenu->SetPartner		(pOtherOwner);
 
@@ -197,6 +240,16 @@ void CUIGameSP::StartCarBody(CInventoryOwner* pActorInv, CInventoryOwner* pOther
 void CUIGameSP::StartCarBody(CInventoryOwner* pActorInv, CInventoryBox* pBox) //Deadbody search
 {
 	if( TopInputReceiver() )		return;
+	
+	//---- before Loot mode ---------------------------
+	luabind::functor<bool> funct1;
+	if (ai().script_engine().functor("actor_menu_inventory.CUIActorMenu_OnMode_DeadBodySearch", funct1))
+	{
+		CGameObject* GO = smart_cast<CGameObject*>(pBox);
+		if (funct1(GO->lua_game_object()))
+			return;
+	}
+	//---------------------------------------------------------
 	
 	ActorMenu->SetActor		(pActorInv);
 	ActorMenu->SetInvBox		(pBox);

@@ -9,6 +9,15 @@
 void xrServer::Perform_destroy	(CSE_Abstract* object, u32 mode)
 {
 	R_ASSERT				(object);
+	if (object->ID_Parent != 0xffff)
+	{
+		// LPCSTR name = object->name();
+		// if (name)
+		// 	Msg("Attempt to destroy object %s with parent %d", name, object->ID_Parent);
+		CSE_Abstract* parent = game->get_entity_from_eid(object->ID_Parent);
+		if (parent)
+			Perform_reject(object, parent, 2 * NET_Latency);
+	}
 	R_ASSERT				(object->ID_Parent == 0xffff);
 
 #ifdef DEBUG

@@ -28,14 +28,21 @@ CHangingLamp::~CHangingLamp	()
 void CHangingLamp::Init()
 {
 	fHealth					= 100.f;
+	fBrightness = 1.0f;
 	light_bone				= BI_NONE;
 	ambient_bone			= BI_NONE;
 	lanim					= 0;
+	def_lanim = "";
 	ambient_power			= 0.f;
 	light_render			= 0;
 	light_ambient			= 0;
 	glow_render				= 0;
 	m_bState				= 1;
+	NeedUpdate = FALSE;
+	isFlickering = FALSE;
+	lastFlicker = 0.0f;
+	l_flickerChance = 0;
+	l_flickerDelay = 0;
 }
 
 void CHangingLamp::RespawnInit()
@@ -98,8 +105,10 @@ BOOL CHangingLamp::net_Spawn(CSE_Abstract* DC)
 		collidable.model	= xr_new<CCF_Skeleton>				(this);
 	}
 	fBrightness				= lamp->brightness;
-	clr.set					(lamp->color);						clr.a = 1.f;
+	clr.set(lamp->color);
+	clr.a = 1.f;
 	clr.mul_rgb				(fBrightness);
+	def_clr = clr;
 
 	light_render			= ::Render->light_create();
 	light_render->set_shadow(!!lamp->flags.is(CSE_ALifeObjectHangingLamp::flCastShadow));
@@ -134,17 +143,26 @@ BOOL CHangingLamp::net_Spawn(CSE_Abstract* DC)
 
 	fHealth					= lamp->m_health;
 
-	lanim					= LALib.FindItem(*lamp->color_animator);
+	def_lanim = *lamp->color_animator;
+	lanim = LALib.FindItem(def_lanim);
 
 	CPHSkeleton::Spawn(e);
-	if (smart_cast<IKinematicsAnimated*>(Visual()))	smart_cast<IKinematicsAnimated*>	(Visual())->PlayCycle("idle");
-	if (smart_cast<IKinematics*>(Visual())){
+	if (smart_cast<IKinematicsAnimated*>(Visual()))
+	{
+		smart_cast<IKinematicsAnimated*>(Visual())->PlayCycle("idle");
+		NeedUpdate = true;
+	}
+	if (smart_cast<IKinematics*>(Visual()))
+	{
 		smart_cast<IKinematics*>			(Visual())->CalculateBones_Invalidate	();
 		smart_cast<IKinematics*>			(Visual())->CalculateBones(TRUE);
 		//.intepolate_pos
 	}
-	if (lamp->flags.is(CSE_ALifeObjectHangingLamp::flPhysic)&&!Visual())
-		Msg("! WARNING: lamp, obj name [%s],flag physics set, but has no visual",*cName());
+	if (lamp->flags.is(CSE_ALifeObjectHangingLamp::flPhysic))
+	{
+		if (!Visual()) Msg("! WARNING: lamp, obj name [%s],flag physics set, but has no visual", *cName());
+		NeedUpdate = true;
+	}
 //.	if (lamp->flags.is(CSE_ALifeObjectHangingLamp::flPhysic)&&Visual()&&!guid_physic_bone)	fHealth=0.f;
 	if (Alive() && m_bState)
 		TurnOn	();
@@ -215,12 +233,16 @@ void CHangingLamp::UpdateCL	()
 	if(m_pPhysicsShell)
 		m_pPhysicsShell->InterpolateGlobalTransform(&XFORM());
 
-	if (Alive() && light_render->get_active()){
+	if (Alive() && light_render->get_active())
+	{
 		if(Visual())	PKinematics(Visual())->CalculateBones();
 
+		if (NeedUpdate)
+		{
 		// update T&R from light (main) bone
 		Fmatrix xf;
-		if (light_bone!=BI_NONE){
+			if (light_bone != BI_NONE)
+			{
 			Fmatrix& M = smart_cast<IKinematics*>(Visual())->LL_GetTransform(light_bone);
 			xf.mul		(XFORM(),M);
 			VERIFY(!fis_zero(DET(xf)));
@@ -245,8 +267,10 @@ void CHangingLamp::UpdateCL	()
 			light_ambient->set_rotation	(xf.k,xf.i);
 			light_ambient->set_position	(xf.c);
 		}
+		}
 		
-		if (lanim){
+		if (lanim)
+		{
 			int frame;
 			u32 clr					= lanim->CalculateBGR(Device.fTimeGlobal,frame); // возвращает в формате BGR
 			Fcolor					fclr;
@@ -260,7 +284,65 @@ void CHangingLamp::UpdateCL	()
 			}
 		}
 	}
+	if (Alive())
+	{
+		if (isFlickering)
+		{
+			float tg = Device.fTimeGlobal;
+			if (lastFlicker == NULL) lastFlicker = tg;
+			if (tg - lastFlicker >= l_flickerDelay)
+			{
+				int rando = rand() % 100 + 1;
+				if (rando >= l_flickerChance)
+				{
+					if (m_bState)
+						TurnOff();
+					else
+						TurnOn();
+				}
+				lastFlicker = tg;
+			}
+		}
+	}
 }
+
+void CHangingLamp::SetLanim(LPCSTR name, bool bFlicker, int flickerChance, float flickerDelay, float framerate)
+{
+	lanim = LALib.FindItem(name);
+	if (lanim && framerate)
+		lanim->SetFramerate(framerate);
+	isFlickering = bFlicker;
+	if (isFlickering)
+	{
+		l_flickerChance = flickerChance;
+		l_flickerDelay = flickerDelay;
+	}
+}
+
+void CHangingLamp::ResetLanim()
+{
+	if (lanim)
+	{
+		lanim->ResetFramerate();
+		if (lanim->cName != def_lanim)
+			lanim = LALib.FindItem(def_lanim);
+	}
+
+	light_render->set_color(def_clr);
+
+	if (glow_render)
+		glow_render->set_color(def_clr);
+
+	Fcolor amb_clr = def_clr;
+	amb_clr.mul_rgb(ambient_power);
+
+	if (light_ambient)
+		light_ambient->set_color(amb_clr);
+
+	isFlickering = false;
+	TurnOn();
+}
+
 
 void CHangingLamp::TurnOn	()
 {
@@ -288,6 +370,43 @@ void CHangingLamp::TurnOn	()
 		K->CalculateBones			(TRUE);
 		K->LL_SetBoneVisible		(light_bone, TRUE, TRUE); //hack		
 	}
+
+	// update T&R from light (main) bone
+	Fmatrix xf;
+	if (light_bone != BI_NONE)
+	{
+		Fmatrix& M = smart_cast<IKinematics*>(Visual())->LL_GetTransform(light_bone);
+		xf.mul(XFORM(), M);
+		VERIFY(!fis_zero(DET(xf)));
+	}
+	else
+	{
+		xf.set(XFORM());
+	}
+	light_render->set_rotation(xf.k, xf.i);
+	light_render->set_position(xf.c);
+	if (glow_render)glow_render->set_position(xf.c);
+
+	// update T&R from ambient bone
+	if (light_ambient)
+	{
+		if (ambient_bone != light_bone)
+		{
+			if (ambient_bone != BI_NONE)
+			{
+				Fmatrix& M = smart_cast<IKinematics*>(Visual())->LL_GetTransform(ambient_bone);
+				xf.mul(XFORM(), M);
+				VERIFY(!fis_zero(DET(xf)));
+			}
+			else
+			{
+				xf.set(XFORM());
+			}
+		}
+		light_ambient->set_rotation(xf.k, xf.i);
+		light_ambient->set_position(xf.c);
+	}
+
 	processing_activate		();
 	m_bState				= 1;
 }
@@ -408,5 +527,9 @@ void CHangingLamp::script_register(lua_State *L)
 			.def(luabind::constructor<>())
 			.def("turn_on",		&CHangingLamp::TurnOn)
 			.def("turn_off",	&CHangingLamp::TurnOff)
+		.def("set_color_animator", &CHangingLamp::SetLanim)
+		.def("reset_color_animator", &CHangingLamp::ResetLanim)
+		.def("is_on", &CHangingLamp::IsOn)
+		.def("is_flickering", &CHangingLamp::IsFlickering)
 	];
 }

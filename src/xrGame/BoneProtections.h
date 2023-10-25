@@ -8,16 +8,21 @@ struct SBoneProtections{
 		float		armor;
 		BOOL		BonePassBullet;
 	};
+
 	float				m_fHitFracNpc;
 	float				m_fHitFracActor;
+	float APScale;
 	typedef xr_map<s16,BoneProtection>		storage_type;
 	typedef storage_type::iterator	storage_it;
-    SBoneProtections() {
+
+	SBoneProtections()
+	{
         m_default.koeff = 1.0f;
         m_default.armor = 0;
         m_fHitFracActor = 0.1f;
         m_default.BonePassBullet = FALSE;
         m_fHitFracNpc = 0.1f;
+		APScale = 1.0f;
     }
 	BoneProtection		m_default;
 	storage_type		m_bones_koeff;

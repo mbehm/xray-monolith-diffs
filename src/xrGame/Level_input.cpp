@@ -21,6 +21,7 @@
 #include "UI/UIDialogWnd.h"
 #include "../xrEngine/xr_input.h"
 #include "saved_game_wrapper.h"
+#include "ui\UIPdaWnd.h"
 
 #include "../Include/xrRender/DebugRender.h"
 
@@ -55,7 +56,18 @@ void CLevel::IR_OnMouseWheel(int direction)
 
     /* avo: script callback */
 #ifdef MOUSE_INPUT_CALLBACKS
-    if (g_actor) g_actor->callback(GameObject::eMouseWheel)(direction);
+    if (g_actor) {
+        // demonized: add mouse wheel callback with consuming input
+        luabind::functor<bool> funct;
+        if (ai().script_engine().functor("_G.COnMouseWheel", funct))
+        {
+            if (!funct(direction))
+            {
+                return;
+            }
+        }
+        //g_actor->callback(GameObject::eMouseWheel)(direction);
+    }
 #endif
     /* avo: end */
 
@@ -73,7 +85,7 @@ void CLevel::IR_OnMouseWheel(int direction)
     }
 }
 
-static int mouse_button_2_key[] = {MOUSE_1, MOUSE_2, MOUSE_3};
+ENGINE_API int mouse_button_2_key[] = { MOUSE_1, MOUSE_2, MOUSE_3, MOUSE_4, MOUSE_5, MOUSE_6, MOUSE_7, MOUSE_8 };
 
 void CLevel::IR_OnMousePress(int btn)
 {
@@ -109,10 +121,17 @@ void CLevel::IR_OnMouseMove(int dx, int dy)
         IInputReceiver*		IR = smart_cast<IInputReceiver*>	(smart_cast<CGameObject*>(CURRENT_ENTITY()));
         if (IR)				IR->IR_OnMouseMove(dx, dy);
     }
+
+    POINT p;
+    p.x = Device.dwWidth / 2;
+    p.y = Device.dwHeight / 2;
+    ClientToScreen(Device.m_hWnd, &p);
+    SetCursorPos(p.x, p.y);
 }
 
 // Обработка нажатия клавиш
 extern bool g_block_pause;
+extern bool g_block_all_except_movement;
 
 // Lain: added TEMP!!!
 #ifdef DEBUG
@@ -123,6 +142,9 @@ extern bool g_block_pause;
 #include <luabind/functor.hpp>
 #include "script_engine.h"
 #include "ai_space.h"
+#include "ui\UIActorMenu.h"
+
+extern string_path g_last_saved_game;
 
 void CLevel::IR_OnKeyboardPress(int key)
 {
@@ -137,6 +159,12 @@ void CLevel::IR_OnKeyboardPress(int key)
     bool b_ui_exist = (!!CurrentGameUI());
 
     EGameActions _curr = get_binded_action(key);
+
+	if (g_block_all_except_movement)
+	{
+		if (!(_curr < kCAM_1 || _curr == kWPN_FIRE || _curr == kPAUSE || _curr == kDROP || _curr == kSCREENSHOT || _curr == kQUIT || _curr == kCONSOLE || _curr == kQUICK_LOAD || _curr == kQUICK_SAVE))
+			return;
+	}
 
     /* avo: script callback */
 #ifdef INPUT_CALLBACKS
@@ -162,7 +190,43 @@ void CLevel::IR_OnKeyboardPress(int key)
         return;
     }
 
-    if (g_bDisableAllInput)	return;
+	if (b_ui_exist && CurrentGameUI()->GetActorMenu().IsShown() && CurrentGameUI()->GetActorMenu().b_sort_hotkeys)
+	{
+		switch (key)
+		{
+		case DIK_1:
+		case DIK_2:
+		case DIK_3:
+		case DIK_4:
+		case DIK_5:
+		case DIK_6:
+		case DIK_7:
+		case DIK_8:
+		case DIK_9:
+		case DIK_0:
+		{
+			u16 tab = u16(key - DIK_1);
+			if (CurrentGameUI()->GetActorMenu().m_sort_buttons.size() > tab && CurrentGameUI()->GetActorMenu().m_sort_buttons.at(tab)->IsEnabled())
+				CurrentGameUI()->GetActorMenu().SelectInventoryTab(tab);
+			return;
+		}
+		break;
+		}
+	}
+
+    luabind::functor<bool> funct;
+    if (ai().script_engine().functor("level_input.on_key_press", funct))
+    {
+        if (funct(key, _curr, g_bDisableAllInput))
+            return;
+    }
+
+    if (!g_bDisableAllInput)
+    {
+        CUIPdaWnd* pda = b_ui_exist ? &CurrentGameUI()->GetPdaMenu() : nullptr;
+        if (pda && CurrentGameUI()->TopInputReceiver() == pda) // Fix PDA hotkey input for disabled state
+            if (pda->IsShown() && !pda->IsEnabled() && pda->OnKeyboardAction(key, WINDOW_KEY_PRESSED)) return;
+    }
 
     switch (_curr)
     {
@@ -186,11 +250,13 @@ void CLevel::IR_OnKeyboardPress(int key)
                   else
                   {
                       Console->Execute("main_menu");
-                  }return;
-    }break;
+			}
+			return;
+		}
+		break;
     };
 
-    if (!bReady || !b_ui_exist)			return;
+	if (g_bDisableAllInput || !bReady || !b_ui_exist) return;
 
     if (b_ui_exist && CurrentGameUI()->IR_UIOnKeyboardPress(key)) return;
 
@@ -202,13 +268,7 @@ void CLevel::IR_OnKeyboardPress(int key)
 
     if (game && game->OnKeyboardPress(get_binded_action(key)))	return;
 
-	luabind::functor<bool>	funct;
-	if (ai().script_engine().functor("level_input.on_key_press", funct))
-	{
-		if (funct(key, _curr))
-			return;
-	}
-
+    /*
     if (_curr == kQUICK_SAVE && IsGameTypeSingle())
     {
         Console->Execute("save");
@@ -221,15 +281,10 @@ void CLevel::IR_OnKeyboardPress(int key)
         FS.get_path					("$game_scripts$")->m_Flags.set(FS_Path::flNeedRescan, TRUE);
         FS.rescan_pathes			();
 #endif // DEBUG
-        string_path					saved_game, command;
-        strconcat(sizeof(saved_game), saved_game, Core.UserName, " - ", "quicksave");
-        if (!CSavedGameWrapper::valid_saved_game(saved_game))
-            return;
-
-        strconcat(sizeof(command), command, "load ", saved_game);
-        Console->Execute(command);
+		Console->Execute("load_last_save");
         return;
     }
+    */
 
 #ifndef MASTER_GOLD
     switch (key) {
@@ -401,7 +456,7 @@ void CLevel::IR_OnKeyboardPress(int key)
                                  CHudItem* pHudItem = smart_cast<CHudItem*>(pActor->inventory().ActiveItem());
                                  if (pHudItem)
                                  {
-                                     pHudItem->OnStateSwitch(pHudItem->GetState());
+									 pHudItem->OnStateSwitch(pHudItem->GetState(), pHudItem->GetState());
                                  }
                              }
                          }

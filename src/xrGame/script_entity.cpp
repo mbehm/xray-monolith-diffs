@@ -283,7 +283,14 @@ void CScriptEntity::ProcessScripts()
 		return;
 	}
 
-	try {
+	if (!l_tpEntityAction)
+	{
+		ResetScriptData();
+		return;
+	}
+
+	try
+	{
 		bool			l_bCompleted;
 		l_bCompleted	= l_tpEntityAction->m_tWatchAction.m_bCompleted;
 		bfAssignWatch	(l_tpEntityAction);

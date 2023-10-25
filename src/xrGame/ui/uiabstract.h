@@ -46,9 +46,15 @@ public:
 	IC const Fvector2&		GetWndPos			()						const				{return m_wndPos;}
 	virtual void			SetWndSize			(const Fvector2& size)						{m_wndSize = size;}
 	IC const Fvector2&		GetWndSize			()						const				{return m_wndSize;}
-	virtual void			SetWndRect			(const Frect& rect)							{m_wndPos.set(rect.lt); rect.getsize(m_wndSize);}
+
+	virtual void SetWndRect(const Frect& rect)
+	{
+		m_wndPos.set(rect.lt);
+		rect.getsize(m_wndSize);
+	}
 
 	virtual void			SetHeight			(float height)								{m_wndSize.y = height;}
+	virtual bool StopAnyMove() { return true; }
 	IC		float			GetHeight			()						const				{return m_wndSize.y;}
 	virtual void			SetWidth			(float width)								{m_wndSize.x = width;}
 	IC		float			GetWidth			()						const				{return m_wndSize.x;}

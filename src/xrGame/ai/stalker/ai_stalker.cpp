@@ -941,6 +941,9 @@ CPHDestroyable*		CAI_Stalker::		ph_destroyable	()
 
 void CAI_Stalker::shedule_Update		( u32 DT )
 {
+	// Optimization update
+//	if (Device.dwFrame % 2) return;
+
 	START_PROFILE("stalker")
 	START_PROFILE("stalker/schedule_update")
 	VERIFY2				(getEnabled()||PPhysicsShell(), *cName());
@@ -1394,19 +1397,26 @@ void CAI_Stalker::ResetBoneProtections(LPCSTR imm_sect, LPCSTR bone_sect)
 {
 	IKinematics* pKinematics = renderable.visual->dcast_PKinematics();
 	CInifile* ini = pKinematics->LL_UserData();
-	if (ini)
-	{
-		if (imm_sect || ini->section_exist("immunities"))
-		{
-			imm_sect = imm_sect ? imm_sect : ini->r_string("immunities", "immunities_sect");
-			conditions().LoadImmunities(imm_sect, pSettings);
+	conditions().LoadImmunities(
+		(ini && ini->section_exist("immunities") && ini->line_exist("immunities", "immunities_sect"))
+			? ini->r_string("immunities", "immunities_sect")
+			: (imm_sect ? imm_sect : "stalker_immunities"), pSettings);
+
+	m_boneHitProtection->reload(
+		(ini && ini->section_exist("bone_protection") && ini->line_exist("bone_protection", "bones_protection_sect"))
+			? ini->r_string("bone_protection", "bones_protection_sect")
+			: (bone_sect ? bone_sect : "stalker_damage"), pKinematics);
 		}
 
-		if (bone_sect || ini->line_exist("bone_protection", "bones_protection_sect"))
+void CAI_Stalker::ChangeVisual(shared_str NewVisual)
 		{
-			//m_boneHitProtection = xr_new<SBoneProtections>();
-			bone_sect = ini->r_string("bone_protection", "bones_protection_sect");
-			m_boneHitProtection->reload(bone_sect, pKinematics);
-		}
-	}
+	if (!NewVisual.size()) return;
+	if (cNameVisual().size())
+	{
+		if (cNameVisual() == NewVisual) return;
 }
+	cNameVisual_set(NewVisual);
+
+	Visual()->dcast_PKinematics()->CalculateBones_Invalidate();
+	Visual()->dcast_PKinematics()->CalculateBones(TRUE);
+};

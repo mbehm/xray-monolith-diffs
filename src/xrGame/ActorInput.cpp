@@ -11,7 +11,6 @@
 
 #include "hit.h"
 #include "PHDestroyable.h"
-#include "Car.h"
 #include "UIGameSP.h"
 #include "inventory.h"
 #include "level.h"
@@ -33,6 +32,9 @@
 #include "clsid_game.h"
 #include "hudmanager.h"
 #include "Weapon.h"
+#include "Flashlight.h"
+#include "../xrPhysics/IElevatorState.h"
+#include "holder_custom.h"
 
 extern u32 hud_adj_mode;
 
@@ -51,9 +53,16 @@ void CActor::IR_OnKeyboardPress(int cmd)
 		{
 			if( (mstate_wishful & mcLookout) && !IsGameTypeSingle() ) return;
 
-			u16 slot = inventory().GetActiveSlot();
-			if(inventory().ActiveItem() && (slot==INV_SLOT_3 || slot==INV_SLOT_2) )
-				mstate_wishful &=~mcSprint;
+			// Tronex: export to allow/prevent weapon fire if returned false
+			luabind::functor<bool> funct;
+			if (ai().script_engine().functor("_G.CActor_Fire", funct))
+			{
+				if (!funct())
+				{
+					return;
+				}
+			}
+
 			//-----------------------------
 			if (OnServer())
 			{
@@ -90,40 +99,91 @@ void CActor::IR_OnKeyboardPress(int cmd)
 	case kJUMP:		
 		{
 			mstate_wishful |= mcJump;
-		}break;
+		}
+		break;
 	case kSPRINT_TOGGLE:	
 		{
+			if (psActorFlags.test(AF_SPRINT_TOGGLE))
+			{
+				if (psActorFlags.test(AF_WALK_TOGGLE)) mstate_wishful &= ~mcAccel;
+				if (psActorFlags.test(AF_CROUCH_TOGGLE)) mstate_wishful &= ~mcCrouch;
 			mstate_wishful ^= mcSprint;
-		}break;
+			}
+		}
+		break;
+	case kFREELOOK:
+	{
+		if (psActorFlags.test(AF_FREELOOK_TOGGLE))
+		{
+			if (cam_freelook == eflDisabled && CanUseFreelook())
+			{
+				cam_SetFreelook();
+			}
+			else if (cam_freelook == eflEnabled)
+			{
+				cam_UnsetFreelook();
+			}
+		}
+	}
+	break;
 	case kCROUCH:	
 		{
 		if( psActorFlags.test(AF_CROUCH_TOGGLE) )
 			mstate_wishful ^= mcCrouch;
-		}break;
-	case kCAM_1:	cam_Set			(eacFirstEye);				break;
-	case kCAM_2:	cam_Set			(eacLookAt);				break;
-	case kCAM_3:	cam_Set			(eacFreeLook);				break;
+		}
+		break;
+	case kACCEL:
+		{
+			if (psActorFlags.test(AF_WALK_TOGGLE))
+				mstate_wishful ^= mcAccel;
+		}
+		break;
+	case kL_LOOKOUT:
+		{
+			if (psActorFlags.test(AF_LOOKOUT_TOGGLE))
+			{
+				mstate_wishful &= ~mcRLookout;
+				mstate_wishful ^= mcLLookout;
+			}
+		}
+		break;
+	case kR_LOOKOUT:
+		{
+			if (psActorFlags.test(AF_LOOKOUT_TOGGLE))
+			{
+				mstate_wishful &= ~mcLLookout;
+				mstate_wishful ^= mcRLookout;
+			}
+		}
+		break;
+	case kCAM_1: cam_Set(eacFirstEye);
+		break;
+	case kCAM_2: cam_Set(eacLookAt);
+		break;
+	case kCAM_3: cam_Set(eacFreeLook);
+		break;
 	case kNIGHT_VISION:
 		{
-			SwitchNightVision();
+			//SwitchNightVision(); //Rezy: now it's controlled via LUA scripts for timing and animations
 			break;
 		}
 	case kTORCH:
 		{
-			SwitchTorch();
+			//SwitchTorch(); //Tronex: now it's controlled via LUA scripts for timing and animations
 			break;
 		}
 
 	case kDETECTOR:
 		{
-			PIItem det_active					= inventory().ItemFromSlot(DETECTOR_SLOT);
-			if(det_active)
+			PIItem dev_active = inventory().ItemFromSlot(DETECTOR_SLOT);
+			if (dev_active)
 			{
-				CCustomDetector* det			= smart_cast<CCustomDetector*>(det_active);
-				det->ToggleDetector				(g_player_hud->attached_item(0)!=NULL);
-				return;
+				CCustomDevice* dev = smart_cast<CCustomDevice*>(dev_active);
+				if (dev)
+					dev->ToggleDevice(g_player_hud->attached_item(0) != NULL);
 			}
-		}break;
+		}
+		break;
 /*
 	case kFLARE:{
 			PIItem fl_active = inventory().ItemFromSlot(FLARE_SLOT);
@@ -169,7 +229,11 @@ void CActor::IR_OnKeyboardPress(int cmd)
 			{
 				PIItem itm = inventory().GetAny(item_name.c_str());
 
-				if(itm)
+				luabind::functor<bool> funct;
+				if (itm && ai().script_engine().functor("_G.CInventory__eat", funct))
+				{
+					CGameObject* GO = itm->cast_game_object();
+					if (GO && funct(GO->lua_game_object()))
 				{
 					if (IsGameTypeSingle())
 					{
@@ -184,13 +248,19 @@ void CActor::IR_OnKeyboardPress(int cmd)
 					strconcat					(sizeof(str),str,*CStringTable().translate("st_item_used"),": ", itm->NameItem());
 					_s->wnd()->TextItemControl()->SetText(str);
 					
-					CurrentGameUI()->GetActorMenu().m_pQuickSlot->ReloadReferences(this);
+						//CurrentGameUI()->GetActorMenu().m_pQuickSlot->ReloadReferences(this);
 				}
 			}
-		}break;
+			}
+		}
+		break;
 	}
 }
 
+// demonized: switch to disable mouse wheel weapon change
+BOOL mouseWheelChangeWeapon = TRUE;
+// mbehm: switch to allow inverting mouse wheel zoom direction
+BOOL mouseWheelInvertZoom = TRUE;
 void CActor::IR_OnMouseWheel(int direction)
 {
 	if(hud_adj_mode)
@@ -199,13 +269,18 @@ void CActor::IR_OnMouseWheel(int direction)
 		return;
 	}
 
+	if (mouseWheelInvertZoom) {
 	if(inventory().Action( (direction>0)? (u16)kWPN_ZOOM_DEC:(u16)kWPN_ZOOM_INC , CMD_START)) return;
+	} else {
+		if (inventory().Action((direction > 0) ? (u16)kWPN_ZOOM_INC : (u16)kWPN_ZOOM_DEC, CMD_START)) return;
+	}
 
-
+	if (mouseWheelChangeWeapon) {
 	if (direction>0)
 		OnNextWeaponSlot				();
 	else
 		OnPrevWeaponSlot				();
+}
 }
 
 void CActor::IR_OnKeyboardRelease(int cmd)
@@ -218,6 +293,9 @@ void CActor::IR_OnKeyboardRelease(int cmd)
 
 	if (g_Alive())	
 	{
+		if (cmd == kUSE && !psActorFlags.test(AF_MULTI_ITEM_PICKUP))
+			m_bPickupMode = false;
+
 		if(m_holder)
 		{
 			m_holder->OnKeyboardRelease(cmd);
@@ -264,27 +342,69 @@ void CActor::IR_OnKeyboardHold(int cmd)
 	{
 	case kUP:
 	case kDOWN: 
-		cam_Active()->Move( (cmd==kUP) ? kDOWN : kUP, 0, LookFactor);									break;
+		if(cam_freelook != eflEnabling && cam_freelook != eflDisabling) cam_Active()->Move((cmd == kUP) ? kDOWN : kUP, 0, LookFactor);
+		break;
 	case kCAM_ZOOM_IN: 
 	case kCAM_ZOOM_OUT: 
-		cam_Active()->Move(cmd);												break;
+		cam_Active()->Move(cmd);
+		break;
 	case kLEFT:
 	case kRIGHT:
-		if (eacFreeLook!=cam_active) cam_Active()->Move(cmd, 0, LookFactor);	break;
-
-	case kACCEL:	mstate_wishful |= mcAccel;									break;
-	case kL_STRAFE:	mstate_wishful |= mcLStrafe;								break;
-	case kR_STRAFE:	mstate_wishful |= mcRStrafe;								break;
-	case kL_LOOKOUT:mstate_wishful |= mcLLookout;								break;
-	case kR_LOOKOUT:mstate_wishful |= mcRLookout;								break;
-	case kFWD:		mstate_wishful |= mcFwd;									break;
-	case kBACK:		mstate_wishful |= mcBack;									break;
+		if (eacFreeLook != cam_active && cam_freelook != eflEnabling && cam_freelook != eflDisabling) cam_Active()->Move(cmd, 0, LookFactor);
+		break;
+	case kL_STRAFE: mstate_wishful |= mcLStrafe;
+		break;
+	case kR_STRAFE: mstate_wishful |= mcRStrafe;
+		break;
+	case kL_LOOKOUT:
+		{
+			if (!psActorFlags.test(AF_LOOKOUT_TOGGLE) && cam_freelook == eflDisabled)
+				mstate_wishful |= mcLLookout;
+		}
+		break;
+	case kR_LOOKOUT:
+		{
+			if (!psActorFlags.test(AF_LOOKOUT_TOGGLE) && cam_freelook == eflDisabled)
+				mstate_wishful |= mcRLookout;
+		}
+		break;
+	case kFWD: mstate_wishful |= mcFwd;
+		break;
+	case kBACK: mstate_wishful |= mcBack;
+		break;
 	case kCROUCH:
 		{
 			if( !psActorFlags.test(AF_CROUCH_TOGGLE) )
 					mstate_wishful |= mcCrouch;
-
-		}break;
+		}
+		break;
+	case kACCEL:
+		{
+			if (!psActorFlags.test(AF_WALK_TOGGLE))
+				mstate_wishful |= mcAccel;
+		}
+	break;
+	case kFREELOOK:
+	{
+		if (!psActorFlags.test(AF_FREELOOK_TOGGLE))
+		{
+			if (cam_freelook == eflDisabled && CanUseFreelook())
+			{
+				cam_SetFreelook();
+			}
+		}
+	}
+	break;
+	case kSPRINT_TOGGLE:
+		{
+			if (!psActorFlags.test(AF_SPRINT_TOGGLE))
+			{
+				if (psActorFlags.test(AF_WALK_TOGGLE)) mstate_wishful &= ~mcAccel;
+				if (psActorFlags.test(AF_CROUCH_TOGGLE)) mstate_wishful &= ~mcCrouch;
+				mstate_wishful |= mcSprint;
+			}
+		}
+		break;
 	}
 }
 
@@ -309,11 +429,15 @@ void CActor::IR_OnMouseMove(int dx, int dy)
 		return;
 	}
 
+	if (cam_freelook == eflEnabling || cam_freelook == eflDisabling)
+		return;
+
 	float LookFactor = GetLookFactor();
 
 	CCameraBase* C	= cameras	[cam_active];
-	float scale		= (C->f_fov/g_fov)*psMouseSens * psMouseSensScale/50.f  / LookFactor;
-	if (dx){
+    float scale = (C->f_fov / g_fov) * (psMouseSens * sens_multiple) * psMouseSensScale / 50.f / LookFactor;
+	if (dx)
+	{
 		float d = float(dx)*scale;
 		cam_Active()->Move((d<0)?kLEFT:kRIGHT, _abs(d));
 	}
@@ -323,38 +447,32 @@ void CActor::IR_OnMouseMove(int dx, int dy)
 	}
 }
 #include "HudItem.h"
+
 bool CActor::use_Holder				(CHolderCustom* holder)
 {
+	if (m_holder)
+	{
+		bool b = use_HolderEx(0, false);
 
-	if(m_holder){
-		bool b = false;
-		CGameObject* holderGO			= smart_cast<CGameObject*>(m_holder);
-		
-		if(smart_cast<CCar*>(holderGO))
-			b = use_Vehicle(0);
-		else
-			if (holderGO->CLS_ID==CLSID_OBJECT_W_STATMGUN || holderGO->CLS_ID==CLSID_OBJECT_HOLDER_ENT)
-				b = use_HolderEx(0,false);
-
-		if(inventory().ActiveItem()){
+		if (inventory().ActiveItem())
+		{
 			CHudItem* hi = smart_cast<CHudItem*>(inventory().ActiveItem());
 			if(hi) hi->OnAnimationEnd(hi->GetState());
 		}
 
 		return b;
-	}else{
-		bool b = false;
-		CGameObject* holderGO			= smart_cast<CGameObject*>(holder);
-		if(smart_cast<CCar*>(holder))
-			b = use_Vehicle(holder);
-
-		if (holderGO->CLS_ID==CLSID_OBJECT_W_STATMGUN || holderGO->CLS_ID==CLSID_OBJECT_HOLDER_ENT)
-			b = use_HolderEx(holder,false);
+	}
+	else
+	{
+		bool b = use_HolderEx(holder, false);
 		
-		if(b){//used succesfully
+		if (b)
+		{
+			//used succesfully
 			// switch off torch...
 			CAttachableItem *I = CAttachmentOwner::attachedItem(CLSID_DEVICE_TORCH);
-			if (I){
+			if (I)
+			{
 				CTorch* torch = smart_cast<CTorch*>(I);
 				if (torch) torch->Switch(false);
 			}
@@ -381,6 +499,9 @@ void CActor::ActorUse()
 		return;
 	}
 				
+	if (!psActorFlags.test(AF_MULTI_ITEM_PICKUP))
+		m_bPickupMode = true;
+
 	if(character_physics_support()->movement()->PHCapture())
 		character_physics_support()->movement()->PHReleaseObject();
 
@@ -417,6 +538,10 @@ void CActor::ActorUse()
 		if(object && Level().IR_GetKeyState(DIK_LSHIFT))
 		{
 			bool b_allow = !!pSettings->line_exist("ph_capture_visuals",object->cNameVisual());
+			luabind::functor<bool> funct;
+			if (ai().script_engine().functor("_G.CActor__OnBeforePHCapture", funct))
+				b_allow = funct(object->lua_game_object(), b_allow);
+
 			if(b_allow && !character_physics_support()->movement()->PHCapture())
 			{
 				character_physics_support()->movement()->PHCaptureObject( object, element );
@@ -468,14 +593,13 @@ void CActor::ActorUse()
 				}
 			}
 		}
-
 	}
 }
-
+extern BOOL firstPersonDeath;
 BOOL CActor::HUDview				( )const 
 { 
 	return IsFocused() && (cam_active==eacFirstEye)&&
-		((!m_holder) || (m_holder && m_holder->allowWeapon() && m_holder->HUDView() ) ); 
+		((!m_holder) || (m_holder && m_holder->allowWeapon() && m_holder->HUDView())) && (firstPersonDeath ? g_Alive() : true);
 }
 
 static	u16 SlotsToCheck [] = {
@@ -484,6 +608,7 @@ static	u16 SlotsToCheck [] = {
 		INV_SLOT_3		,		// 2
 		GRENADE_SLOT	,		// 3
 		ARTEFACT_SLOT	,		// 10
+	PDA_SLOT
 };
 
 void	CActor::OnNextWeaponSlot()
@@ -513,6 +638,10 @@ void	CActor::OnNextWeaponSlot()
 			if (SlotsToCheck[i] == ARTEFACT_SLOT) 
 			{
 				IR_OnKeyboardPress(kARTEFACT);
+			}
+			else if (SlotsToCheck[i] == PDA_SLOT)
+			{
+				IR_OnKeyboardPress(kACTIVE_JOBS);
 			}
 			else
 				IR_OnKeyboardPress(kWPN_1 + i);
@@ -549,6 +678,10 @@ void	CActor::OnPrevWeaponSlot()
 			{
 				IR_OnKeyboardPress(kARTEFACT);
 			}
+			else if (SlotsToCheck[i] == PDA_SLOT)
+			{
+				IR_OnKeyboardPress(kACTIVE_JOBS);
+			}
 			else
 				IR_OnKeyboardPress(kWPN_1 + i);
 			return;
@@ -556,22 +689,20 @@ void	CActor::OnPrevWeaponSlot()
 	}
 };
 
+extern float g_AimLookFactor;
+
 float	CActor::GetLookFactor()
 {
 	if (m_input_external_handler) 
 		return m_input_external_handler->mouse_scale_factor();
 
+	if (m_bZoomAimingMode)
+		return (1.f / g_AimLookFactor);
 	
-	float factor	= 1.f;
+	if (cam_freelook != eflDisabled)
+		return 1.5f;
 
-	PIItem pItem	= inventory().ActiveItem();
-
-	if (pItem)
-		factor *= pItem->GetControlInertionFactor();
-
-	VERIFY(!fis_zero(factor));
-
-	return factor;
+	return 1.f;
 }
 
 void CActor::set_input_external_handler(CActorInputHandler *handler) 
@@ -590,48 +721,14 @@ void CActor::set_input_external_handler(CActorInputHandler *handler)
 
 void CActor::SwitchNightVision()
 {
-	CWeapon* wpn1 = NULL;
-	CWeapon* wpn2 = NULL;
-	if(inventory().ItemFromSlot(INV_SLOT_2))
-		wpn1 = smart_cast<CWeapon*>(inventory().ItemFromSlot(INV_SLOT_2));
-
-	if(inventory().ItemFromSlot(INV_SLOT_3))
-		wpn2 = smart_cast<CWeapon*>(inventory().ItemFromSlot(INV_SLOT_3));
-
-	xr_vector<CAttachableItem*> const& all = CAttachmentOwner::attached_objects();
-	xr_vector<CAttachableItem*>::const_iterator it = all.begin();
-	xr_vector<CAttachableItem*>::const_iterator it_e = all.end();
-	for ( ; it != it_e; ++it )
-	{
-		CTorch* torch = smart_cast<CTorch*>(*it);
-		if ( torch )
-		{	
-			if(wpn1 && wpn1->IsZoomed())
-				return;
-
-			if(wpn2 && wpn2->IsZoomed())
-				return;
-
-			torch->SwitchNightVision();
-			return;
-		}
-	}
+	SwitchNightVision(!m_bNightVisionOn);
 }
 
 void CActor::SwitchTorch()
 { 
-	xr_vector<CAttachableItem*> const& all = CAttachmentOwner::attached_objects();
-	xr_vector<CAttachableItem*>::const_iterator it = all.begin();
-	xr_vector<CAttachableItem*>::const_iterator it_e = all.end();
-	for ( ; it != it_e; ++it )
-	{
-		CTorch* torch = smart_cast<CTorch*>(*it);
-		if ( torch )
-		{		
-			torch->Switch();
-			return;
-		}
-	}
+	CTorch* pTorch = smart_cast<CTorch*>(inventory().ItemFromSlot(TORCH_SLOT));
+	if (pTorch)
+		pTorch->Switch();
 }
 
 #ifdef DEBUG

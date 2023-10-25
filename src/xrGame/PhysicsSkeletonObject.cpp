@@ -22,15 +22,15 @@ BOOL CPhysicsSkeletonObject::net_Spawn(CSE_Abstract* DC)
 {
 	CSE_Abstract			  *e	= (CSE_Abstract*)(DC);
 
-	inherited::net_Spawn	(DC);
+	BOOL res = inherited::net_Spawn(DC);
 	xr_delete(collidable.model);
 	collidable.model = xr_new<CCF_Skeleton>(this);
 	CPHSkeleton::Spawn(e);
 	setVisible(TRUE);
 	setEnabled(TRUE);
-	if(!PPhysicsShell()->isBreakable())
+	if (!PPhysicsShell() || !PPhysicsShell()->isBreakable())
 		SheduleUnregister		();
-	return TRUE;
+	return res;
 }
 
 void	CPhysicsSkeletonObject::SpawnInitPhysics	(CSE_Abstract	*D)

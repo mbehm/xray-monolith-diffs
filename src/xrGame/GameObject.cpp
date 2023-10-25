@@ -44,7 +44,7 @@ extern MagicBox3 MagicMinBox (int iQuantity, const Fvector* akPoint);
 #	include "PHDebug.h"
 #endif
 
-ENGINE_API bool g_dedicated_server;
+extern ENGINE_API bool g_dedicated_server;
 
 CGameObject::CGameObject		()
 {
@@ -115,6 +115,13 @@ void CGameObject::net_Destroy	()
 #endif
 
 	VERIFY					(m_spawned);
+
+	luabind::functor<void> funct;
+	if (ai().script_engine().functor("_G.CGameObject_NetDestroy", funct))
+	{
+		funct(this->lua_game_object());
+	}
+
 	if( m_anim_mov_ctrl )
 					destroy_anim_mov_ctrl	();
 
@@ -423,6 +430,11 @@ BOOL CGameObject::net_Spawn		(CSE_Abstract*	DC)
 	}
 	BOOL ret =CScriptBinder::net_Spawn(DC);
 #else
+	luabind::functor<void> funct;
+	if (ai().script_engine().functor("_G.CGameObject_NetSpawn", funct))
+	{
+		funct(this->lua_game_object());
+	}
 	return						(CScriptBinder::net_Spawn(DC));
 #endif
 
@@ -806,11 +818,11 @@ void VisualCallback	(IKinematics *tpKinematics)
 CScriptGameObject *CGameObject::lua_game_object		() const
 {
     if (!this) return NULL;
-#ifdef DEBUG
 	if (!m_spawned)
-		Msg							("! you are trying to use a destroyed object [%x]",this);
-#endif
-	THROW							(m_spawned);
+	{
+		Msg("! you are trying to use a destroyed object [%i]", ID());
+		return NULL;
+	}
 	if (!m_lua_game_object)
 		m_lua_game_object			= xr_new<CScriptGameObject>(const_cast<CGameObject*>(this));
 	return							(m_lua_game_object);
@@ -979,7 +991,7 @@ void CGameObject::create_anim_mov_ctrl	( CBlend *b, Fmatrix *start_pose, bool lo
 //		start_pose		= &renderable.xform;
 		if( m_anim_mov_ctrl )
 			destroy_anim_mov_ctrl();
-
+#ifdef DEBUG
 		VERIFY2			(
 			start_pose,
 			make_string(
@@ -997,7 +1009,7 @@ void CGameObject::create_anim_mov_ctrl	( CBlend *b, Fmatrix *start_pose, bool lo
 				smart_cast<IKinematicsAnimated&>(*Visual()).LL_MotionDefName_dbg(b->motionID).second
 			)
 		);
-		
+#endif
 		VERIFY			(Visual());
 		IKinematics		*K = Visual( )->dcast_PKinematics( );
 		VERIFY			( K );
@@ -1049,6 +1061,11 @@ void CGameObject::UpdateCL			()
 void CGameObject::on_matrix_change	(const Fmatrix &previous)
 {
 	obstacle().on_move				();
+}
+
+void CGameObject::FootStepCallback(float power, bool b_play, bool b_on_ground, bool b_hud_view)
+{
+	this->callback(GameObject::eOnFootStep)(this->lua_game_object(), power, b_play, b_on_ground, b_hud_view);
 }
 
 #ifdef DEBUG

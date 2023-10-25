@@ -8,7 +8,7 @@
 #include "ui\UIComboBox.h"
 #include "ui\UITabControl.h"
 #include "ui\UIFrameWindow.h"
-#include "ui\UILabel.h"
+//#include "ui\UILabel.h"
 #include "ui\ServerList.h"
 #include "ui\UIMapList.h"
 #include "ui\UIKeyBinding.h"
@@ -37,10 +37,105 @@ void _attach_child(CUIWindow* _child, CUIWindow* _parent)
 		_parent->AttachChild		(_child);
 }
 
+// demonized
+// Clear XML from BOM
+LPCSTR clearBOM(LPCSTR s) {
+	if (s[0] == (char)0xEF && s[1] == (char)0xBB && s[2] == (char)0xBF) {
+		LPCSTR new_s = s + 3;
+		return new_s;
+	}
+	return s;
+}
+
+// demonized
+// Send XML file contents to Lua for edit
+void XMLLuaCallback(CXml &m_xml, LPCSTR xml_string) {
+	xml_string = clearBOM(xml_string);
+	luabind::functor<LPCSTR> funct;
+	if (ai().script_engine().functor("_G.COnXmlRead", funct))
+	{
+		LPCSTR res = funct(m_xml.m_xml_file_name, xml_string);
+		//Msg("XMLLuaCallback, xml %s, contents %s", m_xml.m_xml_file_name, res);
+		m_xml.LoadFromString(res);
+	}
+}
+
 void CScriptXmlInit::ParseFile(LPCSTR xml_file)
 {
 	m_xml.Load(CONFIG_PATH, UI_PATH, xml_file);
 }
+
+//------------------------------------------------------------
+// Tronex: useful exports to read XML files
+//------------------------------------------------------------
+void CScriptXmlInit::ParseDirFile(LPCSTR xml_dir, LPCSTR xml_file)
+{
+	m_xml.Load(CONFIG_PATH, xml_dir, xml_file);
+}
+
+bool CScriptXmlInit::NodeExist(LPCSTR path, int index)
+{
+	if (m_xml.NavigateToNode(path, index))
+	{
+		return true;
+	}
+	return false;
+}
+
+int CScriptXmlInit::GetNodesNum(LPCSTR path, int index, LPCSTR tag_name)
+{
+	return m_xml.GetNodesNum(path, index, tag_name);
+}
+
+bool CScriptXmlInit::NavigateToNode(LPCSTR path, int index)
+{
+	XML_NODE* node = m_xml.NavigateToNode(path, index);
+	if (node)
+	{
+		m_xml.SetLocalRoot(node);
+		return true;
+	}
+	return false;
+}
+
+bool CScriptXmlInit::NavigateToNode_ByAttribute(LPCSTR tag_name, LPCSTR attrib_name, LPCSTR attrib_value)
+{
+	XML_NODE* node = m_xml.NavigateToNodeWithAttribute(tag_name, attrib_name, attrib_value);
+	if (node)
+	{
+		m_xml.SetLocalRoot(node);
+		return true;
+	}
+	return false;
+}
+
+bool CScriptXmlInit::NavigateToNode_ByPath(LPCSTR path, int index, LPCSTR tag_name, LPCSTR attrib, LPCSTR attrib_value_pattern)
+{
+	XML_NODE* node = m_xml.SearchForAttribute(path, index, tag_name, attrib, attrib_value_pattern);
+	if (node)
+	{
+		m_xml.SetLocalRoot(node);
+		return true;
+	}
+	return false;
+}
+
+void CScriptXmlInit::NavigateToRoot()
+{
+	m_xml.SetLocalRoot(m_xml.GetRoot());
+}
+
+LPCSTR CScriptXmlInit::ReadValue(LPCSTR path, int index)
+{
+	return m_xml.Read(path, index, "");
+}
+
+LPCSTR CScriptXmlInit::ReadAttribute(LPCSTR path, int index, LPCSTR attrib)
+{
+	return m_xml.ReadAttrib(path, index, attrib, "");
+}
+
+//------------------------------------------------------------
 
 void CScriptXmlInit::InitWindow(LPCSTR path, int index, CUIWindow* pWnd)
 {
@@ -263,6 +358,17 @@ void CScriptXmlInit::script_register(lua_State *L){
 		class_<CScriptXmlInit>			("CScriptXmlInit")
 		.def(							constructor<>())
 		.def("ParseFile",				&CScriptXmlInit::ParseFile)
+		.def("ParseDirFile", &CScriptXmlInit::ParseDirFile)
+		
+		.def("NodeExist", &CScriptXmlInit::NodeExist)
+		.def("GetNodesNum", &CScriptXmlInit::GetNodesNum)
+		.def("NavigateToNode", &CScriptXmlInit::NavigateToNode)
+		.def("NavigateToNode_ByAttribute", &CScriptXmlInit::NavigateToNode_ByAttribute)
+		.def("NavigateToNode_ByPath", &CScriptXmlInit::NavigateToNode_ByPath)
+		.def("NavigateToRoot", &CScriptXmlInit::NavigateToRoot)
+		.def("ReadValue", &CScriptXmlInit::ReadValue)
+		.def("ReadAttribute", &CScriptXmlInit::ReadAttribute)
+		
 		.def("InitWindow",				&CScriptXmlInit::InitWindow)
 		.def("InitHint",				&CScriptXmlInit::InitHint)
 		.def("InitFrame",				&CScriptXmlInit::InitFrame)

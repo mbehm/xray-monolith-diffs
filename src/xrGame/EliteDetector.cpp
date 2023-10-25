@@ -20,7 +20,7 @@ CEliteDetector::~CEliteDetector()
 
 void CEliteDetector::CreateUI()
 {
-	R_ASSERT(NULL==m_ui);
+	R_ASSERT(nullptr==m_ui);
 	m_ui				= xr_new<CUIArtefactDetectorElite>();
 	ui().construct		(this);
 }
@@ -28,6 +28,11 @@ void CEliteDetector::CreateUI()
 CUIArtefactDetectorElite&  CEliteDetector::ui()
 {
 	return *((CUIArtefactDetectorElite*)m_ui);
+}
+
+void CEliteDetector::ResetUI()
+{
+	if (m_ui) ui().Clear();
 }
 
 void CEliteDetector::UpdateAf()
@@ -57,18 +62,13 @@ void CEliteDetector::UpdateAf()
 	}
 }
 
-bool  CEliteDetector::render_item_3d_ui_query()
-{
-	return IsWorking();
-}
-
 void CEliteDetector::render_item_3d_ui()
 {
 	R_ASSERT(HudItemData());
-	inherited::render_item_3d_ui();
 	ui().Draw			();
+
 	//	Restore cull mode
-	UIRender->CacheSetCullMode	(IUIRender::cmCCW);
+	inherited::render_item_3d_ui();
 }
 
 void fix_ws_wnd_size(CUIWindow* w, float kx)
@@ -147,12 +147,7 @@ void CUIArtefactDetectorElite::Draw()
 	Fmatrix						LM;
 	GetUILocatorMatrix			(LM);
 
-	IUIRender::ePointType bk	= UI().m_currentPointType;
-
-	UI().m_currentPointType	= IUIRender::pttLIT;
-
 	UIRender->CacheSetXformWorld(LM);
-	UIRender->CacheSetCullMode	(IUIRender::cmNONE);
 
 	CUIWindow::Draw				();
 
@@ -197,13 +192,16 @@ void CUIArtefactDetectorElite::Draw()
 		}
 	}
 
-	UI().m_currentPointType		= bk;
+	UI().ScreenFrustumLIT().Clear();
 }
 
 void CUIArtefactDetectorElite::GetUILocatorMatrix(Fmatrix& _m)
 {
 	Fmatrix	trans					= m_parent->HudItemData()->m_item_transform;
-	u16 bid							= m_parent->HudItemData()->m_model->LL_BoneID("cover");
+
+	// Lucy: custom boneid for ui
+	u16 bid = m_parent->HudItemData()->m_model->LL_BoneID(READ_IF_EXISTS(pSettings, r_string, *m_parent->HudItemData()->m_sect_name, "detector_ui_bone", "cover"));
+
 	Fmatrix cover_bone				= m_parent->HudItemData()->m_model->LL_GetTransform(bid);
 	_m.mul							(trans, cover_bone);
 	_m.mulB_43						(m_map_attach_offset);
@@ -244,7 +242,7 @@ void  CScientificDetector::Load(LPCSTR section)
 	m_zones.load(section,"zone");
 }
 
-void CScientificDetector::UpfateWork()
+void CScientificDetector::UpdateWork()
 {
 	ui().Clear							();
 

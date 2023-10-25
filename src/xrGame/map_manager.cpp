@@ -149,6 +149,21 @@ void CMapManager::RemoveMapLocation(const shared_str& spot_type, u16 id)
 	}
 }
 
+// demonized: remove all map object spots by id
+void CMapManager::RemoveAllMapLocationsById(u16 id)
+{
+	for (Locations_it it = Locations().begin(); it != Locations().end(); ) {
+		if (it->object_id == id) {
+			if (IsGameTypeSingle())
+				Level().GameTaskManager().MapLocationRelcase((*it).location);
+			Destroy((*it).location);
+			it = Locations().erase(it);
+		} else {
+			it++;
+		}
+	}
+}
+
 void CMapManager::RemoveMapLocationByObjectID(u16 id) //call on destroy object
 {
 	FindLocationByID key(id);
@@ -259,6 +274,14 @@ void CMapManager::DisableAllPointers()
 		(*it).location->DisablePointer	();
 }
 
+void CMapManager::ReloadSpots()
+{
+	Locations_it it = Locations().begin();
+	Locations_it it_e = Locations().end();
+
+	for (; it != it_e; ++it)
+		(*it).location->LoadSpot((*it).location->spot_type, false);
+}
 
 Locations&	CMapManager::Locations	() 
 {

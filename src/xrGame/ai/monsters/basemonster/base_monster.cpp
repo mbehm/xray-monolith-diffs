@@ -43,6 +43,10 @@
 
 #include "../anti_aim_ability.h"
 
+#include "script_hit.h"
+#include "../../xrServerEntities/script_engine.h"
+#include "script_game_object.h"
+
 // Lain: added 
 #include "../../../level_debug.h"
 #include "../../../../xrEngine/xrLevel.h"
@@ -461,6 +465,18 @@ void CBaseMonster::Hit(SHit* pHDS)
 			pHDS->add_wound = false; 	//раны нет
 		}
 	}
+
+	CScriptHit tLuaHit(pHDS);
+
+	luabind::functor<bool>	funct;
+	if (ai().script_engine().functor("_G.CBaseMonster__BeforeHitCallback", funct))
+	{
+		if (!funct(this->lua_game_object(), &tLuaHit, pHDS->boneID))
+			return;
+	}
+
+	pHDS->ApplyScriptHit(&tLuaHit);
+
 	inherited::Hit(pHDS);
 }
 

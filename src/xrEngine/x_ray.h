@@ -74,4 +74,51 @@ public:
 
 extern ENGINE_API CApplication* pApp;
 
+//Discord
+struct rpc_info
+{
+	bool mainmenu;
+	bool loadscreen;
+	bool ingame;
+	bool ex_update;
+	bool ironman;
+	bool godmode;
+	int possessed_lives;
+	int health;
+	int lives_left;
+	int level_icon_index;
+	char task_name[128];
+	char faction_name[128];
+	char rank_name[128];
+	char reputation[128];
+	char level_name[128];
+	char gamemode[128];
+	LPCSTR currenttime;
+	LPCSTR faction;
+	LPCSTR level;
+};
+
+struct rpc_strings
+{
+	char loading[128];
+	char mainmenu[128];
+	char paused[128];
+	char health[128];
+	char livesleft[128];
+	char dead[128];
+	char livesleftsingle[128];
+	char livespossessed[128];
+	char livespossessedsingle[128];
+	char godmode[128];
+};
+
+extern ENGINE_API void updateDiscordPresence();
+extern ENGINE_API rpc_info discord_gameinfo;
+extern ENGINE_API rpc_strings discord_strings;
+extern ENGINE_API float discord_update_rate;
+
+LPCSTR xr_ToUTF8(LPCSTR input, int max_length = 128);
+
+void clearDiscordPresence();
+
 #endif //__XR_BASE_H__

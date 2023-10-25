@@ -19,6 +19,7 @@ class CUIRankingWnd;
 class CUILogsWnd;
 class CUIAnimatedStatic;
 class UIHint;
+class CUIProgressBar;
 
 class CMapSpot;
 
@@ -44,12 +45,18 @@ protected:
 
 	UIHint*					m_hint_wnd;
 
+	u32 dwPDAFrame;
+
+	CUIProgressBar* m_battery_bar;
+
+	bool bButtonL, bButtonR;
+
 public:
 	CUITaskWnd*				pUITaskWnd;
 //-	CUIFactionWarWnd*		pUIFactionWarWnd;
 	CUIRankingWnd*			pUIRankingWnd;
 	CUILogsWnd*				pUILogsWnd;
-	
+	Frect m_cursor_box;
 	CMapSpot*				pSelectedMapSpot;
 
 	virtual void			Reset				();
@@ -65,7 +72,10 @@ public:
 	virtual void 			Draw				();
 	virtual void 			Update				();
 	virtual void 			Show				(bool status);
-	virtual bool			OnMouseAction				(float x, float y, EUIMessages mouse_action) {CUIDialogWnd::OnMouseAction(x,y,mouse_action);return true;} //always true because StopAnyMove() == false
+
+	virtual bool OnMouseAction(float x, float y, EUIMessages mouse_action);
+	void MouseMovement(float x, float y);
+	virtual void Enable(bool status);
 	virtual bool			OnKeyboardAction			(int dik, EUIMessages keyboard_action);
 		
 			UIHint*			get_hint_wnd		() const { return m_hint_wnd; }
@@ -79,6 +89,7 @@ public:
 			void 			SetActiveDialog		(CUIWindow* pUI) 	{ m_pActiveDialog = pUI; };
 			CUIWindow*		GetActiveDialog		() 					{return m_pActiveDialog;};
 			LPCSTR			GetActiveSection	()					{return m_sActiveSection.c_str();};
+	CUITabControl* GetTabControl() { return UITabControl; };
 			
 			void			SetActiveSubdialog			(const shared_str& section);
 			void			SetActiveSubdialog_script(LPCSTR section)				{ SetActiveSubdialog((const shared_str&)section); };
@@ -86,6 +97,25 @@ public:
 
 			void			UpdatePda			();
 			void			UpdateRankingWnd	();
+	void ResetCursor();
+	float m_power;
+	Fvector2 last_cursor_pos;
+
+	Fvector target_joystickrot, joystickrot;
+	float target_buttonpress, buttonpress;
+
+	void ResetJoystick(bool bForce)
+	{
+		if (bForce)
+		{
+			joystickrot.set(0.f, 0.f, 0.f);
+			buttonpress = 0.f;
+		}
+		
+		target_joystickrot.set(0.f, 0.f, 0.f);
+		target_buttonpress = 0.f;
+	}
+
 			DECLARE_SCRIPT_REGISTER_FUNCTION
 };
 add_to_type_list(CUIPdaWnd)

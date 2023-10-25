@@ -16,6 +16,10 @@
 #include "Grenade.h"
 #include "game_base_space.h"
 #include "Artefact.h"
+#include "../xrEngine/CameraBase.h"
+#include "player_hud.h"
+#include "HUDManager.h"
+#include "WeaponKnife.h"
 
 static const float VEL_MAX		= 10.f;
 static const float VEL_A_MAX	= 10.f;
@@ -31,20 +35,33 @@ float CActor::GetWeaponAccuracy() const
 	{
 		return m_fDispAim;
 	}
-	float dispersion = m_fDispBase*GetWeaponParam(W, Get_PDM_Base(), 1.0f);
+	float dispersion = m_fDispBase * GetWeaponParam(W, Get_PDM_Base(), 1.0f) *
+		GetWeaponParam(W, Get_Silencer_PDM_Base(), 1.0f) * GetWeaponParam(W, Get_Scope_PDM_Base(), 1.0f) *
+		GetWeaponParam(W, Get_Launcher_PDM_Base(), 1.0f);
+
 
 	CEntity::SEntityState state;
 	if ( g_State(state) )
 	{
 		//fAVelocity = angle velocity
-		dispersion *= ( 1.0f + (state.fAVelocity/VEL_A_MAX) * m_fDispVelFactor * GetWeaponParam(W, Get_PDM_Vel_F(), 1.0f) );
+		dispersion *= (1.0f + (state.fAVelocity / VEL_A_MAX) * m_fDispVelFactor * GetWeaponParam(
+				W, Get_PDM_Vel_F(), 1.0f) *
+			GetWeaponParam(W, Get_Silencer_PDM_Vel(), 1.0f) * GetWeaponParam(W, Get_Scope_PDM_Vel(), 1.0f) *
+			GetWeaponParam(W, Get_Launcher_PDM_Vel(), 1.0f));
+
 		//fVelocity = linear velocity
-		dispersion *= ( 1.0f + (state.fVelocity/VEL_MAX) * m_fDispVelFactor * GetWeaponParam(W, Get_PDM_Vel_F(), 1.0f) );
+		dispersion *= (1.0f + (state.fVelocity / VEL_MAX) * m_fDispVelFactor * GetWeaponParam(W, Get_PDM_Vel_F(), 1.0f)
+			*
+			GetWeaponParam(W, Get_Silencer_PDM_Vel(), 1.0f) * GetWeaponParam(W, Get_Scope_PDM_Vel(), 1.0f) *
+			GetWeaponParam(W, Get_Launcher_PDM_Vel(), 1.0f));
+
 
 		bool bAccelerated = isActorAccelerated( mstate_real, IsZoomAimingMode() );
 		if ( bAccelerated || !state.bCrouch )
 		{
-			dispersion *= ( 1.0f + m_fDispAccelFactor * GetWeaponParam(W, Get_PDM_Accel_F(), 1.0f) );
+			dispersion *= (1.0f + m_fDispAccelFactor * GetWeaponParam(W, Get_PDM_Accel_F(), 1.0f) *
+				GetWeaponParam(W, Get_Silencer_PDM_Accel(), 1.0f) * GetWeaponParam(W, Get_Scope_PDM_Accel(), 1.0f) *
+				GetWeaponParam(W, Get_Launcher_PDM_Accel(), 1.0f));
 		}
 
 		if ( state.bCrouch )
@@ -56,6 +73,10 @@ float CActor::GetWeaponAccuracy() const
 			}
 		}
 	}
+
+	if (W && W->m_lastCartridge.param_s.buckShot > 1)
+		dispersion *= GetWeaponParam(W, Get_PDM_BuckShot(), 1.0f);
+
 	return dispersion;
 }
 
@@ -65,12 +86,53 @@ void CActor::g_fireParams	(const CHudItem* pHudItem, Fvector &fire_pos, Fvector 
 	fire_pos		= Cameras().Position();
 	fire_dir		= Cameras().Direction();
 
+	CWeapon* pWeapon = smart_cast<CWeapon*>(inventory().ActiveItem());
 	const CMissile	*pMissile = smart_cast <const CMissile*> (pHudItem);
 	if (pMissile)
 	{
 		Fvector offset;
 		XFORM().transform_dir(offset, pMissile->throw_point_offset());
 		fire_pos.add(offset);
+	}
+	else if (pWeapon && pWeapon->HudItemData() && !smart_cast<CWeaponKnife*>(pWeapon))
+	{
+		const Fmatrix& fire_mat = pWeapon->get_ParticlesXFORM();
+		//collide::rq_result& RQ = pWeapon->GetRQ();
+		//float dist = RQ.range / 3.f;
+
+		if (cam_freelook != eflDisabled)
+		{
+			Fvector dir;
+			float pitch = fire_mat.k.getP();
+			dir.setHP(-angle_normalize_signed(old_torso_yaw), pitch > 0.f ? ((pWeapon->GetState() == CWeapon::eFire || cam_freelook == eflDisabling) ? pitch : pitch * .6f) : pitch * .8f);
+			fire_dir = dir;
+		}
+		else if ((psActorFlags.test(AF_FIREPOS) || (mstate_real & mcAnyMove)) && (pWeapon->GetZRotatingFactor() != 1.f /*|| dist < 1.f*/))
+		{
+			//correct barrel direction
+			fire_dir = fire_mat.k; //pWeapon->get_lastFD() doesn't seem to work, returns (0,0,1) for all weapons except pistols/shotguns
+
+			/* disabled for now, bugs :(
+			//correct barrel position
+			Fvector pos = pWeapon->get_LastFP();
+			Fvector offs;
+			float zoff = pWeapon->HudItemData()->m_item_transform.c.z;
+			zoff -= pos.z;
+			fire_mat.transform_tiny(offs, { 0, 0, -.5f }); //otherwise you can shoot through thin walls
+			pos.add(offs);
+			fire_pos = pos;
+			const Fmatrix& fire_mat2 = pWeapon->HudItemData()->m_model->LL_GetTransform(pWeapon->HudItemData()->m_measures.m_fire_bone);
+			Fvector offs = g_player_hud->m_adjust_mode ? g_player_hud->m_adjust_firepoint_shell[0][0] : pWeapon->HudItemData()->m_measures.m_fire_point_offset;
+			offs.z -= 1.f;
+			fire_mat2.transform_tiny(fire_pos, offs);
+			pWeapon->HudItemData()->m_item_transform.transform_tiny(fire_pos);
+
+			//fire_pos = pWeapon->get_LastFP();
+
+			//use barrel position instead of camera position even for zoomed weapon if close to a wall
+			if (pWeapon->IsZoomed())
+				fire_pos.lerp(fire_pos, Cameras().Position(), dist);*/
+		}
 	}
 }
 
@@ -221,6 +283,9 @@ void CActor::on_weapon_shot_start		(CWeapon *weapon)
 		if( effector->m_WeaponID != weapon->ID() )
 		{
 			effector->Initialize( camera_recoil );
+		}
+		else {
+			effector->UpdateCameraRecoil(camera_recoil);
 		}
 	}
 	

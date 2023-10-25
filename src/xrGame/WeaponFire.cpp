@@ -49,8 +49,16 @@ void random_dir(Fvector& tgt_dir, const Fvector& src_dir, float dispersion)
 
 float CWeapon::GetWeaponDeterioration	()
 {
-	return conditionDecreasePerShot;
-};
+	return conditionDecreasePerShot * f_weapon_deterioration;
+}
+
+void CWeapon::FireStart()
+{
+	if (ParentIsActor())
+		Actor()->StopSprint();
+
+	CShootingObject::FireStart();
+}
 
 void CWeapon::FireTrace		(const Fvector& P, const Fvector& D)
 {
@@ -71,7 +79,7 @@ void CWeapon::FireTrace		(const Fvector& P, const Fvector& D)
 	//повысить изношенность оружия с учетом влияния конкретного патрона
 //	float Deterioration = GetWeaponDeterioration();
 //	Msg("Deterioration = %f", Deterioration);
-	ChangeCondition(-GetWeaponDeterioration()*l_cartridge.param_s.impair);
+	ChangeCondition(-GetWeaponDeterioration() * l_cartridge.param_s.impair * cur_silencer_koef.condition_shot_dec);
 
 	
 	float fire_disp = 0.f;
@@ -119,8 +127,13 @@ void CWeapon::FireTrace		(const Fvector& P, const Fvector& D)
 	if(m_bLightShotEnabled) 
 		Light_Start			();
 
+	// Interactive Grass FX
+	extern Fvector4 ps_ssfx_int_grass_params_2;
+	Fvector ShotPos = Fvector().mad(P, D, 1.5f);
+	g_pGamePersistent->GrassBendersAddShot(cast_game_object()->ID(), ShotPos, D, 3.0f, 20.0f, ps_ssfx_int_grass_params_2.z, ps_ssfx_int_grass_params_2.w);
 	
 	// Ammo
+	m_lastCartridge = l_cartridge;
 	m_magazine.pop_back	();
 	--iAmmoElapsed;
 
@@ -136,8 +149,7 @@ void CWeapon::StopShooting()
 		StopFlameParticles	();	
 
 	SwitchState(eIdle);
-
-	bWorking = false;
+	FireEnd();
 }
 
 void CWeapon::FireEnd() 

@@ -42,8 +42,8 @@ BOOL CBreakableObject::net_Spawn(CSE_Abstract* DC)
 	CSE_Abstract			*e		= (CSE_Abstract*)(DC);
 	CSE_ALifeObjectBreakable *obj	= smart_cast<CSE_ALifeObjectBreakable*>(e);
 	R_ASSERT				(obj);
-	inherited::net_Spawn	(DC);
-	VERIFY(!collidable.model);
+	BOOL res = inherited::net_Spawn(DC);
+	xr_delete(collidable.model);
 	collidable.model = xr_new<CCF_Skeleton>(this);
 	// set bone id
 	R_ASSERT				(Visual()&&smart_cast<IKinematics*>(Visual()));
@@ -57,7 +57,7 @@ BOOL CBreakableObject::net_Spawn(CSE_Abstract* DC)
 	bRemoved				=false;
 	//Break					();
 //	shedule_unregister		();
-	return					(TRUE);
+	return (res);
 }
 
 void CBreakableObject::shedule_Update	(u32 dt)

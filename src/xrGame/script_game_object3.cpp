@@ -53,7 +53,11 @@
 #endif
 //-Alundaio
 
-namespace MemorySpace {
+#include "Torch.h"
+#include "Flashlight.h"
+
+namespace MemorySpace
+{
 	struct CVisibleObject;
 	struct CSoundObject;
 	struct CHitObject;
@@ -813,8 +817,46 @@ CScriptGameObject	*CScriptGameObject::GetObjectByIndex	(int iIndex) const
 		else
 			return		(l_tpGameObject->lua_game_object());
 	}
-	else {
-		ai().script_engine().script_log			(ScriptStorage::eLuaMessageTypeError,"CScriptGameObject : cannot access class member object!");
+	else
+	{
+		ai().script_engine().script_log(ScriptStorage::eLuaMessageTypeError,
+		                                "CScriptGameObject : cannot access class member object!");
+		return (0);
+	}
+}
+
+CScriptGameObject* CScriptGameObject::GetObjectById(u16 id) const
+{
+	CInventoryOwner* l_tpInventoryOwner = smart_cast<CInventoryOwner*>(&object());
+	CInventoryBox* inventory_box = smart_cast<CInventoryBox*>(&this->object());
+	if (l_tpInventoryOwner)
+	{
+		CInventoryItem* l_tpInventoryItem = l_tpInventoryOwner->inventory().GetItemFromInventory(id);
+		CGameObject* l_tpGameObject = smart_cast<CGameObject*>(l_tpInventoryItem);
+		if (!l_tpGameObject)
+			return (0);
+		else
+			return (l_tpGameObject->lua_game_object());
+	}
+	else if (inventory_box)
+	{
+		xr_vector<u16>::const_iterator I = inventory_box->m_items.begin();
+		xr_vector<u16>::const_iterator E = inventory_box->m_items.end();
+		for (; I != E; ++I)
+		{
+			if (*I == id)
+			{
+				CGameObject* GO = smart_cast<CGameObject*>(Level().Objects.net_Find(*I));
+				if (GO) return (GO->lua_game_object());
+				return (0);
+			}
+		}
+		return (0);
+	}
+	else
+	{
+		ai().script_engine().script_log(ScriptStorage::eLuaMessageTypeError,
+			"CScriptGameObject : cannot access class member object_id!");
 		return			(0);	
 	}
 }
@@ -831,9 +873,17 @@ void CScriptGameObject::DisableAnomaly()
 	zone->ZoneDisable();
 }
 
+void CScriptGameObject::ChangeAnomalyIdlePart(LPCSTR name, bool bIdleLight)
+{
+	CCustomZone* zone = smart_cast<CCustomZone*>(&object());
+	THROW(zone);
+	zone->ChangeIdleParticles(name, bIdleLight);
+}
+
 float CScriptGameObject::GetAnomalyPower()
 {
-	CCustomZone		*zone = smart_cast<CCustomZone*>(&object()); THROW(zone);
+	CCustomZone* zone = smart_cast<CCustomZone*>(&object());
+	THROW(zone);
 	return zone->GetMaxPower();
 }
 
@@ -841,6 +891,56 @@ void CScriptGameObject::SetAnomalyPower(float p)
 {
 	CCustomZone		*zone = smart_cast<CCustomZone*>(&object()); THROW(zone);
 	zone->SetMaxPower(p);
+}
+
+float CScriptGameObject::GetAnomalyRadius()
+{
+	CCustomZone* zone = smart_cast<CCustomZone*>(&object());
+	THROW(zone);
+	return zone->GetEffectiveRadius();
+}
+
+void CScriptGameObject::SetAnomalyRadius(float p)
+{
+	CCustomZone* zone = smart_cast<CCustomZone*>(&object());
+	THROW(zone);
+	zone->SetEffectiveRadius(p);
+}
+
+void CScriptGameObject::MoveAnomaly(Fvector pos)
+{
+	CCustomZone* zone = smart_cast<CCustomZone*>(&object());
+	THROW(zone);
+	zone->MoveScript(pos);
+}
+
+void CScriptGameObject::set_color_animator(LPCSTR name, bool bFlicker, int flickerChance, float flickerDelay,
+                                           int framerate)
+{
+	CTorch* torch = smart_cast<CTorch*>(&object());
+	if (torch)
+	{
+		torch->SetLanim(name, bFlicker, flickerChance, flickerDelay, framerate);
+		return;
+	}
+
+	CFlashlight* flashlight = smart_cast<CFlashlight*>(&object());
+	if (flashlight)
+		flashlight->SetLanim(name, bFlicker, flickerChance, flickerDelay, framerate);
+}
+
+void CScriptGameObject::reset_color_animator()
+{
+	CTorch* torch = smart_cast<CTorch*>(&object());
+	if (torch)
+	{
+		torch->ResetLanim();
+		return;
+	}
+
+	CFlashlight* flashlight = smart_cast<CFlashlight*>(&object());
+	if (flashlight)
+		flashlight->ResetLanim();
 }
 
 bool CScriptGameObject::weapon_strapped	() const
@@ -1203,6 +1303,14 @@ float CScriptGameObject::GetArtefactBleedingRestoreSpeed()
 	return artefact->GetBleedingPower();
 }
 
+float CScriptGameObject::GetArtefactImmunity(ALife::EHitType hit_type)
+{
+	CArtefact* artefact = smart_cast<CArtefact*>(&object());
+	THROW(artefact);
+
+	return artefact->GetImmunity(hit_type);
+}
+
 void CScriptGameObject::SetArtefactHealthRestoreSpeed(float value)
 {
 	CArtefact* artefact = smart_cast<CArtefact*>(&object());
@@ -1242,16 +1350,40 @@ void CScriptGameObject::SetArtefactBleedingRestoreSpeed(float value)
 	artefact->SetBleedingPower(value);
 }
 
+void CScriptGameObject::SetArtefactImmunity(ALife::EHitType hit_type, float value)
+{
+	CArtefact* artefact = smart_cast<CArtefact*>(&object());
+	THROW(artefact);
+
+	return artefact->SetImmunity(hit_type, value);
+}
+
+float CScriptGameObject::GetArtefactAdditionalInventoryWeight()
+{
+	CArtefact* artefact = smart_cast<CArtefact*>(&object());
+	THROW(artefact);
+
+	return artefact->m_additional_weight;
+}
+
+void CScriptGameObject::SetArtefactAdditionalInventoryWeight(float value)
+{
+	CArtefact* artefact = smart_cast<CArtefact*>(&object());
+	THROW(artefact);
+
+	artefact->m_additional_weight = value;
+}
+
 void CScriptGameObject::AttachVehicle(CScriptGameObject* veh, bool bForce)
 {
 	CActor *actor = smart_cast<CActor*>(&object());
 	if (actor)
 	{
-		CHolderCustom* vehicle = veh->object().cast_holder_custom();
+		CHolderCustom* vehicle = smart_cast<CHolderCustom*>(&veh->object());
 		if (vehicle)
-		{
 			actor->use_HolderEx(vehicle, bForce);
-		}
+		else
+			ai().script_engine().script_log(ScriptStorage::eLuaMessageTypeError, "CGameObject : cannot be cast to CHolderCustom!");
 	}
 }
 
@@ -1281,14 +1413,15 @@ CScriptGameObject* CScriptGameObject::GetAttachedVehicle()
 	return GO->lua_game_object();
 }
 
-u32 CScriptGameObject::PlayHudMotion(LPCSTR M, bool bMixIn, u32 state)
+u32 CScriptGameObject::PlayHudMotion(LPCSTR M, bool bMixIn, u32 state, float speed, float end)
 {
 	CWeapon* Weapon = object().cast_weapon();
-	if (Weapon){
+	if (Weapon)
+	{
 		if (!Weapon->HudAnimationExist(M))
 			return 0;
 
-		return Weapon->PlayHUDMotion(M, bMixIn, Weapon, state);
+		return Weapon->PlayHUDMotion(M, bMixIn, Weapon, state, speed, end);
 	}
 
 	CHudItem* itm = object().cast_inventory_item()->cast_hud_item();
@@ -1298,7 +1431,7 @@ u32 CScriptGameObject::PlayHudMotion(LPCSTR M, bool bMixIn, u32 state)
 	if (!itm->HudAnimationExist(M))
 		return 0;
 
-	return itm->PlayHUDMotion(M, bMixIn, itm, state);
+	return itm->PlayHUDMotion(M, bMixIn, itm, state, speed, end);
 }
 
 void CScriptGameObject::SwitchState(u32 state)
@@ -1347,37 +1480,6 @@ bool CScriptGameObject::WeaponInGrenadeMode()
 	return wpn->m_bGrenadeMode;
 }
 
-void CScriptGameObject::SetBoneVisible(LPCSTR bone_name, bool bVisibility, bool bRecursive)
-{
-	IKinematics* k = object().Visual()->dcast_PKinematics();
-
-	if (!k)
-		return;
-
-	u16 bone_id = k->LL_BoneID(bone_name);
-	if (bone_id == BI_NONE)
-		return;
-
-	if (bVisibility == !k->LL_GetBoneVisible(bone_id))
-		k->LL_SetBoneVisible(bone_id, bVisibility, bRecursive);
-
-	return;
-}
-
-bool CScriptGameObject::IsBoneVisible(LPCSTR bone_name)
-{
-	IKinematics* k = object().Visual()->dcast_PKinematics();
-
-	if (!k)
-		return false;
-
-	u16 bone_id = k->LL_BoneID(bone_name);
-	if (bone_id == BI_NONE)
-		return false;
-
-	return k->LL_GetBoneVisible(bone_id)==TRUE?true:false;
-}
-
 float CScriptGameObject::GetLuminocityHemi()
 {
 	CObject *e = smart_cast<CObject*>(&object());
@@ -1409,16 +1511,58 @@ void CScriptGameObject::ForceSetPosition(Fvector pos, bool bActivate)
 		if (bActivate)
 			sh->activate_physic_shell();
 
+#if 1
+		Fmatrix M = Fmatrix().set(object().XFORM());
+		M.translate_over(pos);
+		object().XFORM().set(M);
+#else
 		Fmatrix	M = object().XFORM();
 		M.c = pos;
 		M.set(M);
+#endif
 
 		shell->SetGlTransformDynamic(M);
 		if (sh->character_physics_support())
 			sh->character_physics_support()->ForceTransform(M);
 	}
 	else
-		ai().script_engine().script_log(ScriptStorage::eLuaMessageTypeError, "force_set_position: object %s has no physics shell!", *object().cName());
+		ai().script_engine().script_log(ScriptStorage::eLuaMessageTypeError,
+		                                "force_set_position: object %s has no physics shell!", *object().cName());
+}
+
+void CScriptGameObject::ForceSetAngle(Fvector ang, bool bActivate)
+{
+	CPhysicsShellHolder *sh = object().cast_physics_shell_holder();
+	if (!sh)
+		return;
+
+	if (bActivate)
+		sh->activate_physic_shell();
+
+	CPhysicsShell *shell = sh->PPhysicsShell();
+	if (shell)
+	{
+		Fmatrix M = Fmatrix().set(object().XFORM());
+		Fvector p = Fvector().set(object().XFORM().c);
+		M.setHPB(ang.x, ang.y, ang.z);
+		M.translate_over(p);
+		object().XFORM().set(M);
+		shell->SetGlTransformDynamic(M);
+		if (sh->character_physics_support())
+			sh->character_physics_support()->ForceTransform(M);
+	}
+	else
+	{
+		LPCSTR text = "force_set_angleHPB: object %s has no physics shell!";
+		ai().script_engine().script_log(ScriptStorage::eLuaMessageTypeError, text, object().Name());
+	}
+}
+
+Fvector CScriptGameObject::Angle()
+{
+	Fvector ang;
+	object().XFORM().getHPB(ang.x, ang.y, ang.z);
+	return ang;
 }
 
 void CScriptGameObject::SetRemainingUses(u8 value)
@@ -1485,6 +1629,11 @@ u32 CScriptGameObject::GetSpatialType()
 	return object().spatial.type;
 }
 
+void CScriptGameObject::DestroyObject()
+{
+	object().DestroyObject();
+}
+
 u8 CScriptGameObject::GetRestrictionType()
 {
 	CSpaceRestrictor* restr = smart_cast<CSpaceRestrictor*>(&object());
@@ -1503,6 +1652,52 @@ void CScriptGameObject::SetRestrictionType(u8 typ)
 		if (typ != RestrictionSpace::eRestrictorTypeNone)
 			Level().space_restriction_manager().register_restrictor(restr, RestrictionSpace::ERestrictorTypes(typ));
 	}
+}
+
+// demonized: add getters and setters for pathfinding for npcs around anomalies and damage for npcs
+bool CScriptGameObject::get_enable_anomalies_pathfinding()
+{
+	auto stalker = smart_cast<CAI_Stalker*>(&object());
+	if (!stalker)
+	{
+		ai().script_engine().script_log(ScriptStorage::eLuaMessageTypeError,
+			"CGameObject : cannot access class member m_enable_anomalies_pathfinding!");
+		return false;
+	}
+	return stalker->m_enable_anomalies_pathfinding;
+}
+void CScriptGameObject::set_enable_anomalies_pathfinding(bool v)
+{
+	auto stalker = smart_cast<CAI_Stalker*>(&object());
+	if (!stalker)
+	{
+		ai().script_engine().script_log(ScriptStorage::eLuaMessageTypeError,
+			"CGameObject : cannot access class member m_enable_anomalies_pathfinding!");
+		return;
+	}
+	stalker->m_enable_anomalies_pathfinding = v;
+}
+bool CScriptGameObject::get_enable_anomalies_damage()
+{
+	auto stalker = smart_cast<CAI_Stalker*>(&object());
+	if (!stalker)
+	{
+		ai().script_engine().script_log(ScriptStorage::eLuaMessageTypeError,
+			"CGameObject : cannot access class member m_enable_anomalies_damage!");
+		return false;
+	}
+	return stalker->m_enable_anomalies_damage;
+}
+void CScriptGameObject::set_enable_anomalies_damage(bool v)
+{
+	auto stalker = smart_cast<CAI_Stalker*>(&object());
+	if (!stalker)
+	{
+		ai().script_engine().script_log(ScriptStorage::eLuaMessageTypeError,
+			"CGameObject : cannot access class member m_enable_anomalies_damage!");
+		return;
+	}
+	stalker->m_enable_anomalies_damage = v;
 }
 #endif
 //-Alundaio

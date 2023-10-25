@@ -87,8 +87,22 @@ private:
 			void			check_loopholes_connectivity() const;
 #endif // DEBUG
 };
-
 } // namespace smart_cover
+
+struct loophole_id_predicate
+{
+	shared_str m_id;
+
+	IC loophole_id_predicate(shared_str const& id) :
+		m_id(id)
+	{
+	}
+
+	IC bool operator()(smart_cover::loophole* loophole) const
+	{
+		return (loophole->id()._get() == m_id._get());
+	}
+};
 
 #include "smart_cover_inline.h"
 

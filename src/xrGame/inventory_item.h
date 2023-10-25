@@ -16,8 +16,10 @@
 #include "attachable_item.h"
 #include "xrserver_objects_alife.h"
 #include "xrserver_objects_alife_items.h"
+#include "script_export_space.h"
 
-enum EHandDependence{
+enum EHandDependence
+{
 	hdNone	= 0,
 	hd1Hand	= 1,
 	hd2Hand	= 2
@@ -98,7 +100,7 @@ public:
 	
 	virtual void				OnEvent				(NET_Packet& P, u16 type);
 	
-	virtual bool				Useful				() const;									// !!! Переопределить. (см. в Inventory.cpp)
+	virtual bool Useful() const; // !!! пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ. (пїЅпїЅ. пїЅ Inventory.cpp)
 	virtual bool				IsUsingCondition() const { return ( m_flags.test( FUsingCondition ) > 0 ); };
 
 	virtual bool				Attach				(PIItem pIItem, bool b_send_event) {return false;}
@@ -110,10 +112,12 @@ public:
 
 	virtual EHandDependence		HandDependence		()	const	{return hd1Hand;};
 	virtual bool				IsSingleHanded		()	const	{return true;};	
-	virtual bool				ActivateItem		();									// !!! Переопределить. (см. в Inventory.cpp)
-	virtual void				DeactivateItem		();								// !!! Переопределить. (см. в Inventory.cpp)
-	virtual bool				Action				(u16 cmd, u32 flags) {return false;}	// true если известная команда, иначе false
-	virtual void				DiscardState		() {};
+	virtual bool ActivateItem(); // !!! пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ. (пїЅпїЅ. пїЅ Inventory.cpp)
+	virtual void DeactivateItem(); // !!! пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ. (пїЅпїЅ. пїЅ Inventory.cpp)
+	virtual bool Action(u16 cmd, u32 flags) { return false; } // true пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅ false
+	virtual void DiscardState()
+	{
+	};
 
 	virtual void				OnH_B_Chield		();
 	virtual void				OnH_A_Chield		();
@@ -148,6 +152,7 @@ public:
 	shared_str					m_name;
 	shared_str					m_nameShort;
 	shared_str					m_nameComplex;
+	shared_str m_kind;
 	bool						m_highlight_equipped;
 
 	SInvItemPlace				m_ItemCurrPlace;
@@ -166,6 +171,7 @@ public:
 	virtual	float				GetConditionToShow	() const					{return GetCondition();}
 	IC		void				SetCondition		(float val)					{m_fCondition = val;}
 			void				ChangeCondition		(float fDeltaCondition);
+	IC float GetLowestBatteryCharge() const { return m_fLowestBatteryCharge; }
 
 			u16					BaseSlot			()  const					{return m_ItemCurrPlace.base_slot_id;}
 			u16					CurrSlot			()  const					{return m_ItemCurrPlace.slot_id;}
@@ -178,6 +184,7 @@ public:
 			bool				RuckDefault			()							{return !!m_flags.test(FRuckDefault);}
 			
 	virtual bool				CanTake				() const					{return !!m_flags.test(FCanTake);}
+	void SetCanTake(BOOL val) { m_flags.set(FCanTake, val); }
 			bool				CanTrade			() const;
 			void				AllowTrade			()							{ m_flags.set(FCanTrade, m_can_trade); };
 			void				DenyTrade			()							{ m_flags.set(FCanTrade, FALSE); };
@@ -268,6 +275,7 @@ public:
 	virtual CWeapon				*cast_weapon				()	{return 0;}
 	virtual CFoodItem			*cast_food_item				()	{return 0;}
 	virtual CMissile			*cast_missile				()	{return 0;}
+	virtual CFlashlight* cast_flashlight() { return 0; }
 	virtual CHudItem			*cast_hud_item				()	{return 0;}
 	virtual CWeaponAmmo			*cast_weapon_ammo			()	{return 0;}
 	virtual CGameObject			*cast_game_object			()  {return 0;}
@@ -318,10 +326,15 @@ protected:
 
 	bool								m_just_after_spawn;
 	bool								m_activated;
-
+	float m_fLowestBatteryCharge;
 public:
 	IC bool	is_helper_item				()				 { return !!m_flags.test(FIsHelperItem); }
 	IC void	set_is_helper				(bool is_helper) { m_flags.set(FIsHelperItem,is_helper); }
+	DECLARE_SCRIPT_REGISTER_FUNCTION
 }; // class CInventoryItem
 
 #include "inventory_item_inline.h"
+
+add_to_type_list(CInventoryItem)
+#undef script_type_list
+#define script_type_list save_type_list(CInventoryItem)

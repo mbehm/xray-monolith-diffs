@@ -76,6 +76,8 @@ void CUIOutfitImmunity::InitFromXml( CUIXml& xml_doc, LPCSTR base_str, u32 hit_t
 	
 	strconcat( sizeof(buf), buf, base_str, ":", immunity_names[hit_type], ":static_value" );
 	m_value.SetVisible( false );
+	m_value.SetTextOffset(UI().is_widescreen() ? 208 : 262, 0);
+	m_value.SetTextColor(color_argb(255, 170, 170, 170));
 
 	m_magnitude = xml_doc.ReadAttribFlt( buf, 0, "magnitude", 1.0f );
 }
@@ -85,10 +87,17 @@ void CUIOutfitImmunity::SetProgressValue( float cur, float comp )
 	cur  *= m_magnitude;
 	comp *= m_magnitude;
 	m_progress.SetTwoPos( cur, comp );
+
+	if (cur != comp)
+	{
 	string32 buf;
-//	xr_sprintf( buf, sizeof(buf), "%d %%", (int)cur );
-	xr_sprintf( buf, sizeof(buf), "%.0f", cur );
+		float adj_value = cur - comp;
+		xr_sprintf(buf, sizeof(buf), adj_value >= 0 ? "+%.1f%%" : "%.1f%%", adj_value);
 	m_value.SetText( buf );
+		m_value.SetVisible(true);
+	}
+	else
+		m_value.SetVisible(false);
 }
 
 // ===========================================================================================
@@ -302,6 +311,10 @@ void CUIOutfitInfo::UpdateInfo( CHelmet* cur_helmet, CHelmet* slot_helmet )
 		float cur = cur_helmet->GetBoneArmor( spine_bone )*cur_helmet->GetCondition();
 		float slot = (slot_helmet)? slot_helmet->GetBoneArmor( spine_bone )*slot_helmet->GetCondition() : cur;
 		
+		float max_power = actor->conditions().GetMaxFireWoundProtection();
+		cur /= max_power;
+		slot /= max_power;
+
 		m_items[ALife::eHitTypeFireWound]->SetProgressValue( cur, slot );
 	}
 

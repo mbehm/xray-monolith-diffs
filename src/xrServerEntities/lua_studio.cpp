@@ -330,9 +330,11 @@ void engine::type_convert_userdata					(char *buffer, unsigned int const size, l
 	sz_cpy					(buffer, size, "unrecognized user data");
 }
 
-bool engine::type_to_string						(char* const buffer, unsigned int const size, lua_State* const state, int const index, bool &use_in_description)
+bool engine::type_to_string(char* const buffer, unsigned int const size, lua_State* const state, int const index,
+                            bool& use_in_description)
 {
-	switch (lua_type(state, index)) {
+	switch (lua_type(state, index))
+{
 		case engine::lua_type_string	:
 		case engine::lua_type_table		:
 		case engine::lua_type_nil		:
@@ -489,9 +491,12 @@ bool engine::value_convert_instance				(cs::lua_studio::backend& backend, char* 
 	return					(true);
 }
 
-bool engine::value_to_string					(cs::lua_studio::backend& backend, char* const buffer, unsigned int const size, lua_State* const state, int const index, cs::lua_studio::icon_type& icon_type, bool const full_description)
+bool engine::value_to_string(cs::lua_studio::backend& backend, char* const buffer, unsigned int const size,
+                             lua_State* const state, int const index, cs::lua_studio::icon_type& icon_type,
+                             bool const full_description)
 {
-	switch (lua_type(state, index)) {
+	switch (lua_type(state, index))
+{
 		case engine::lua_type_string	:
 		case engine::lua_type_table		:
 		case engine::lua_type_nil		:

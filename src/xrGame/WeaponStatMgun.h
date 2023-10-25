@@ -26,7 +26,7 @@ private:
 	void					SetBoneCallbacks	();
 	void					ResetBoneCallbacks	();
 
-	HUD_SOUND_COLLECTION	m_sounds;
+	HUD_SOUND_COLLECTION_LAYERED m_sounds;
 
 //casts
 public:
@@ -103,7 +103,7 @@ public:
 	virtual void			detach_Actor		();
 	virtual bool			allowWeapon			()	const				{return false;};
 	virtual bool			HUDView				()	const				{return true;};
-	virtual Fvector			ExitPosition		()						{return Fvector().set(0.0f,0.0f,0.0f);};
+	virtual Fvector ExitPosition();
 
 	virtual CCameraBase*	Camera				()						{return camera;};
 

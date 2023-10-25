@@ -37,11 +37,28 @@
 #include "alife_object_registry.h"
 #include "xrServer_Objects_ALife_Monsters.h"
 #include "hudmanager.h"
-
+#include "ui\UIMainIngameWnd.h"
+#include "ui\UIHudStatesWnd.h"
 #include "raypick.h"
 #include "../xrcdb/xr_collide_defs.h"
+#include "../xrEngine/Rain.h"
+
+#include "../xrEngine/xr_efflensflare.h"
+#include "../xrEngine/thunderbolt.h"
+#include "GametaskManager.h"
+#include "xr_level_controller.h"
+#include "../xrEngine/GameMtlLib.h"
+#include "../xrEngine/xr_input.h"
+#include "script_ini_file.h"
+#include "EffectorBobbing.h"
+#include "LevelDebugScript.h"
 
 using namespace luabind;
+
+extern ENGINE_API float ps_r2_sun_shafts_min;
+extern ENGINE_API float ps_r2_sun_shafts_value;
+bool g_block_all_except_movement;
+bool g_actor_allow_ladder = true;
 
 LPCSTR command_line	()
 {
@@ -97,13 +114,32 @@ CScriptGameObject *get_object_by_name(LPCSTR caObjectName)
 }
 #endif
 
+// demonized: add u16 id version of function to improve performance
 CScriptGameObject *get_object_by_id(u16 id)
 {
 	CGameObject* pGameObject = smart_cast<CGameObject*>(Level().Objects.net_Find(id));
 	if(!pGameObject)
-		return NULL;
+		return nullptr;
 
 	return pGameObject->lua_game_object();
+}
+
+CScriptGameObject* get_object_by_id()
+{
+	Msg("!WARNING : level.object_by_id(nil) called!");
+	return nullptr;
+}
+
+CScriptGameObject* get_object_by_id(const luabind::object& ob)
+{
+	if (!ob || ob.type() == LUA_TNIL)
+	{
+		Msg("!WARNING : level.object_by_id(nil) called!");
+		return nullptr;
+	}
+
+	u16 id = luabind::object_cast<u16>(ob);
+	return get_object_by_id(id);
 }
 
 LPCSTR get_weather	()
@@ -250,6 +286,36 @@ float rain_factor()
 	return			(g_pGamePersistent->Environment().CurrentEnv->rain_density);
 }
 
+float rain_wetness()
+{
+	return (g_pGamePersistent->Environment().wetness_factor);
+}
+
+float rain_hemi()
+{
+	CEffect_Rain* rain = g_pGamePersistent->pEnvironment->eff_Rain;
+
+	if (rain)
+	{
+		return rain->GetRainHemi();
+	}
+	else
+	{
+		CObject* E = g_pGameLevel->CurrentViewEntity();
+		if (E && E->renderable_ROS())
+		{
+			float* hemi_cube = E->renderable_ROS()->get_luminocity_hemi_cube();
+			float hemi_val = _max(hemi_cube[0], hemi_cube[1]);
+			hemi_val = _max(hemi_val, hemi_cube[2]);
+			hemi_val = _max(hemi_val, hemi_cube[3]);
+			hemi_val = _max(hemi_val, hemi_cube[5]);
+
+			return hemi_val;
+		}
+		return 0;
+	}
+}
+
 u32	vertex_in_direction(u32 level_vertex_id, Fvector direction, float max_distance)
 {
 	if (!ai().level_graph().valid_vertex_id(level_vertex_id))
@@ -302,6 +368,12 @@ void map_change_spot_hint(u16 id, LPCSTR spot_type, LPCSTR text)
 void map_remove_object_spot(u16 id, LPCSTR spot_type)
 {
 	Level().MapManager().RemoveMapLocation(spot_type, id);
+}
+
+// demonized: remove all map object spots by id
+void map_remove_all_object_spots(u16 id)
+{
+	Level().MapManager().RemoveAllMapLocationsById(id);
 }
 
 u16 map_has_object_spot(u16 id, LPCSTR spot_type)
@@ -467,8 +539,11 @@ CEnvDescriptor *current_environment(CEnvironment *self)
 	return		(self->CurrentEnv);
 }
 extern bool g_bDisableAllInput;
+
 void disable_input()
 {
+	// "unpress" all keys when we disable level input! (but keep input devices aquired)
+	pInput->DeactivateSoft();
 	g_bDisableAllInput = true;
 #ifdef DEBUG
 	Msg("input disabled");
@@ -536,11 +611,14 @@ float add_cam_effector(LPCSTR fn, int id, bool cyclic, LPCSTR cb_func)
 	return						e->GetAnimatorLength();
 }
 
-float add_cam_effector2(LPCSTR fn, int id, bool cyclic, LPCSTR cb_func, float cam_fov)
+float add_cam_effector(LPCSTR fn, int id, bool cyclic, LPCSTR cb_func, float cam_fov)
 {
 	CAnimatorCamEffectorScriptCB* e		= xr_new<CAnimatorCamEffectorScriptCB>(cb_func);
+	if (cam_fov)
+	{
 	e->m_bAbsolutePositioning	= true;
 	e->m_fov					= cam_fov;
+	}
 	e->SetType					((ECamEffectorType)id);
 	e->SetCyclic				(cyclic);
 	e->Start					(fn);
@@ -548,14 +626,185 @@ float add_cam_effector2(LPCSTR fn, int id, bool cyclic, LPCSTR cb_func, float ca
 	return						e->GetAnimatorLength();
 }
 
+float add_cam_effector(LPCSTR fn, int id, bool cyclic, LPCSTR cb_func, float cam_fov, bool b_hud)
+{
+	CAnimatorCamEffectorScriptCB* e = xr_new<CAnimatorCamEffectorScriptCB>(cb_func);
+	if (cam_fov)
+	{
+		e->m_bAbsolutePositioning = true;
+		e->m_fov = cam_fov;
+	}
+	e->SetHudAffect(b_hud);
+	e->SetType((ECamEffectorType)id);
+	e->SetCyclic(cyclic);
+	e->Start(fn);
+	Actor()->Cameras().AddCamEffector(e);
+	return e->GetAnimatorLength();
+}
+
+float add_cam_effector(LPCSTR fn, int id, bool cyclic, LPCSTR cb_func, float cam_fov, bool b_hud, float power)
+{
+	CAnimatorCamEffectorScriptCB* e = xr_new<CAnimatorCamEffectorScriptCB>(cb_func);
+	if (cam_fov)
+	{
+		e->m_bAbsolutePositioning = true;
+		e->m_fov = cam_fov;
+	}
+	if (power)
+	{
+		e->SetPower(power);
+	}
+	e->SetHudAffect(b_hud);
+	e->SetType((ECamEffectorType)id);
+	e->SetCyclic(cyclic);
+	e->Start(fn);
+	Actor()->Cameras().AddCamEffector(e);
+	return e->GetAnimatorLength();
+}
+
+// demonized: Get cam effector transform data from "*.anm" file
+#include "../xrEngine/motion.h"
+#include "../xrEngine/envelope.h"
+bool getCamEffectorTransformData(luabind::object& t, LPCSTR animationFile)
+{
+	string_path full_path;
+	if (!FS.exist(full_path, "$level$", animationFile))
+		if (!FS.exist(full_path, "$game_anims$", animationFile)) {
+			Msg("![getCamEffectorTransformData] Can't find motion file '%s'.", animationFile);
+			return false;
+		}
+
+	LPCSTR ext = strext(full_path);
+	if (ext)
+	{
+		if (0 == xr_strcmp(ext, ".anm"))
+		{
+			COMotion M;
+			if (M.LoadMotion(full_path)) {
+				std::map<EChannelType, std::string> mapOrder;
+				mapOrder[EChannelType::ctPositionX] = "positionX";
+				mapOrder[EChannelType::ctPositionY] = "positionY";
+				mapOrder[EChannelType::ctPositionZ] = "positionZ";
+				mapOrder[EChannelType::ctRotationH] = "positionH";
+				mapOrder[EChannelType::ctRotationP] = "positionP";
+				mapOrder[EChannelType::ctRotationB] = "positionB";
+
+				for (const auto& p : mapOrder) {
+					auto k = p.first;
+					auto v = p.second;
+					xr_vector<st_Key*>& keys = M.envs[k]->keys;
+					luabind::object keyData = luabind::newtable(ai().script_engine().lua());
+					int i = 1;
+					for (KeyIt k_it = keys.begin(); k_it != keys.end(); k_it++) {
+						luabind::object data = luabind::newtable(ai().script_engine().lua());
+						data["time"] = (*k_it)->time;
+						data["value"] = (*k_it)->value;
+						data["shape"] = (*k_it)->shape;
+						data["tension"] = (*k_it)->tension;
+						data["continuity"] = (*k_it)->continuity;
+						data["bias"] = (*k_it)->bias;
+						data["param0"] = (*k_it)->param[0];
+						data["param1"] = (*k_it)->param[1];
+						data["param2"] = (*k_it)->param[2];
+						data["param3"] = (*k_it)->param[3];
+						keyData[i] = data;
+						i++;
+					}
+					t[v] = keyData;
+				}
+
+				return true;
+			} else {
+				Msg("![getCamEffectorTransformData] failed to load file '%s'.", animationFile);
+				return false;
+			}
+		} else {
+			Msg("![getCamEffectorTransformData] file has incorrect extension '%s'.", animationFile);
+			return false;
+		}
+	}
+	Msg("![getCamEffectorTransformData] unknown error, file '%s'.", animationFile);
+	return false;
+}
+
+// demonized: Set custom camera position and direction with movement smoothing (for cutscenes, etc)
+void set_cam_position_direction(Fvector& position, Fvector& direction, unsigned int smoothing, bool hudEnabled, bool hudAffect)
+{
+	CActor* actor = Actor();
+	actor->initFPCam();
+	actor->m_FPCam->m_HPB.set(direction);
+	actor->m_FPCam->m_Position.set(position);
+	actor->m_FPCam->m_customSmoothing = smoothing;
+	actor->m_FPCam->hudEnabled = hudEnabled;
+	actor->m_FPCam->SetHudAffect(hudAffect);
+}
+
+void set_cam_position_direction(Fvector& position, Fvector& direction)
+{
+	set_cam_position_direction(position, direction, 1, false, false);
+}
+
+void set_cam_position_direction(Fvector& position, Fvector& direction, unsigned int smoothing)
+{
+	set_cam_position_direction(position, direction, smoothing, false, false);
+}
+
+void set_cam_position_direction(Fvector& position, Fvector& direction, unsigned int smoothing, bool hudEnabled)
+{
+	set_cam_position_direction(position, direction, smoothing, hudEnabled, false);
+}
+
+void remove_cam_position_direction() 
+{
+	CActor* actor = Actor();
+	actor->removeFPCam();
+}
+
 void remove_cam_effector(int id)
 {
 	Actor()->Cameras().RemoveCamEffector((ECamEffectorType)id );
 }
 		
+void set_cam_effector_factor(int id, float factor)
+{
+	CAnimatorCamEffectorScriptCB* e = smart_cast<CAnimatorCamEffectorScriptCB*>(Actor()->Cameras().GetCamEffector((ECamEffectorType)id));
+	if (e)
+		e->SetPower(factor);
+}
+
+float get_cam_effector_factor(int id)
+{
+	CAnimatorCamEffectorScriptCB* e = smart_cast<CAnimatorCamEffectorScriptCB*>(Actor()->Cameras().GetCamEffector((ECamEffectorType)id));
+	return e ? e->GetPower() : 0.0f;
+}
+
+float get_cam_effector_length(int id)
+{
+	CAnimatorCamEffectorScriptCB* e = smart_cast<CAnimatorCamEffectorScriptCB*>(Actor()->Cameras().GetCamEffector((ECamEffectorType)id));
+	return e ? e->GetAnimatorLength() : 0.0f;
+}
+
+
+bool check_cam_effector(int id)
+{
+	CAnimatorCamEffectorScriptCB* e = smart_cast<CAnimatorCamEffectorScriptCB*>(Actor()->Cameras().GetCamEffector((ECamEffectorType)id));
+	if (e)
+	{
+		return e->Valid();
+	}
+	return false;
+}
+
+
 float get_snd_volume()
 {
 	return psSoundVFactor;
+}
+
+float get_rain_volume()
+{
+	CEffect_Rain* rain = g_pGamePersistent->pEnvironment->eff_Rain;
+	return rain ? rain->GetRainVolume() : 0.0f;
 }
 
 void set_snd_volume(float v)
@@ -563,6 +812,16 @@ void set_snd_volume(float v)
 	psSoundVFactor = v;
 	clamp(psSoundVFactor,0.0f,1.0f);
 }
+
+float get_music_volume() {
+	return psSoundVMusicFactor;
+}
+
+void set_music_volume(float v) {
+	psSoundVMusicFactor = v;
+	clamp(psSoundVMusicFactor, 0.0f, 1.0f);
+}
+
 #include "actor_statistic_mgr.h"
 void add_actor_points(LPCSTR sect, LPCSTR detail_key, int cnt, int pts)
 {
@@ -683,6 +942,64 @@ int g_get_general_goodwill_between ( u16 from, u16 to)
 	return presonal_goodwill + community_to_obj_goodwill + community_to_community_goodwill;
 }
 
+void refresh_npc_names()
+{
+	CALifeObjectRegistry::OBJECT_REGISTRY alobjs = ai().alife().objects().objects();
+	CALifeObjectRegistry::OBJECT_REGISTRY::iterator it = alobjs.begin();
+	CALifeObjectRegistry::OBJECT_REGISTRY::iterator it_e = alobjs.end();
+
+	for (; it != it_e; it++)
+	{
+		CSE_ALifeTraderAbstract* tr = smart_cast<CSE_ALifeTraderAbstract*>(it->second);
+		if (tr)
+		{
+			tr->m_character_name = TranslateName(tr->m_character_name_str.c_str());
+
+			if (g_pGameLevel)
+			{
+				CObject* obj = g_pGameLevel->Objects.net_Find(it->first);
+				CInventoryOwner* owner = smart_cast<CInventoryOwner*>(obj);
+				if (owner)
+					owner->refresh_npc_name();
+			}
+		}
+	}
+
+	if (psDeviceFlags2.test(rsDiscord))
+	{
+		Actor()->RPC_UpdateFaction();
+		Actor()->RPC_UpdateRank();
+		Actor()->RPC_UpdateReputation();
+
+		Level().GameTaskManager().RPC_UpdateTaskName();
+	}
+}
+
+
+void LevelPressAction(int cmd)
+{
+	if ((cmd == MOUSE_1 || cmd == MOUSE_2) && !!GetSystemMetrics(SM_SWAPBUTTON))
+		cmd = cmd == MOUSE_1 ? MOUSE_2 : MOUSE_1;
+
+	Level().IR_OnKeyboardPress(cmd);
+}
+
+void LevelReleaseAction(int cmd)
+{
+	if ((cmd == MOUSE_1 || cmd == MOUSE_2) && !!GetSystemMetrics(SM_SWAPBUTTON))
+		cmd = cmd == MOUSE_1 ? MOUSE_2 : MOUSE_1;
+
+	Level().IR_OnKeyboardRelease(cmd);
+}
+
+void LevelHoldAction(int cmd)
+{
+	if ((cmd == MOUSE_1 || cmd == MOUSE_2) && !!GetSystemMetrics(SM_SWAPBUTTON))
+		cmd = cmd == MOUSE_1 ? MOUSE_2 : MOUSE_1;
+
+	Level().IR_OnKeyboardHold(cmd);
+}
+
 u32 vertex_id	(Fvector position)
 {
 	return	(ai().level_graph().vertex_id(position));
@@ -724,6 +1041,578 @@ LPCSTR translate_string(LPCSTR str)
 bool has_active_tutotial()
 {
 	return (g_tutorial!=NULL);
+}
+
+float get_weather_value_numric(LPCSTR name)
+{
+	CEnvDescriptor& E = *environment()->CurrentEnv;
+
+	if (0 == xr_strcmp(name, "sky_rotation"))
+		return E.sky_rotation;
+	else if (0 == xr_strcmp(name, "far_plane"))
+		return E.far_plane;
+	else if (0 == xr_strcmp(name, "fog_density"))
+		return E.fog_density;
+	else if (0 == xr_strcmp(name, "fog_distance"))
+		return E.fog_distance;
+	else if (0 == xr_strcmp(name, "rain_density"))
+		return E.rain_density;
+	else if (0 == xr_strcmp(name, "thunderbolt_period"))
+		return E.bolt_period;
+	else if (0 == xr_strcmp(name, "thunderbolt_duration"))
+		return E.bolt_duration;
+	else if (0 == xr_strcmp(name, "wind_velocity"))
+		return E.wind_velocity;
+	else if (0 == xr_strcmp(name, "wind_direction"))
+		return E.wind_direction;
+	else if (0 == xr_strcmp(name, "sun_shafts_intensity"))
+		return E.m_fSunShaftsIntensity;
+	else if (0 == xr_strcmp(name, "water_intensity"))
+		return E.m_fWaterIntensity;
+	else if (0 == xr_strcmp(name, "tree_amplitude_intensity"))
+		return E.m_fTreeAmplitudeIntensity;
+	else if (0 == xr_strcmp(name, "volumetric_intensity_factor"))
+		return E.volumetric_intensity_factor;
+	else if (0 == xr_strcmp(name, "volumetric_distance_factor"))
+		return E.volumetric_distance_factor;
+
+	return (0);
+}
+
+void set_weather_value_numric(LPCSTR name, float val)
+{
+	CEnvDescriptorMixer& E = *environment()->CurrentEnv;
+
+	if (0 == xr_strcmp(name, "sky_rotation"))
+		E.sky_rotation = val;
+	else if (0 == xr_strcmp(name, "far_plane"))
+		E.far_plane = val * psVisDistance;
+	else if (0 == xr_strcmp(name, "fog_density"))
+	{
+		E.fog_density = val;
+		E.fog_near = (1.0f - E.fog_density) * 0.85f * E.fog_distance;
+	}
+	else if (0 == xr_strcmp(name, "fog_distance"))
+	{
+		E.fog_distance = val;
+		clamp(E.fog_distance, 1.f, E.far_plane - 10);
+		E.fog_near = (1.0f - E.fog_density) * 0.85f * E.fog_distance;
+		E.fog_far = 0.99f * E.fog_distance;
+	}
+	else if (0 == xr_strcmp(name, "rain_density"))
+		E.rain_density = val;
+	else if (0 == xr_strcmp(name, "thunderbolt_period"))
+		E.bolt_period = val;
+	else if (0 == xr_strcmp(name, "thunderbolt_duration"))
+		E.bolt_duration = val;
+	else if (0 == xr_strcmp(name, "wind_velocity"))
+		E.wind_velocity = val;
+	else if (0 == xr_strcmp(name, "wind_direction"))
+		E.wind_direction = val;
+	else if (0 == xr_strcmp(name, "sun_shafts_intensity"))
+	{
+		E.m_fSunShaftsIntensity = val;
+		E.m_fSunShaftsIntensity *= 1.0f - ps_r2_sun_shafts_min;
+		E.m_fSunShaftsIntensity += ps_r2_sun_shafts_min;
+		E.m_fSunShaftsIntensity *= ps_r2_sun_shafts_value;
+		clamp(E.m_fSunShaftsIntensity, 0.0f, 1.0f);
+	}
+	else if (0 == xr_strcmp(name, "water_intensity"))
+		E.m_fWaterIntensity = val;
+	else if (0 == xr_strcmp(name, "tree_amplitude_intensity"))
+		E.m_fTreeAmplitudeIntensity = val;
+	else if (0 == xr_strcmp(name, "volumetric_intensity_factor"))
+		E.volumetric_intensity_factor = val;
+	else if (0 == xr_strcmp(name, "volumetric_distance_factor"))
+		E.volumetric_distance_factor = val;
+	else
+		Msg("~xrGame\level_script.cpp (set_weather_value_numric) | [%s] is not a valid numric weather parameter to set", name);
+}
+
+Fvector3 get_weather_value_vector(LPCSTR name)
+{
+	CEnvDescriptor& E = *environment()->CurrentEnv;
+
+	if (0 == xr_strcmp(name, "sky_color"))
+		return E.sky_color;
+	else if (0 == xr_strcmp(name, "fog_color"))
+		return E.fog_color;
+	else if (0 == xr_strcmp(name, "rain_color"))
+		return E.rain_color;
+	else if (0 == xr_strcmp(name, "ambient_color"))
+		return E.ambient;
+	else if (0 == xr_strcmp(name, "sun_color"))
+		return E.sun_color;
+	else if (0 == xr_strcmp(name, "sun_dir"))
+		return E.sun_dir;
+
+	Fvector3 vec;
+	vec.set(0, 0, 0);
+
+	if (0 == xr_strcmp(name, "clouds_color"))
+	{
+		Fvector4 temp = E.clouds_color;
+		vec.set(temp.x, temp.y, temp.z);
+	}
+	else if (0 == xr_strcmp(name, "hemisphere_color"))
+	{
+		Fvector4 temp = E.hemi_color;
+		vec.set(temp.x, temp.y, temp.z);
+	}
+
+	return vec;
+}
+
+void set_weather_value_vector(LPCSTR name, float x, float y, float z, float w = 0)
+{
+	CEnvDescriptor& E = *environment()->CurrentEnv;
+
+	if (0 == xr_strcmp(name, "sky_color"))
+		E.sky_color.set(x, y, z);
+	else if (0 == xr_strcmp(name, "fog_color"))
+		E.fog_color.set(x, y, z);
+	else if (0 == xr_strcmp(name, "rain_color"))
+		E.rain_color.set(x, y, z);
+	else if (0 == xr_strcmp(name, "ambient_color"))
+		E.ambient.set(x, y, z);
+	else if (0 == xr_strcmp(name, "sun_color"))
+		E.sun_color.set(x, y, z);
+	else if (0 == xr_strcmp(name, "clouds_color"))
+		E.clouds_color.set(x, y, z, w);
+	else if (0 == xr_strcmp(name, "hemisphere_color"))
+		E.hemi_color.set(x, y, z, w);
+	else
+		Msg("~xrGame\level_script.cpp (set_weather_value_vector) | [%s] is not a valid vector weather parameter to set", name);
+}
+
+LPCSTR get_weather_value_string(LPCSTR name)
+{
+	CEnvDescriptor& E = *environment()->CurrentEnv;
+
+	if (0 == xr_strcmp(name, "clouds_texture"))
+		return E.clouds_texture_name.c_str();
+
+	else if (0 == xr_strcmp(name, "sky_texture"))
+		return E.sky_texture_name.c_str();
+
+	else if (0 == xr_strcmp(name, "ambient"))
+		return E.env_ambient->name().c_str();
+
+	return "";
+}
+
+void set_weather_value_string(LPCSTR name, LPCSTR newval)
+{
+	CEnvDescriptor& E = *environment()->CurrentEnv;
+
+	if (0 == xr_strcmp(name, "clouds_texture"))
+	{
+		if (E.clouds_texture_name._get() != shared_str(newval)._get())
+		{
+			E.m_pDescriptor->OnDeviceDestroy();
+			E.clouds_texture_name = newval;
+			E.m_pDescriptor->OnDeviceCreate(E);
+		}
+	}
+	else if (0 == xr_strcmp(name, "sky_texture"))
+	{
+		if (E.sky_texture_name._get() != shared_str(newval)._get())
+		{
+			string_path st_env;
+			strconcat(sizeof(st_env), st_env, newval, "#small");
+			E.m_pDescriptor->OnDeviceDestroy();
+			E.sky_texture_name = newval;
+			E.sky_texture_env_name = st_env;
+			E.m_pDescriptor->OnDeviceCreate(E);
+		}
+	}
+	else if (0 == xr_strcmp(name, "sun"))
+	{
+		E.lens_flare_id = environment()->eff_LensFlare->AppendDef(*environment(), environment()->m_suns_config, newval);
+	}
+	else if (0 == xr_strcmp(name, "thunderbolt_collection"))
+	{
+		E.tb_id = environment()->eff_Thunderbolt->AppendDef(*environment(),
+		                                                    environment()->m_thunderbolt_collections_config,
+		                                                    environment()->m_thunderbolts_config, newval);
+	}
+	else if (0 == xr_strcmp(name, "ambient"))
+	{
+		E.env_ambient = environment()->AppendEnvAmb(newval);
+	}
+	else
+		Msg("~xrGame\level_script.cpp (set_weather_value_string) | [%s] is not a valid string weather parameter to set", name);
+}
+
+void pause_weather(bool b_pause)
+{
+	environment()->m_paused = b_pause;
+}
+
+bool is_weather_paused()
+{
+	return environment()->m_paused;
+}
+
+void reload_weather()
+{
+	environment()->Reload();
+}
+
+void boost_weather_value(LPCSTR name, float value)
+{
+	if (0 == xr_strcmp(name, "ambient_color"))
+		environment()->env_boost.ambient = value;
+	else if (0 == xr_strcmp(name, "hemisphere_color"))
+		environment()->env_boost.hemi = value;
+	else if (0 == xr_strcmp(name, "fog_color"))
+		environment()->env_boost.fog_color = value;
+	else if (0 == xr_strcmp(name, "rain_color"))
+		environment()->env_boost.rain_color = value;
+	else if (0 == xr_strcmp(name, "sky_color"))
+		environment()->env_boost.sky_color = value;
+	else if (0 == xr_strcmp(name, "clouds_color"))
+		environment()->env_boost.clouds_color = value;
+	else if (0 == xr_strcmp(name, "sun_color"))
+		environment()->env_boost.sun_color = value;
+	else
+		Msg("~xrGame\level_script.cpp (boost_weather_value)| [%s] is not a valid weather parameter to boost", name);
+}
+
+void boost_weather_reset()
+{
+	environment()->env_boost.ambient = 0.f;
+	environment()->env_boost.hemi = 0.f;
+	environment()->env_boost.fog_color = 0.f;
+	environment()->env_boost.rain_color = 0.f;
+	environment()->env_boost.sky_color = 0.f;
+	environment()->env_boost.sun_color = 0.f;
+}
+
+void sun_time(int hour, int minute)
+{
+	float real_sun_alt, real_sun_long;
+	float s_alt = environment()->sun_hp[hour].x;
+	float s_long = environment()->sun_hp[hour].y;
+
+	if (minute > 0)
+	{
+		float s_weight = minute / 60.f;
+		int next_hour = hour == 23 ? 0 : hour + 1;
+		float s_alt2 = environment()->sun_hp[next_hour].x;
+		float s_long2 = environment()->sun_hp[next_hour].y;
+
+		real_sun_alt = _lerp(s_alt, s_alt2, s_weight);
+		real_sun_long = _lerp(s_long, s_long2, s_weight);
+	}
+	else
+	{
+		real_sun_alt = s_alt;
+		real_sun_long = s_long;
+	}
+
+	R_ASSERT(_valid(real_sun_alt));
+	R_ASSERT(_valid(real_sun_long));
+
+	CEnvDescriptor& E = *environment()->CurrentEnv;
+	E.sun_dir.setHP(
+		deg2rad(real_sun_alt),
+		deg2rad(real_sun_long)
+	);
+
+	R_ASSERT(_valid(E.sun_dir));
+}
+
+void reload_language()
+{
+	CStringTable().ReloadLanguage();
+}
+
+#include "player_hud.h"
+
+void hud_adj_offs(int off, int idx, float x, float y, float z)
+{
+	// Script UI
+	if (idx == 20)
+	{
+		g_player_hud->m_adjust_ui_offset[off].set(x, y, z);
+
+		if (off == 1)
+			g_player_hud->m_adjust_ui_offset[1].mul(PI / 180.f);
+	}
+
+	// Fire point/dir ; shell point
+	else if (idx == 10 || idx == 11)
+	{
+		g_player_hud->m_adjust_firepoint_shell[off][idx-10].set(x, y, z);
+	}
+
+	// Object pos/dir
+	else if (idx == 12)
+	{
+		g_player_hud->m_adjust_obj[off].set(x, y, z);
+	}
+
+	// Hud offsets
+	else
+		g_player_hud->m_adjust_offset[off][idx].set(x, y, z);
+}
+
+#include "Inventory.h"
+#include "Weapon.h"
+
+void hud_adj_value(LPCSTR name, float val)
+{
+	if (0 == xr_strcmp(name, "scope_zoom_factor"))
+		g_player_hud->m_adjust_zoom_factor[0] = val;
+	else if (0 == xr_strcmp(name, "gl_zoom_factor"))
+		g_player_hud->m_adjust_zoom_factor[1] = val;
+	else if (0 == xr_strcmp(name, "scope_zoom_factor_alt"))
+		g_player_hud->m_adjust_zoom_factor[2] = val;
+}
+
+void hud_adj_state(bool state)
+{
+	g_player_hud->m_adjust_mode = state;
+}
+
+LPCSTR vid_modes_string()
+{
+	xr_string resolutions = "";
+
+	xr_token* tok = vid_mode_token;
+	while (tok->name)
+	{
+		if (strlen(resolutions.c_str()) > 0)
+			resolutions.append(",");
+
+		resolutions.append(tok->name);
+		tok++;
+	}
+
+	return resolutions.c_str();
+}
+
+u32 PlayHudMotion(u8 hand, LPCSTR itm_name, LPCSTR anm_name, bool bMixIn = true, float speed = 1.f)
+{
+	return g_player_hud->script_anim_play(hand, itm_name, anm_name, bMixIn, speed);
+}
+
+void StopHudMotion()
+{
+	g_player_hud->StopScriptAnim();
+}
+
+float MotionLength(LPCSTR section, LPCSTR name, float speed)
+{
+	return g_player_hud->motion_length_script(section, name, speed);
+}
+
+bool AllowHudMotion()
+{
+	return g_player_hud->allow_script_anim();
+}
+
+void PlayBlendAnm(LPCSTR name, u8 part, float speed, float power, bool bLooped, bool no_restart)
+{
+	g_player_hud->PlayBlendAnm(name, part, speed, power, bLooped, no_restart);
+}
+
+void StopBlendAnm(LPCSTR name, bool bForce)
+{
+	g_player_hud->StopBlendAnm(name, bForce);
+}
+
+void StopAllBlendAnms(bool bForce)
+{
+	g_player_hud->StopAllBlendAnms(bForce);
+}
+
+float SetBlendAnmTime(LPCSTR name, float time)
+{
+	return g_player_hud->SetBlendAnmTime(name, time);
+}
+
+void block_all_except_movement(bool b)
+{
+	g_block_all_except_movement = b;
+}
+
+bool only_movement_allowed()
+{
+	return g_block_all_except_movement;
+}
+
+void set_actor_allow_ladder(bool b)
+{
+	g_actor_allow_ladder = b;
+}
+
+void set_nv_lumfactor(float factor)
+{
+	g_pGamePersistent->nv_shader_data.lum_factor = factor;
+}
+
+void remove_hud_model(LPCSTR section)
+{
+	LPCSTR hud_section = READ_IF_EXISTS(pSettings, r_string, section, "hud", nullptr);
+	if (hud_section != nullptr)
+		g_player_hud->remove_from_model_pool(hud_section);
+	else
+		Msg("can't find hud section for [%s]", section);
+}
+
+const u32 ActorMovingState()
+{
+	return g_actor->MovingState();
+}
+
+extern ENGINE_API float psHUD_FOV;
+
+const Fvector2 world2ui(Fvector pos, bool hud = false, bool allow_offscreen = false)
+{
+	Fmatrix world, res;
+	world.identity();
+	world.c = pos;
+
+	if (hud)
+	{
+		Fmatrix FP, FT, FV;
+		FV.build_camera_dir(Device.vCameraPosition, Device.vCameraDirection, Device.vCameraTop);
+		FP.build_projection(
+			deg2rad(psHUD_FOV * 83.f),
+			Device.fASPECT, R_VIEWPORT_NEAR,
+			g_pGamePersistent->Environment().CurrentEnv->far_plane);
+
+		FT.mul(FP, FV);
+		res.mul(FT, world);
+	}
+	else
+		res.mul(Device.mFullTransform, world);
+	
+	Fvector4 v_res;
+
+	v_res.w = res._44;
+	v_res.x = res._41 / v_res.w;
+	v_res.y = res._42 / v_res.w;
+	v_res.z = res._43 / v_res.w;
+
+	if (!allow_offscreen)
+	{
+		if (v_res.z < 0 || v_res.w < 0) return { -9999,0 };
+		if (abs(v_res.x) > 1.f || abs(v_res.y) > 1.f) return { -9999,0 };
+	}
+
+	float x = (1.f + v_res.x) / 2.f * (Device.dwWidth);
+	float y = (1.f - v_res.y) / 2.f * (Device.dwHeight);
+
+	float width_fk = Device.dwWidth / UI_BASE_WIDTH;
+	float height_fk = Device.dwHeight / UI_BASE_HEIGHT;
+
+	x /= width_fk;
+	y /= height_fk;
+
+	return { x,y };
+}
+
+// demonized: unproject ui coordinates (ie mouse cursor coordinates) to world coordinates
+// returns position and underlying object id if found. If there is no object, obj_id will be 65535
+void ui2world(Fvector2 pos, Fvector& res, u16& obj_id)
+{
+	res.set(0, 0, 0);
+	if (pos.x < 0 || pos.x > UI_BASE_WIDTH || pos.y < 0 || pos.y > UI_BASE_HEIGHT) {
+		return;
+	}
+
+	// Convert to [-1; 1] NDC space
+	pos.x = 2 * pos.x / UI_BASE_WIDTH - 1;
+	pos.y = 1 - 2 * pos.y / UI_BASE_HEIGHT;
+
+	Fmatrix mProject = Device.mFullTransform;
+
+	// 4x4 invert of camera matrix
+	{
+		Fmatrix& m = mProject;
+
+		float mProjectDet = m._11 * (m._22*m._33*m._44 + m._23*m._34*m._42 + m._24*m._32*m._43 - m._24*m._33*m._42 - m._23*m._32*m._44 - m._22*m._34*m._43)
+						-   m._21 * (m._12*m._33*m._44 + m._13*m._34*m._42 + m._14*m._32*m._43 - m._14*m._33*m._42 - m._13*m._32*m._44 - m._12*m._34*m._43)
+						+   m._31 * (m._12*m._23*m._44 + m._13*m._24*m._42 + m._14*m._22*m._43 - m._14*m._23*m._42 - m._13*m._22*m._44 - m._12*m._24*m._43)
+						-   m._41 * (m._12*m._23*m._34 + m._13*m._24*m._32 + m._14*m._22*m._33 - m._14*m._23*m._32 - m._13*m._22*m._34 - m._12*m._24*m._33);
+
+		Fmatrix mProjectAdjugate;
+		mProjectAdjugate._11 = m._22*m._33*m._44 + m._23*m._34*m._42 + m._24*m._32*m._43 - m._24*m._33*m._42 - m._23*m._32*m._44 - m._22*m._34*m._43;
+		mProjectAdjugate._12 = -m._12*m._33*m._44 - m._13*m._34*m._42 - m._14*m._32*m._43 + m._14*m._33*m._42 + m._13*m._32*m._44 + m._12*m._34*m._43;
+		mProjectAdjugate._13 = m._12*m._23*m._44 + m._13*m._24*m._42 + m._14*m._22*m._43 - m._14*m._23*m._42 - m._13*m._22*m._44 - m._12*m._24*m._43;
+		mProjectAdjugate._14 = -m._12*m._23*m._34 - m._13*m._24*m._32 - m._14*m._22*m._33 + m._14*m._23*m._32 + m._13*m._22*m._34 + m._12*m._24*m._33;
+
+		mProjectAdjugate._21 = -m._21*m._33*m._44 - m._23*m._34*m._41 - m._24*m._31*m._43 + m._24*m._33*m._41 + m._23*m._31*m._44 + m._21*m._34*m._43;
+		mProjectAdjugate._22 = m._11*m._33*m._44 + m._13*m._34*m._41 + m._14*m._31*m._43 - m._14*m._33*m._41 - m._13*m._31*m._44 - m._11*m._34*m._43;
+		mProjectAdjugate._23 = -m._11*m._23*m._44 - m._13*m._24*m._41 - m._14*m._21*m._43 + m._14*m._23*m._41 + m._13*m._21*m._44 + m._11*m._24*m._43;
+		mProjectAdjugate._24 = m._11*m._23*m._34 + m._13*m._24*m._31 + m._14*m._21*m._33 - m._14*m._23*m._31 - m._13*m._21*m._34 - m._11*m._24*m._33;
+
+		mProjectAdjugate._31 = m._21*m._32*m._44 + m._22*m._34*m._41 + m._24*m._31*m._42 - m._24*m._32*m._41 - m._22*m._31*m._44 - m._21*m._34*m._42;
+		mProjectAdjugate._32 = -m._11*m._32*m._44 - m._12*m._34*m._41 - m._14*m._31*m._42 + m._14*m._32*m._41 + m._12*m._31*m._44 + m._11*m._34*m._42;
+		mProjectAdjugate._33 = m._11*m._22*m._44 + m._12*m._24*m._41 + m._14*m._21*m._42 - m._14*m._22*m._41 - m._12*m._21*m._44 - m._11*m._24*m._42;
+		mProjectAdjugate._34 = -m._11*m._22*m._34 - m._12*m._24*m._31 - m._14*m._21*m._32 + m._14*m._22*m._31 + m._12*m._21*m._34 + m._11*m._24*m._32;
+
+		mProjectAdjugate._41 = -m._21*m._32*m._43 - m._22*m._33*m._41 - m._23*m._31*m._42 + m._23*m._32*m._41 + m._22*m._31*m._43 + m._21*m._33*m._42;
+		mProjectAdjugate._42 = m._11*m._32*m._43 + m._12*m._33*m._41 + m._13*m._31*m._42 - m._13*m._32*m._41 - m._12*m._31*m._43 - m._11*m._33*m._42;
+		mProjectAdjugate._43 = -m._11*m._22*m._43 - m._12*m._23*m._41 - m._13*m._21*m._42 + m._13*m._22*m._41 + m._12*m._21*m._43 + m._11*m._23*m._42;
+		mProjectAdjugate._44 = m._11*m._22*m._33 + m._12*m._23*m._31 + m._13*m._21*m._32 - m._13*m._22*m._31 - m._12*m._21*m._33 - m._11*m._23*m._32;
+
+		mProjectDet = 1.0 / mProjectDet;
+		mProjectAdjugate.mul(mProjectDet);
+		mProject.set(mProjectAdjugate);
+	}
+		
+	// get position at arbitrary depth
+	res.set(pos.x, pos.y, 1);
+	{
+		auto& e = mProject.m;
+		auto x = res.x;
+		auto y = res.y;
+		auto z = res.z;
+		float w = 1.0 / (e[0][3] * x + e[1][3] * y + e[2][3] * z + e[3][3]);
+
+		res.x = (e[0][0] * x + e[1][0] * y + e[2][0] * z + e[3][0]) * w;
+		res.y = (e[0][1] * x + e[1][1] * y + e[2][1] * z + e[3][1]) * w;
+		res.z = (e[0][2] * x + e[1][2] * y + e[2][2] * z + e[3][2]) * w;
+	}
+
+	// perform ray cast to get actual position
+	collide::rq_result R;
+	CObject* ignore = Actor();
+	Fvector start = Device.vCameraPosition;
+	Fvector dir;
+	dir.set(res).sub(start).normalize();
+	start.mad(dir, R_VIEWPORT_NEAR);
+	float range = g_pGamePersistent->Environment().CurrentEnv->far_plane;
+
+	obj_id = 65535;
+	if (Level().ObjectSpace.RayPick(start, dir, range, collide::rqtBoth, R, ignore))
+	{
+		res.mad(start, dir, R.range);
+
+		if (R.O) {
+			CGameObject* o = smart_cast<CGameObject*>(R.O);
+			if (o) {
+				obj_id = o->ID();
+			}
+		}
+	}
+}
+
+void ui2world(Fvector& pos, Fvector& res, u16& obj_id)
+{
+	ui2world(Fvector2().set(pos.x, pos.y), res, obj_id);
+}
+
+const float get_env_rads()
+{
+	if (!CurrentGameUI())
+		return 0.f;
+
+	return CurrentGameUI()->UIMainIngameWnd->get_hud_states()->get_main_sensor_value();
 }
 
 //Alundaio: namespace level exports extension
@@ -771,6 +1660,28 @@ u32 g_get_target_element()
 	return (0);
 }
 
+// demonized: get world position under crosshair
+Fvector g_get_target_pos()
+{
+	collide::rq_result& RQ = HUD().GetCurrentRayQuery();
+	if (RQ.range)
+	{
+		return Fvector().mad(Device.vCameraPosition, Device.vCameraDirection, RQ.range);
+	}
+	return Fvector().set(0, 0, 0);
+}
+
+// demonized: get result of crosshair ray query
+script_rq_result g_get_target_result()
+{
+	collide::rq_result& RQ = HUD().GetCurrentRayQuery();
+	auto script_rq = script_rq_result();
+	if (RQ.range) {
+		script_rq.set(RQ);
+	}
+	return script_rq;
+}
+
 u8 get_active_cam()
 {
 	CActor* actor = smart_cast<CActor*>(Level().CurrentViewEntity());
@@ -785,6 +1696,39 @@ void set_active_cam(u8 mode)
 	CActor* actor = smart_cast<CActor*>(Level().CurrentViewEntity());
 	if (actor && mode <= ACTOR_DEFS::EActorCameras::eacMaxCam)
 		actor->cam_Set((ACTOR_DEFS::EActorCameras)mode);
+}
+
+void reload_hud_xml()
+{
+	HUD().OnScreenResolutionChanged();
+}
+
+bool actor_safemode()
+{
+	return Actor()->is_safemode();
+}
+
+void actor_set_safemode(bool status)
+{
+	if (Actor()->is_safemode() != status)
+	{
+		CWeapon* wep = smart_cast<CWeapon*>(Actor()->inventory().ActiveItem());
+		if (wep && wep->m_bCanBeLowered)
+		{
+			wep->Action(kSAFEMODE, CMD_START);
+			Actor()->set_safemode(status);
+		}
+	}
+}
+
+void prefetch_texture(LPCSTR name)
+{
+	Device.m_pRender->ResourcesPrefetchCreateTexture( name );
+}
+
+void prefetch_model(LPCSTR name)
+{
+	::Render->models_PrefetchOne(name);
 }
 #endif
 //-Alundaio
@@ -805,20 +1749,215 @@ bool ray_pick (const Fvector& start, const Fvector& dir, float range, collide::r
 	   return false;
 }
 
+CScriptGameObject* get_view_entity_script()
+{
+	CGameObject* pGameObject = smart_cast<CGameObject*>(Level().CurrentViewEntity());
+	if (!pGameObject)
+		return (0);
+
+	return pGameObject->lua_game_object();
+}
+
+void set_view_entity_script(CScriptGameObject* go)
+{
+	CObject* o = smart_cast<CObject*>(&go->object());
+	if (o)
+		Level().SetViewEntity(o);
+}
+
 xrTime get_start_time()
 {
 	return (xrTime(Level().GetStartGameTime()));
 }
 
+void iterate_nearest(const Fvector& pos, float radius, luabind::functor<bool> functor)
+{
+	xr_vector<CObject*> m_nearest;
+	Level().ObjectSpace.GetNearest(m_nearest, pos, radius, NULL);
+
+	if (!m_nearest.size()) return;
+
+	xr_vector<CObject*>::iterator it = m_nearest.begin();
+	xr_vector<CObject*>::iterator it_e = m_nearest.end();
+	for (; it != it_e; it++)
+	{
+		CGameObject* obj = smart_cast<CGameObject*>(*it);
+		if (!obj) continue;
+		if (functor(obj->lua_game_object())) break;
+	}
+}
+
+LPCSTR PickMaterial(const Fvector& start_pos, const Fvector& dir, float trace_dist, CScriptGameObject* ignore_obj)
+{
+	collide::rq_result result;
+	BOOL reach_wall =
+		Level().ObjectSpace.RayPick(
+			start_pos,
+			dir,
+			trace_dist,
+			collide::rqtStatic,
+			result,
+			ignore_obj ? &ignore_obj->object() : nullptr
+		)
+		&&
+		!result.O;
+
+	if (reach_wall)
+	{
+		CDB::TRI* pTri = Level().ObjectSpace.GetStaticTris() + result.element;
+		SGameMtl* pMaterial = GMLib.GetMaterialByIdx(pTri->material);
+
+		if (pMaterial)
+		{
+			return *pMaterial->m_Name;
+		}
+	}
+
+	return "$null";
+}
+
+CScriptIniFile* GetVisualUserdata(LPCSTR visual)
+{
+	string_path low_name, fn;
+
+	VERIFY(xr_strlen(visual) < sizeof(low_name));
+	xr_strcpy(low_name, visual);
+	strlwr(low_name);
+
+	if (strext(low_name)) *strext(low_name) = 0;
+	xr_strcat(low_name, sizeof(low_name), ".ogf");
+
+	if (!FS.exist(low_name))
+	{
+		if (!FS.exist(fn, "$level$", low_name))
+		{
+			if (!FS.exist(fn, "$game_meshes$", low_name))
+			{
+				Msg("!Can't find model file '%s'.", low_name);
+				return nullptr;
+			}
+		}
+	}
+	else
+	{
+		xr_strcpy(fn, low_name);
+	}
+
+	IReader* data = FS.r_open(fn);
+	if (!data) return nullptr;
+
+	IReader* UD = data->open_chunk(17); //OGF_S_USERDATA
+	if (!UD) return nullptr;
+
+	CScriptIniFile* ini = xr_new<CScriptIniFile>(UD, FS.get_path("$game_config$")->m_Path);
+	FS.r_close(data);
+	UD->close();
+
+	return ini;
+}
+
+DBG_ScriptObject* get_object(u16 id)
+{
+	xr_map<u16, DBG_ScriptObject*>::iterator it = Level().getScriptRenderQueue()->find(id);
+	if (it == Level().getScriptRenderQueue()->end())
+		return nullptr;
+
+	return it->second;
+}
+
+void remove_object(u16 id)
+{
+	DBG_ScriptObject* dbg_obj = get_object(id);
+	if (!dbg_obj)
+		return;
+
+	xr_delete(dbg_obj);
+	Level().getScriptRenderQueue()->erase(id);
+}
+
+DBG_ScriptObject* add_object(u16 id, DebugRenderType type)
+{
+	remove_object(id);
+	DBG_ScriptObject* dbg_obj = nullptr;
+
+	switch (type)
+	{
+	case eDBGSphere:
+		dbg_obj = xr_new<DBG_ScriptSphere>();
+		break;
+	case eDBGBox:
+		dbg_obj = xr_new<DBG_ScriptBox>();
+		break;
+	case eDBGLine:
+		dbg_obj = xr_new<DBG_ScriptLine>();
+		break;
+	default:
+		R_ASSERT2(false, "Wrong debug object type used!");
+	}
+
+	R_ASSERT(dbg_obj);
+	Level().getScriptRenderQueue()->emplace(mk_pair(id, dbg_obj));
+
+	return dbg_obj;
+}
+
+u32 get_flags()
+{
+	return Level().m_debug_render_flags.get();
+}
+
+void set_flags(u32 flags)
+{
+	Level().m_debug_render_flags.assign(flags);
+}
+
 #pragma optimize("s",on)
 void CLevel::script_register(lua_State *L)
 {
+	module(L)
+		[
 	class_<CEnvDescriptor>("CEnvDescriptor")
 		.def_readonly("fog_density",			&CEnvDescriptor::fog_density)
 		.def_readonly("far_plane",				&CEnvDescriptor::far_plane),
 
 	class_<CEnvironment>("CEnvironment")
-		.def("current",							current_environment);
+		.def("current", current_environment),
+
+		class_<DBG_ScriptObject>("DBG_ScriptObject")
+		.enum_("dbg_type")
+		[
+			value("line", (int)DebugRenderType::eDBGLine),
+			value("sphere", (int)DebugRenderType::eDBGSphere),
+			value("box", (int)DebugRenderType::eDBGBox)
+		]
+	.def("cast_dbg_sphere", &DBG_ScriptObject::cast_dbg_sphere)
+		.def("cast_dbg_box", &DBG_ScriptObject::cast_dbg_box)
+		.def("cast_dbg_line", &DBG_ScriptObject::cast_dbg_line)
+		.def_readwrite("color", &DBG_ScriptObject::m_color)
+		.def_readwrite("hud", &DBG_ScriptObject::m_hud)
+		.def_readwrite("visible", &DBG_ScriptObject::m_visible),
+
+		class_<DBG_ScriptSphere, DBG_ScriptObject>("DBG_ScriptSphere")
+		.def_readwrite("matrix", &DBG_ScriptSphere::m_mat),
+
+		class_<DBG_ScriptBox, DBG_ScriptObject>("DBG_ScriptBox")
+		.def_readwrite("matrix", &DBG_ScriptBox::m_mat)
+		.def_readwrite("size", &DBG_ScriptBox::m_size),
+
+		class_<DBG_ScriptLine, DBG_ScriptObject>("DBG_ScriptLine")
+		.def_readwrite("point_a", &DBG_ScriptLine::m_point_a)
+		.def_readwrite("point_b", &DBG_ScriptLine::m_point_b)
+		];
+
+	module(L, "debug_render")
+		[
+			def("add_object", add_object),
+			def("remove_object", remove_object),
+			def("get_object", get_object),
+			def("get_flags", get_flags),
+			def("set_flags", set_flags)
+		];
+
 
 	module(L,"level")
 	[
@@ -828,14 +1967,26 @@ void CLevel::script_register(lua_State *L)
 		def("get_target_obj", &g_get_target_obj), //intentionally named to what is in xray extensions
 		def("get_target_dist", &g_get_target_dist),
 		def("get_target_element", &g_get_target_element), //Can get bone cursor is targetting
+			
+			// demonized: get world position under crosshair
+			def("get_target_pos", &g_get_target_pos),
+
+			// demonized: get result of crosshair ray query
+			def("get_target_result", &g_get_target_result),
+
 		def("spawn_item", &spawn_section),
 		def("get_active_cam", &get_active_cam),
 		def("set_active_cam", &set_active_cam),
 		def("get_start_time", &get_start_time),
+			def("get_view_entity", &get_view_entity_script),
+			def("set_view_entity", &set_view_entity_script),
 #endif
 		//Alundaio: END
 		// obsolete\deprecated
-		def("object_by_id",						get_object_by_id),
+			// demonized: add u16 override for better performance
+			def("object_by_id", ((CScriptGameObject * (*)(u16)) & get_object_by_id)),
+			def("object_by_id", ((CScriptGameObject* (*)()) & get_object_by_id)),
+			def("object_by_id", ((CScriptGameObject* (*)(const luabind::object&)) & get_object_by_id)),
 #ifdef DEBUG
 		def("debug_object",						get_object_by_name),
 		def("debug_actor",						tpfGetActor),
@@ -867,6 +2018,8 @@ void CLevel::script_register(lua_State *L)
 		def("low_cover_in_direction",			low_cover_in_direction),
 		def("vertex_in_direction",				vertex_in_direction),
 		def("rain_factor",						rain_factor),
+			def("rain_wetness", rain_wetness),
+			def("rain_hemi", rain_hemi),
 		def("patrol_path_exists",				patrol_path_exists),
 		def("vertex_position",					vertex_position),
 		def("name",								get_name),
@@ -880,6 +2033,9 @@ void CLevel::script_register(lua_State *L)
 		def("map_remove_object_spot",			map_remove_object_spot),
 		def("map_has_object_spot",				map_has_object_spot),
 		def("map_change_spot_hint",				map_change_spot_hint),
+
+			// demonized: remove all map object spots by id
+			def("map_remove_all_object_spots", map_remove_all_object_spots),
 
 		def("add_dialog_to_render",				add_dialog_to_render),
 		def("remove_dialog_to_render",			remove_dialog_to_render),
@@ -906,10 +2062,27 @@ void CLevel::script_register(lua_State *L)
 		def("iterate_sounds",					&iterate_sounds2),
 		def("physics_world",					&physics_world_scripted),
 		def("get_snd_volume",					&get_snd_volume),
+			def("get_rain_volume", &get_rain_volume),
 		def("set_snd_volume",					&set_snd_volume),
-		def("add_cam_effector",					&add_cam_effector),
-		def("add_cam_effector2",				&add_cam_effector2),
+			def("get_music_volume", &get_music_volume),
+			def("set_music_volume", &set_music_volume),
+			def("add_cam_effector", ((float (*)(LPCSTR, int, bool, LPCSTR))&add_cam_effector)),
+			def("add_cam_effector", ((float (*)(LPCSTR, int, bool, LPCSTR, float))&add_cam_effector)),
+			def("add_cam_effector", ((float (*)(LPCSTR, int, bool, LPCSTR, float, bool))&add_cam_effector)),
+			def("add_cam_effector", ((float (*)(LPCSTR, int, bool, LPCSTR, float, bool, float))&add_cam_effector)),
+
+			// demonized: Set custom camera position and direction with movement smoothing (for cutscenes, etc)
+			def("set_cam_custom_position_direction", ((void (*)(Fvector&, Fvector&, unsigned int, bool, bool))& set_cam_position_direction)),
+			def("set_cam_custom_position_direction", ((void (*)(Fvector&, Fvector&, unsigned int, bool))&set_cam_position_direction)),
+			def("set_cam_custom_position_direction", ((void (*)(Fvector&, Fvector&, unsigned int))&set_cam_position_direction)),
+			def("set_cam_custom_position_direction", ((void (*)(Fvector&, Fvector&))&set_cam_position_direction)),
+			def("remove_cam_custom_position_direction", &remove_cam_position_direction),
+
 		def("remove_cam_effector",				&remove_cam_effector),
+			def("set_cam_effector_factor", &set_cam_effector_factor),
+			def("get_cam_effector_factor", &get_cam_effector_factor),
+			def("get_cam_effector_length", &get_cam_effector_length),
+			def("check_cam_effector", &check_cam_effector),
 		def("add_pp_effector",					&add_pp_effector),
 		def("set_pp_effector_factor",			&set_pp_effector_factor),
 		def("set_pp_effector_factor",			&set_pp_effector_factor2),
@@ -921,7 +2094,16 @@ void CLevel::script_register(lua_State *L)
 		def("vertex_id",						&vertex_id),
 
 		def("game_id",							&GameID),
-    	def("ray_pick", &ray_pick)    
+			def("ray_pick", &ray_pick),
+
+			def("press_action", &LevelPressAction),
+			def("release_action", &LevelReleaseAction),
+			def("hold_action", &LevelHoldAction),
+
+			def("actor_moving_state", &ActorMovingState),
+			def("get_env_rads", &get_env_rads),
+			def("iterate_nearest", &iterate_nearest),
+			def("pick_material", &PickMaterial)
 	],
 	
 	module(L,"actor_stats")
@@ -949,6 +2131,21 @@ void CLevel::script_register(lua_State *L)
       .def_readonly("object",			&script_rq_result::O)
       .def_readonly("range",			&script_rq_result::range)
       .def_readonly("element",		&script_rq_result::element)
+		.def_readonly("material_name", &script_rq_result::pMaterialName)
+		.def_readonly("material_flags", &script_rq_result::pMaterialFlags)
+		.def_readonly("material_phfriction", &script_rq_result::fPHFriction)
+		.def_readonly("material_phdamping", &script_rq_result::fPHDamping)
+		.def_readonly("material_phspring", &script_rq_result::fPHSpring)
+		.def_readonly("material_phbounce_start_velocity", &script_rq_result::fPHBounceStartVelocity)
+		.def_readonly("material_phbouncing", &script_rq_result::fPHBouncing)
+		.def_readonly("material_flotation_factor", &script_rq_result::fFlotationFactor)
+		.def_readonly("material_shoot_factor", &script_rq_result::fShootFactor)
+		.def_readonly("material_shoot_factor_mp", &script_rq_result::fShootFactorMP)
+		.def_readonly("material_bounce_damage_factor", &script_rq_result::fBounceDamageFactor)
+		.def_readonly("material_injurious_speed", &script_rq_result::fInjuriousSpeed)
+		.def_readonly("material_vis_transparency_factor", &script_rq_result::fVisTransparencyFactor)
+		.def_readonly("material_snd_occlusion_factor", &script_rq_result::fSndOcclusionFactor)
+		.def_readonly("material_density_factor", &script_rq_result::fDensityFactor)
       .def(								constructor<>()), 	
     class_<enum_exporter<collide::rq_target> >("rq_target")
       .enum_("targets")
@@ -970,6 +2167,30 @@ void CLevel::script_register(lua_State *L)
 		def("IsDynamicMusic",					&IsDynamicMusic),
 		def("render_get_dx_level",				&render_get_dx_level),
 		def("IsImportantSave",					&IsImportantSave)
+	];
+
+	module(L, "weather")
+	[
+		def("get_value_numric", get_weather_value_numric),
+		def("get_value_vector", get_weather_value_vector),
+		def("get_value_string", get_weather_value_string),
+		def("pause", pause_weather),
+		def("is_paused",is_weather_paused),
+		def("set_value_numric", set_weather_value_numric),
+		def("set_value_vector", set_weather_value_vector),
+		def("set_value_string", set_weather_value_string),
+		def("reload", reload_weather),
+		def("boost_value", boost_weather_value),
+		def("boost_reset", boost_weather_reset),
+		def("sun_time", sun_time)
+	];
+
+	module(L, "hud_adjust")
+		[
+		def("enabled", hud_adj_state),
+		def("set_vector", hud_adj_offs),
+		def("set_value", hud_adj_value),
+		def("remove_hud_model", remove_hud_model)
 	];
 
 	module(L,"relation_registry")
@@ -1027,7 +2248,29 @@ void CLevel::script_register(lua_State *L)
 	def("start_tutorial",		&start_tutorial),
 	def("stop_tutorial",		&stop_tutorial),
 	def("has_active_tutorial",	&has_active_tutotial),
-	def("translate_string",		&translate_string)
-
+		def("translate_string", &translate_string),
+		def("reload_language", &reload_language),
+		def("get_resolutions", &vid_modes_string),
+		def("play_hud_motion", PlayHudMotion),
+		def("stop_hud_motion", StopHudMotion),
+		def("get_motion_length", MotionLength),
+		def("hud_motion_allowed", AllowHudMotion),
+		def("play_hud_anm", PlayBlendAnm),
+		def("stop_hud_anm", StopBlendAnm),
+		def("stop_all_hud_anms", StopAllBlendAnms),
+		def("set_hud_anm_time", SetBlendAnmTime),
+		def("only_allow_movekeys", block_all_except_movement),
+		def("only_movekeys_allowed", only_movement_allowed),
+		def("set_actor_allow_ladder", set_actor_allow_ladder),
+		def("set_nv_lumfactor", set_nv_lumfactor),
+		def("reload_ui_xml", reload_hud_xml),
+		def("actor_weapon_lowered", actor_safemode),
+		def("actor_lower_weapon", actor_set_safemode),
+		def("prefetch_texture", prefetch_texture),
+		def("prefetch_model", prefetch_model),
+		def("get_visual_userdata", GetVisualUserdata),
+		def("world2ui", world2ui),
+		def("ui2world", (void (*)(Fvector2, Fvector&, u16&))&ui2world, pure_out_value(_2) + pure_out_value(_3)),
+		def("ui2world", (void (*)(Fvector&, Fvector&, u16&))&ui2world, pure_out_value(_2) + pure_out_value(_3))
 	];
 }

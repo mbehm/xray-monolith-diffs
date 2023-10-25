@@ -43,6 +43,8 @@ CDialogHolder::~CDialogHolder()
 {
 }
 
+#include "player_hud.h"
+
 void CDialogHolder::StartMenu(CUIDialogWnd* pDialog, bool bDoHideIndicators)
 {
 	R_ASSERT						( !pDialog->IsShown() );
@@ -58,7 +60,9 @@ void CDialogHolder::StartMenu(CUIDialogWnd* pDialog, bool bDoHideIndicators)
 		b								= CurrentGameUI()->GameIndicatorsShown();
 		m_input_receivers.back().m_flags.set(recvItem::eIndicators, b);
 		
-		if(bDoHideIndicators){
+		if (bDoHideIndicators)
+		{
+			if (!g_player_hud->m_adjust_mode)
 			psHUD_Flags.set				(HUD_CROSSHAIR_RT, FALSE);
 			CurrentGameUI()->ShowGameIndicators(false);
 		}
@@ -130,6 +134,9 @@ void CDialogHolder::AddDialogToRender(CUIWindow* pDialog)
 
 void CDialogHolder::RemoveDialogToRender(CUIWindow* pDialog)
 {
+	if (TopInputReceiver() == pDialog)
+		SetMainInputReceiver(NULL, false);
+
 	dlgItem itm		(pDialog);
 	itm.enabled		= true;
 	xr_vector<dlgItem>::iterator it = std::find(m_dialogsToRender.begin(),m_dialogsToRender.end(),itm);
@@ -139,9 +146,18 @@ void CDialogHolder::RemoveDialogToRender(CUIWindow* pDialog)
 		(*it).wnd->Show(false);
 		(*it).wnd->Enable(false);
 		(*it).enabled = false;
-	}
+		return;
 }
 
+	it = std::find(m_dialogsToRender_new.begin(), m_dialogsToRender_new.end(), itm);
+
+	if (it != m_dialogsToRender_new.end())
+	{
+		(*it).wnd->Show(false);
+		(*it).wnd->Enable(false);
+		(*it).enabled = false;
+	}
+}
 
 
 void CDialogHolder::DoRenderDialogs()
@@ -227,7 +243,7 @@ void CDialogHolder::OnFrame()
 	{
 		xr_vector<dlgItem>::iterator it = m_dialogsToRender.begin();
 		for(; it!=m_dialogsToRender.end();++it)
-			if((*it).enabled && (*it).wnd->IsEnabled())
+			if ((*it).enabled && (*it).wnd && (*it).wnd->IsEnabled())
 				(*it).wnd->Update();
 	}
 
@@ -272,16 +288,16 @@ bool CDialogHolder::IR_UIOnKeyboardPress(int dik)
 	if( !TIR->StopAnyMove() && g_pGameLevel )
 	{
 		CObject* O = Level().CurrentEntity();
-		if( O ){
+		if (O)
+		{
 			IInputReceiver*		IR	= smart_cast<IInputReceiver*>( smart_cast<CGameObject*>(O) );
 			if (IR)
-//				IR->IR_OnKeyboardPress(get_binded_action(dik));
 			{
 				EGameActions action = get_binded_action(dik);
-				if(action!=kQUICK_USE_1 && action!=kQUICK_USE_2 && action!=kQUICK_USE_3 && action!=kQUICK_USE_4)
+				if (action > kDOWN && action < kCAM_1)
 					IR->IR_OnKeyboardPress(action);
 			}
-			return			(false);
+			return true;
 		}
 	}
 	return true;
@@ -359,7 +375,7 @@ bool CDialogHolder::IR_UIOnMouseMove(int dx, int dy)
 	CUIDialogWnd* TIR		= TopInputReceiver();
 	if(!TIR)				return false;
 	if(!TIR->IR_process())	return false;
-	if (GetUICursor().IsVisible())
+	if (GetUICursor().IsVisible() || !TIR->NeedCursor())
 	{ 
 		GetUICursor().UpdateCursorPosition(dx, dy);
 		Fvector2 cPos			= GetUICursor().GetCursorPosition();

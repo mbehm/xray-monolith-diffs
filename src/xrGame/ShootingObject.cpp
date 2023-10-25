@@ -33,9 +33,9 @@ CShootingObject::CShootingObject(void)
 	m_vCurrentShootPos.set			(0,0,0);
 	m_iCurrentParentID				= 0xFFFF;
 
-	m_fPredBulletTime				= 0.0f;
-	m_bUseAimBullet					= false;
-	m_fTimeToAim					= 0.0f;
+	//m_fPredBulletTime = 0.0f;
+	//m_bUseAimBullet = false;
+	//m_fTimeToAim = 0.0f;
 
 	//particles
 	m_sFlameParticlesCurrent		= m_sFlameParticles = NULL;
@@ -43,6 +43,7 @@ CShootingObject::CShootingObject(void)
 	m_sShellParticles				= NULL;
 	
 	bWorking						= false;
+	bCycleDown = false;
 
 	light_render					= 0;
 
@@ -157,11 +158,11 @@ void CShootingObject::LoadFireParams( LPCSTR section )
 	fireDistance		= pSettings->r_float	(section, "fire_distance" );
 	//начальная скорость пули
 	m_fStartBulletSpeed = pSettings->r_float	(section, "bullet_speed" );
-	m_bUseAimBullet		= pSettings->r_bool		(section, "use_aim_bullet" );
+	/*m_bUseAimBullet = pSettings->r_bool(section, "use_aim_bullet");
 	if (m_bUseAimBullet)
 	{
 		m_fTimeToAim		= pSettings->r_float	(section, "time_to_aim" );
-	}
+	}*/
 }
 
 void CShootingObject::LoadLights		(LPCSTR section, LPCSTR prefix)
@@ -200,8 +201,9 @@ void CShootingObject::Light_Render	(const Fvector& P)
 	R_ASSERT(light_render);
 
 	light_render->set_position	(P);
-	light_render->set_color		(light_build_color.r*light_scale,light_build_color.g*light_scale,light_build_color.b*light_scale);
-	light_render->set_range		(light_build_range*light_scale);
+	light_render->set_color(light_build_color.r * light_scale, light_build_color.g * light_scale,
+	                        light_build_color.b * light_scale);
+	light_render->set_range(fmaxf(.1f, (light_build_range * light_scale)));
 
 	if(	!light_render->get_active() )
 	{
@@ -228,14 +230,7 @@ void CShootingObject::StartParticles (CParticlesObject*& pParticles, LPCSTR part
 	pParticles = CParticlesObject::Create(particles_name,(BOOL)auto_remove_flag);
 	
 	UpdateParticles(pParticles, pos, vel);
-	CSpectator* tmp_spectr = smart_cast<CSpectator*>(Level().CurrentControlEntity());
-	bool in_hud_mode = IsHudModeNow();
-	if (in_hud_mode && tmp_spectr &&
-		(tmp_spectr->GetActiveCam() != CSpectator::eacFirstEye))
-	{
-		in_hud_mode = false;
-	}
-	pParticles->Play(in_hud_mode);
+	pParticles->Play(false);
 }
 void CShootingObject::StopParticles (CParticlesObject*&	pParticles)
 {
@@ -466,8 +461,8 @@ void CShootingObject::FireBullet(const Fvector& pos,
 	m_vCurrentShootPos = pos;
 	m_iCurrentParentID = parent_id;
 	
-	bool aim_bullet;
-	if (m_bUseAimBullet)
+	bool aim_bullet = false;
+	/*if (m_bUseAimBullet)
 	{
 		if (ParentMayHaveAimBullet())
 		{
@@ -496,10 +491,10 @@ void CShootingObject::FireBullet(const Fvector& pos,
 	{
 		aim_bullet=false;
 	}
-	m_fPredBulletTime = Device.fTimeGlobal;
+	m_fPredBulletTime = Device.fTimeGlobal;*/
 
 	float l_fHitPower = 0.0f;
-	if (ParentIsActor())//если из оружия стреляет актёр(игрок)
+	if (SOParentIsActor()) //если из оружия стреляет актёр(игрок)
 	{
 		if (GameID() == eGameIDSingle)
 		{

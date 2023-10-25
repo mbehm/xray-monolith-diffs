@@ -10,6 +10,9 @@
 #include "script_space_forward.h"
 #include "character_info.h"
 #include "inventory_space.h"
+#include "script_export_space.h"
+
+extern xr_string TranslateName(LPCSTR nameStr);
 
 class CSE_Abstract;
 class CInventory;
@@ -50,11 +53,17 @@ public:
 	virtual void	save						(NET_Packet &output_packet);
 	virtual void	load						(IReader &input_packet);
 
+	void refresh_npc_name();
 	
 	//обновление
 	virtual void	UpdateInventoryOwner		(u32 deltaT);
 	virtual bool	CanPutInSlot				(PIItem item, u32 slot){return true;};
 
+	void ChangeName(LPCSTR name)
+	{
+		m_game_name_str = name;
+		m_game_name = TranslateName(name);
+	}
 
 	CPda* GetPDA		() const;
 
@@ -106,6 +115,7 @@ public:
 
 protected:
 	u32					m_money;
+	Flags32 m_trader_flags;
 	// торговля
 	CTrade*				m_pTrade;
 	bool				m_bTrading;
@@ -179,6 +189,7 @@ public:
 protected:
 	CCharacterInfo*			m_pCharacterInfo;
 	xr_string				m_game_name;
+	xr_string m_game_name_str;
 
 public:
 	virtual void			renderable_Render		();
@@ -237,6 +248,10 @@ public:
 	IC		bool				deadbody_can_take_status() const { return m_deadbody_can_take; }
 			void				deadbody_closed			(bool status);
 	IC		bool				deadbody_closed_status	() const { return m_deadbody_closed; }
+	DECLARE_SCRIPT_REGISTER_FUNCTION
 };
 
 #include "inventory_owner_inline.h"
+add_to_type_list(CInventoryOwner)
+#undef script_type_list
+#define script_type_list save_type_list(CInventoryOwner)

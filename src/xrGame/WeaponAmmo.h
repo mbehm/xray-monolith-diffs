@@ -4,7 +4,7 @@
 
 struct SCartridgeParam
 {
-	float	kDist, kDisp, kHit/*, kCritical*/, kImpulse, kAP, kAirRes;
+	float kDist, kDisp, kHit/*, kCritical*/, kImpulse, kAP, kAirRes, kBulletSpeed, k_cam_dispersion;
 	int		buckShot;
 	float	impair;
 	float	fWallmarkSize;
@@ -12,7 +12,7 @@ struct SCartridgeParam
 
 	IC void Init()
 	{
-		kDist = kDisp = kHit = kImpulse = 1.0f;
+		kDist = kDisp = kHit = kImpulse = kBulletSpeed = 1.0f;
 //		kCritical = 0.0f;
 		kAP       = 0.0f;
 		kAirRes   = 0.0f;
@@ -20,6 +20,7 @@ struct SCartridgeParam
 		impair    = 1.0f;
 		fWallmarkSize = 0.0f;
 		u8ColorID     = 0;
+		k_cam_dispersion = 1.0f;
 	}
 };
 
@@ -27,10 +28,12 @@ class CCartridge : public IAnticheatDumpable
 {
 public:
 	CCartridge();
-	void Load(LPCSTR section, u8 LocalAmmoType);
-
+	void Load(LPCSTR section, u8 LocalAmmoType, float ap_mod = 1.0f);
+	float Weight() const;
 	shared_str	m_ammoSect;
-	enum{
+
+	enum
+	{
 		cfTracer				= (1<<0),
 		cfRicochet				= (1<<1),
 		cfCanBeUnlimited		= (1<<2),
@@ -46,6 +49,8 @@ public:
 	Flags8	m_flags;
 
 	shared_str	m_InvShortName;
+
+	LPCSTR GetInventoryName() { return m_InvShortName.c_str(); };
 	virtual void				DumpActiveParams		(shared_str const & section_name, CInifile & dst_ini) const;
 	virtual shared_str const 	GetAnticheatSectionName	() const { return m_ammoSect; };
 };
@@ -83,4 +88,10 @@ public:
 
 public:
 	virtual CInventoryItem *can_make_killing	(const CInventory *inventory) const;
+
+	DECLARE_SCRIPT_REGISTER_FUNCTION
 };
+
+add_to_type_list(CWeaponAmmo)
+#undef script_type_list
+#define script_type_list save_type_list(CWeaponAmmo)

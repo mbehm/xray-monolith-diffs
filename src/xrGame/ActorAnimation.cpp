@@ -20,6 +20,8 @@
 #include "artefact.h"
 #include "IKLimbsController.h"
 #include "player_hud.h"
+#include "WeaponKnife.h"
+#include "Pda.h"
 
 static const float y_spin0_factor		= 0.0f;
 static const float y_spin1_factor		= 0.4f;
@@ -74,11 +76,21 @@ void  CActor::ShoulderCallback(CBoneInstance* B)
 	B->mTransform.mulA_43(spin);
 	B->mTransform.c		= c;
 }
+
+#include "../xrEngine/CameraBase.h"
+
 void  CActor::HeadCallback(CBoneInstance* B)
 {
-	CActor*	A			= static_cast<CActor*>(B->callback_param());	VERIFY	(A);
+	CActor* A = static_cast<CActor*>(B->callback_param());
+	VERIFY(A);
 	Fmatrix				spin;
-	float				bone_yaw	= angle_normalize_signed(A->r_torso.yaw - A->r_model_yaw - A->r_model_yaw_delta)*y_head_factor;
+	float bone_yaw;
+
+	if (A->cam_freelook != eflDisabled)
+		bone_yaw = angle_normalize_signed(-A->cam_FirstEye()->yaw - A->r_model_yaw - A->r_model_yaw_delta) * .35f;
+	else
+		bone_yaw = angle_normalize_signed(A->r_torso.yaw - A->r_model_yaw - A->r_model_yaw_delta) * y_head_factor;
+
 	float				bone_pitch	= angle_normalize_signed(A->r_torso.pitch)*p_head_factor;
 	float				bone_roll	= angle_normalize_signed(A->r_torso.roll)*r_head_factor;
 	Fvector c			= B->mTransform.c;
@@ -121,6 +133,7 @@ void STorsoWpn::Create(IKinematicsAnimated* K, LPCSTR base0, LPCSTR base1)
 	all_attack_0	= K->ID_Cycle_Safe(strconcat(sizeof(buf),buf,base0,"_all",base1,"_attack_0"));
 	all_attack_1	= K->ID_Cycle_Safe(strconcat(sizeof(buf),buf,base0,"_all",base1,"_attack_1"));
 	all_attack_2	= K->ID_Cycle_Safe(strconcat(sizeof(buf),buf,base0,"_all",base1,"_attack_2"));
+	safemode = K->ID_Cycle_Safe(strconcat(sizeof(buf), buf, base0, "_torso", base1, "_idle_1"));
 }
 void SAnimState::Create(IKinematicsAnimated* K, LPCSTR base0, LPCSTR base1)
 {
@@ -269,6 +282,9 @@ void CActor::steer_Vehicle(float angle)
 	//Alundaio: Re-enable Car
 #ifdef	ENABLE_CAR
 	CCar*	car			= smart_cast<CCar*>(m_holder);
+	if (!car)
+		return;
+
 	u16 anim_type       = car->DriverAnimationType();
 	SVehicleAnimCollection& anims=m_vehicle_anims->m_vehicles_type_collections[anim_type];
 	if(angle==0.f) 		smart_cast<IKinematicsAnimated*>	(Visual())->PlayCycle(anims.idles[0]);
@@ -344,8 +360,6 @@ void CActor::g_SetAnimation( u32 mstate_rl )
 	else							
 		ST 		= &m_anims->m_normal;
 
-	//STorsoWpn* __TW = &ST->m_torso[4]; //Alundaio: Animation Set knife/grenade running animation without weapon by XEM #100
-
 	bool bAccelerated = isActorAccelerated(mstate_rl, IsZoomAimingMode());
 	if ( bAccelerated )
 	{
@@ -389,14 +403,24 @@ void CActor::g_SetAnimation( u32 mstate_rl )
 
 	if (this == Level().CurrentViewEntity())
 	{	
+		if (mstate_rl & mcAnyMove)
+		{
 		if ((mstate_rl&mcSprint) != (mstate_old&mcSprint))
 		{
 			g_player_hud->OnMovementChanged(mcSprint);
-		}else
-		if ((mstate_rl&mcAnyMove) != (mstate_old&mcAnyMove))
+			}
+			else if ((mstate_rl & mcCrouch) != (mstate_old & mcCrouch))
 		{
-			g_player_hud->OnMovementChanged(mcAnyMove);
+				g_player_hud->OnMovementChanged(mcCrouch);
+			}
+			else if ((mstate_rl & mcAccel) != (mstate_old & mcAccel) && !Actor()->IsZoomAimingMode())
+			{
+				g_player_hud->OnMovementChanged(mcAccel);
+			}
 		}
+
+		if (!(mstate_old & mcAnyMove) && (mstate_rl & mcAnyMove) || (mstate_old & mcAnyMove) && !(mstate_rl & mcAnyMove))
+			g_player_hud->OnMovementChanged(mcAnyMove);
 	};
 
 	//-----------------------------------------------------------------------
@@ -413,11 +437,9 @@ void CActor::g_SetAnimation( u32 mstate_rl )
 	{
 		CInventoryItem* _i = inventory().ActiveItem();
 		CHudItem		*H = smart_cast<CHudItem*>(_i);
-		CWeapon			*W = smart_cast<CWeapon*>(_i);
-		CMissile		*M = smart_cast<CMissile*>(_i);
-		CArtefact		*A = smart_cast<CArtefact*>(_i);
 					
-		if (H) {
+		if (H)
+		{
 			VERIFY(H->animation_slot() <= _total_anim_slots_);
 			STorsoWpn* TW			= &ST->m_torso[H->animation_slot() - 1];
 			if (!b_DropActivated&&!fis_zero(f_DropPower))
@@ -434,12 +456,16 @@ void CActor::g_SetAnimation( u32 mstate_rl )
 			{
 				if (!m_bAnimTorsoPlayed) 
 				{
+					CWeapon* W = smart_cast<CWeapon*>(_i);
+					CPda* P = smart_cast<CPda*>(_i);
+					CMissile* M = smart_cast<CMissile*>(_i);
+					CArtefact* A = smart_cast<CArtefact*>(_i);
+
 					if (W) 
 					{
-						bool K	=inventory().GetActiveSlot() == KNIFE_SLOT;
 						bool R3 = W->IsTriStateReload();
 						
-						if(K)
+						if (smart_cast<CWeaponKnife*>(W))
 						{
 							switch (W->GetState())
 							{
@@ -469,9 +495,12 @@ void CActor::g_SetAnimation( u32 mstate_rl )
 						{
 							switch (W->GetState())
 							{
-							case CWeapon::eIdle:		M_torso	= W->IsZoomed()?TW->zoom:TW->moving[moving_idx];	break;
-							case CWeapon::eFire:		M_torso	= W->IsZoomed()?TW->attack_zoom:TW->attack;				break;
-							case CWeapon::eFire2:		M_torso	= W->IsZoomed()?TW->attack_zoom:TW->attack;				break;
+							case CWeapon::eIdle: M_torso = W->IsZoomed() ? TW->zoom : (m_bSafemode && moving_idx != STorsoWpn::eSprint) ? TW->safemode : TW->moving[moving_idx];
+								break;
+							case CWeapon::eFire: M_torso = W->IsZoomed() ? TW->attack_zoom : TW->attack;
+								break;
+							case CWeapon::eFire2: M_torso = W->IsZoomed() ? TW->attack_zoom : TW->attack;
+								break;
 							case CWeapon::eReload:	
 								if(!R3)
 									M_torso	= TW->reload;
@@ -480,18 +509,28 @@ void CActor::g_SetAnimation( u32 mstate_rl )
 									CWeapon::EWeaponSubStates sub_st = W->GetReloadState();
 									switch (sub_st)
 									{
-										case CWeapon::eSubstateReloadBegin:			M_torso	= TW->reload;	break;
-										case CWeapon::eSubstateReloadInProcess:		M_torso	= TW->reload_1; break;
-										case CWeapon::eSubstateReloadEnd:			M_torso	= TW->reload_2; break;
-										default:									M_torso	= TW->reload;	break;
+									case CWeapon::eSubstateReloadBegin: M_torso = TW->reload;
+										break;
+									case CWeapon::eSubstateReloadInProcess: M_torso = TW->reload_1;
+										break;
+									case CWeapon::eSubstateReloadEnd: M_torso = TW->reload_2;
+										break;
+									default: M_torso = TW->reload;
+										break;
 									}
-								}break;
+								}
+								break;
 
-							case CWeapon::eShowing:	M_torso	= TW->draw;					break;
-							case CWeapon::eHiding:	M_torso	= TW->holster;				break;
-							default				 :  M_torso	= TW->moving[moving_idx];	break;
+							case CWeapon::eShowing: M_torso = TW->draw;
+								break;
+							case CWeapon::eHiding: M_torso = TW->holster;
+								break;
+							default: M_torso = TW->moving[moving_idx];
+								break;
 							}
 						}
+						if (!M_torso)
+							M_torso = ST->m_torso[4].moving[moving_idx]; //Alundaio: Fix torso animations for binoc
 					}
 					else if (M) 
 					{
@@ -528,16 +567,40 @@ void CActor::g_SetAnimation( u32 mstate_rl )
 					{
 							switch(A->GetState())
 							{
-								case CArtefact::eIdle		: M_torso	= TW->moving[moving_idx];	break; 
-								case CArtefact::eShowing	: M_torso	= TW->draw;					break; 
-								case CArtefact::eHiding		: M_torso	= TW->holster;				break; 
-								case CArtefact::eActivating : M_torso	= TW->zoom;					break; 
+						case CArtefact::eIdle: M_torso = TW->moving[moving_idx];
+							break;
+						case CArtefact::eShowing: M_torso = TW->draw;
+							break;
+						case CArtefact::eHiding: M_torso = TW->holster;
+							break;
+						case CArtefact::eActivating: M_torso = TW->zoom;
+							break;
 								default						: M_torso	= TW->moving[moving_idx];
 							}
-					
+					}
+					else if (P)
+					{
+						switch (P->GetState())
+						{
+						case CPda::eIdle: M_torso = P->m_bZoomed ? TW->zoom : (moving_idx == STorsoWpn::eSprint ? ST->m_torso[0].moving[moving_idx] : ST->m_torso[4].moving[moving_idx]);
+							break;
+						case CPda::eShowing: M_torso = TW->draw;
+							break;
+						case CPda::eHiding: M_torso = TW->holster;
+							break;
+						default: M_torso = ST->m_torso[4].moving[moving_idx];
+							break;
 					}
 				}
 			}
+		}
+	}
+		else if (!m_bAnimTorsoPlayed)
+		{
+			if (moving_idx == STorsoWpn::eSprint)
+				M_torso = ST->m_torso[0].moving[moving_idx];
+			else
+				M_torso = ST->m_torso[4].moving[moving_idx]; //Alundaio: Fix torso animations for no weapon
 		}
 	}
 	MotionID		mid = smart_cast<IKinematicsAnimated*>(Visual())->ID_Cycle("norm_idle_0");

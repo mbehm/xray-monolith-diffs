@@ -4,6 +4,7 @@
 #include "../../../level.h"
 #include "../../../material_manager.h"
 #include "../../../level_debug.h"
+#include "inventory_item.h"
 
 
 CPolterSpecialAbility::CPolterSpecialAbility(CPoltergeist *polter)
@@ -115,7 +116,9 @@ void CPoltergeist::PhysicalImpulse	(const Fvector &position)
 	u32 index = Random.randI		(m_nearest.size());
 	
 	CPhysicsShellHolder  *obj = smart_cast<CPhysicsShellHolder *>(m_nearest[index]);
+	CInventoryItem* itm = smart_cast<CInventoryItem*>(obj);
 	if (!obj || !obj->m_pPhysicsShell) return;
+	if (itm && itm->IsQuestItem()) return;
 
 	Fvector dir;
 	dir.sub(obj->Position(), position);
@@ -144,8 +147,13 @@ void CPoltergeist::StrangeSounds(const Fvector &position)
 				if (!mtl_pair) continue;
 
 				// Играть звук
-				if (!mtl_pair->CollideSounds.empty()) {
-					CLONE_MTL_SOUND(m_strange_sound, mtl_pair, CollideSounds);
+				if (!mtl_pair->CollideSounds.empty())
+				{
+#ifdef DEBUG
+					CLONE_MTL_SOUND_CHECK(m_strange_sound, mtl_pair, CollideSounds);
+#endif
+					CLONE_MTL_SOUND_DO(m_strange_sound, mtl_pair, CollideSounds);
+
 					Fvector pos;
 					pos.mad(position, dir, ((l_rq.range - 0.1f > 0) ? l_rq.range - 0.1f  : l_rq.range));
 					m_strange_sound.play_at_pos(this,pos);

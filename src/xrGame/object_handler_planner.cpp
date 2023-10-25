@@ -21,9 +21,11 @@
 
 using namespace ObjectHandlerSpace;
 
-IC	ObjectHandlerSpace::EWorldProperties CObjectHandlerPlanner::object_property(MonsterSpace::EObjectAction object_action) const
+IC ObjectHandlerSpace::EWorldProperties CObjectHandlerPlanner::object_property(
+	MonsterSpace::EObjectAction object_action) const
 {
-	switch (object_action) {
+	switch (object_action)
+{
 		case MonsterSpace::eObjectActionSwitch1			: return(ObjectHandlerSpace::eWorldPropertySwitch1);
 		case MonsterSpace::eObjectActionSwitch2			: return(ObjectHandlerSpace::eWorldPropertySwitch2);
 		case MonsterSpace::eObjectActionAim1			: return(ObjectHandlerSpace::eWorldPropertyAimingReady1);
@@ -314,4 +316,10 @@ void CObjectHandlerPlanner::update			()
 		set_use_log			(!!psAI_Flags.test(aiGOAPObject));
 #endif
 	inherited::update		();
+}
+
+CObjectHandlerPlanner::_condition_type CObjectHandlerPlanner::uid(const u32 id0, const u32 id1) const
+{
+	VERIFY(!((id0 << 16) & id1));
+	return ((id0 << 16) | id1);
 }

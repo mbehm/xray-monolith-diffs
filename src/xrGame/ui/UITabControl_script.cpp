@@ -17,7 +17,9 @@ void CUITabControl::script_register(lua_State *L)
 		.def("GetActiveId",				&CUITabControl::GetActiveId_script)
 		.def("GetTabsCount",			&CUITabControl::GetTabsCount)
 		.def("SetActiveTab",			&CUITabControl::SetActiveTab_script)
-		.def("GetButtonById",			&CUITabControl::GetButtonById_script),
+		.def("GetButtonById", &CUITabControl::GetButtonById_script)
+		.def("GetEnabled", &CUITabControl::GetAcceleratorsMode)
+		.def("SetEnabled", &CUITabControl::SetAcceleratorsMode),
 
 		class_<CUITabButton, CUIButton>("CUITabButton")
 		.def(							constructor<>())		

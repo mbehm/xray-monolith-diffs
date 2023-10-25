@@ -1,11 +1,15 @@
 #include "stdafx.h"
 #include "uidialogwnd.h"
+#include "UICursor.h"
 
 CUIDialogWnd:: CUIDialogWnd()
 {
 	m_pParentHolder		= NULL;
 	m_bWorkInPause		= false;
 	m_bShowMe			= false;
+	m_bAllowMovement = false;
+	m_bNeedCursor = true;
+	m_bNeedCenterCursor = true;
 }
 
 CUIDialogWnd::~CUIDialogWnd()
@@ -54,7 +58,7 @@ void CUIDialogWnd::ShowDialog(bool bDoHideIndicators)
 
 void CUIDialogWnd::HideDialog()
 {
-	R_ASSERT2(IsShown(), "dialog already hidden");
-	if (GetHolder())
+	//R_ASSERT2(IsShown(), "dialog already hidden");
+	if (IsShown() && GetHolder())
 		GetHolder()->StopDialog	(this);
 }

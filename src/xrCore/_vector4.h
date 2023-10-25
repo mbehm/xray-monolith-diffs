@@ -15,32 +15,214 @@ public:
     IC T& operator[] (int i) { return *((T*)this + i); }
     IC T& operator[] (int i) const { return *((T*)this + i); }
 
-    IC SelfRef set(T _x, T _y, T _z, T _w = 1) { x = _x; y = _y; z = _z; w = _w; return *this; }
-    IC SelfRef set(const Self& v) { x = v.x; y = v.y; z = v.z; w = v.w; return *this; }
+	IC SelfRef set(T _x, T _y, T _z, T _w = 1)
+	{
+		x = _x;
+		y = _y;
+		z = _z;
+		w = _w;
+		return *this;
+	}
 
-    IC SelfRef add(const Self& v) { x += v.x; y += v.y; z += v.z; w += v.w; return *this; }
-    IC SelfRef add(T s) { x += s; y += s; z += s; w += s; return *this; }
-    IC SelfRef add(const Self& a, const Self& v) { x = a.x + v.x; y = a.y + v.y; z = a.z + v.z; w = a.w + v.w; return *this; }
-    IC SelfRef add(const Self& a, T s) { x = a.x + s; y = a.y + s; z = a.z + s; w = a.w + s; return *this; }
+	IC SelfRef set(const Self& v)
+	{
+		x = v.x;
+		y = v.y;
+		z = v.z;
+		w = v.w;
+		return *this;
+	}
 
-    IC SelfRef sub(T _x, T _y, T _z, T _w = 1) { x -= _x; y -= _y; z -= _z; w -= _w; return *this; }
-    IC SelfRef sub(const Self& v) { x -= v.x; y -= v.y; z -= v.z; w -= v.w; return *this; }
-    IC SelfRef sub(T s) { x -= s; y -= s; z -= s; w -= s; return *this; }
-    IC SelfRef sub(const Self& a, const Self& v) { x = a.x - v.x; y = a.y - v.y; z = a.z - v.z; w = a.w - v.w; return *this; }
-    IC SelfRef sub(const Self& a, T s) { x = a.x - s; y = a.y - s; z = a.z - s; w = a.w - s; return *this; }
+	IC SelfRef add(const Self& v)
+	{
+		x += v.x;
+		y += v.y;
+		z += v.z;
+		w += v.w;
+		return *this;
+	}
 
-    IC SelfRef mul(T _x, T _y, T _z, T _w = 1) { x *= _x; y *= _y; z *= _z; w *= _w; return *this; }
-    IC SelfRef mul(const Self& v) { x *= v.x; y *= v.y; z *= v.z; w *= v.w; return *this; }
-    IC SelfRef mul(T s) { x *= s; y *= s; z *= s; w *= s; return *this; }
-    IC SelfRef mul(const Self& a, const Self& v) { x = a.x*v.x; y = a.y*v.y; z = a.z*v.z; w = a.w*v.w; return *this; }
-    IC SelfRef mul(const Self& a, T s) { x = a.x*s; y = a.y*s; z = a.z*s; w = a.w*s; return *this; }
+	IC SelfRef add(T s)
+	{
+		x += s;
+		y += s;
+		z += s;
+		w += s;
+		return *this;
+	}
 
-    IC SelfRef div(const Self& v) { x /= v.x; y /= v.y; z /= v.z; w /= v.w; return *this; }
-    IC SelfRef div(T s) { x /= s; y /= s; z /= s; w /= s; return *this; }
-    IC SelfRef div(const Self& a, const Self& v) { x = a.x / v.x; y = a.y / v.y; z = a.z / v.z; w = a.w / v.w; return *this; }
-    IC SelfRef div(const Self& a, T s) { x = a.x / s; y = a.y / s; z = a.z / s; w = a.w / s; return *this; }
+	IC SelfRef add(const Self& a, const Self& v)
+	{
+		x = a.x + v.x;
+		y = a.y + v.y;
+		z = a.z + v.z;
+		w = a.w + v.w;
+		return *this;
+	}
 
-    IC BOOL similar(const Self& v, T E = EPS_L) { return _abs(x - v.x) < E && _abs(y - v.y) < E && _abs(z - v.z) < E && _abs(w - v.w) < E; };
+	IC SelfRef add(const Self& a, T s)
+	{
+		x = a.x + s;
+		y = a.y + s;
+		z = a.z + s;
+		w = a.w + s;
+		return *this;
+	}
+
+	IC SelfRef sub(T _x, T _y, T _z, T _w = 1)
+	{
+		x -= _x;
+		y -= _y;
+		z -= _z;
+		w -= _w;
+		return *this;
+	}
+
+	IC SelfRef sub(const Self& v)
+	{
+		x -= v.x;
+		y -= v.y;
+		z -= v.z;
+		w -= v.w;
+		return *this;
+	}
+
+	IC SelfRef sub(T s)
+	{
+		x -= s;
+		y -= s;
+		z -= s;
+		w -= s;
+		return *this;
+	}
+
+	IC SelfRef sub(const Self& a, const Self& v)
+	{
+		x = a.x - v.x;
+		y = a.y - v.y;
+		z = a.z - v.z;
+		w = a.w - v.w;
+		return *this;
+	}
+
+	IC SelfRef sub(const Self& a, T s)
+	{
+		x = a.x - s;
+		y = a.y - s;
+		z = a.z - s;
+		w = a.w - s;
+		return *this;
+	}
+
+	IC SelfRef mul(T _x, T _y, T _z, T _w = 1)
+	{
+		x *= _x;
+		y *= _y;
+		z *= _z;
+		w *= _w;
+		return *this;
+	}
+
+	IC SelfRef mul(const Self& v)
+	{
+		x *= v.x;
+		y *= v.y;
+		z *= v.z;
+		w *= v.w;
+		return *this;
+	}
+
+	IC SelfRef mul(T s)
+	{
+		x *= s;
+		y *= s;
+		z *= s;
+		w *= s;
+		return *this;
+	}
+
+	IC SelfRef mul(const Self& a, const Self& v)
+	{
+		x = a.x * v.x;
+		y = a.y * v.y;
+		z = a.z * v.z;
+		w = a.w * v.w;
+		return *this;
+	}
+
+	IC SelfRef mul(const Self& a, T s)
+	{
+		x = a.x * s;
+		y = a.y * s;
+		z = a.z * s;
+		w = a.w * s;
+		return *this;
+	}
+
+	IC SelfRef div(const Self& v)
+	{
+		x /= v.x;
+		y /= v.y;
+		z /= v.z;
+		w /= v.w;
+		return *this;
+	}
+
+	IC SelfRef div(T s)
+	{
+		x /= s;
+		y /= s;
+		z /= s;
+		w /= s;
+		return *this;
+	}
+
+	IC SelfRef div(const Self& a, const Self& v)
+	{
+		x = a.x / v.x;
+		y = a.y / v.y;
+		z = a.z / v.z;
+		w = a.w / v.w;
+		return *this;
+	}
+
+	IC SelfRef div(const Self& a, T s)
+	{
+		x = a.x / s;
+		y = a.y / s;
+		z = a.z / s;
+		w = a.w / s;
+		return *this;
+	}
+
+	// Clamp vector3
+	IC SelfRef clamp(const Self& min, const Self& max)
+	{
+		::clamp(x, min.x, max.x);
+		::clamp(y, min.y, max.y);
+		::clamp(z, min.z, max.z);
+		::clamp(w, min.w, max.w);
+		return *this;
+	}
+
+	IC SelfRef clamp(const Self& _v)
+	{
+		Self v;
+		v.x = _abs(_v.x);
+		v.y = _abs(_v.y);
+		v.z = _abs(_v.z);
+		v.z = _abs(_v.w);
+		::clamp(x, -v.x, v.x);
+		::clamp(y, -v.y, v.y);
+		::clamp(z, -v.z, v.z);
+		::clamp(w, -v.w, v.w);
+		return *this;
+	}
+
+	IC BOOL similar(const Self& v, T E = EPS_L)
+	{
+		return _abs(x - v.x) < E && _abs(y - v.y) < E && _abs(z - v.z) < E && _abs(w - v.w) < E;
+	};
 
     IC T magnitude_sqr() { return x*x + y*y + z*z + w*w; }
     IC T magnitude() { return _sqrt(magnitude_sqr()); }

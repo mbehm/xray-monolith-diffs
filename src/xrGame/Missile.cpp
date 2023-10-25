@@ -1,4 +1,4 @@
-#include "stdafx.h"
+﻿#include "stdafx.h"
 #include "missile.h"
 //.#include "WeaponHUD.h"
 #include "../xrphysics/PhysicsShell.h"
@@ -15,6 +15,8 @@
 #include "characterphysicssupport.h"
 #include "inventory.h"
 #include "../xrEngine/IGame_Persistent.h"
+#include "../xrServerEntities/ai_sounds.h"
+#include "player_hud.h"
 #ifdef DEBUG
 #	include "phdebug.h"
 #endif
@@ -76,6 +78,18 @@ void CMissile::Load(LPCSTR section)
 	m_vThrowDir			= pSettings->r_fvector3(section,"throw_dir");
 
 	m_ef_weapon_type	= READ_IF_EXISTS(pSettings,r_u32,section,"ef_weapon_type",u32(-1));
+
+	if (pSettings->line_exist(section, "snd_draw"))
+		m_sounds.LoadSound(section, "snd_draw", "sndShow", false, SOUND_TYPE_ITEM_HIDING);
+
+	if (pSettings->line_exist(section, "snd_holster"))
+		m_sounds.LoadSound(section, "snd_holster", "sndHide", false, SOUND_TYPE_ITEM_HIDING);
+
+	if (pSettings->line_exist(section, "snd_throw"))
+		m_sounds.LoadSound(section, "snd_throw", "sndThrow", false, SOUND_TYPE_ITEM_HIDING);
+
+	if (pSettings->line_exist(section, "snd_checkout"))
+		m_sounds.LoadSound(section, "snd_checkout", "sndCheckout", false, SOUND_TYPE_WEAPON_RECHARGING);
 }
 
 BOOL CMissile::net_Spawn(CSE_Abstract* DC) 
@@ -216,8 +230,9 @@ void CMissile::UpdateCL()
 	CActor* pActor	= smart_cast<CActor*>(H_Parent());
 	if(pActor && !pActor->AnyMove() && this==pActor->inventory().ActiveItem())
 	{
-		if (hud_adj_mode==0 && GetState()==eIdle && (Device.dwTimeGlobal-m_dw_curr_substate_time>20000) )
+		if (hud_adj_mode == 0 && g_player_hud->script_anim_part == u8(-1) && GetState() == eIdle && (Device.dwTimeGlobal - m_dw_curr_substate_time > 20000))
 		{
+			if (!pActor->is_safemode())
 			SwitchState			(eBore);
 			ResetSubStateTime	();
 		}
@@ -240,6 +255,22 @@ void CMissile::UpdateCL()
 		}
 	}
 
+	if (Device.dwFrame == dwUpdateSounds_Frame)
+		return;
+
+	dwUpdateSounds_Frame = Device.dwFrame;
+
+	Fvector P;
+	Center(P);
+
+	if (m_sounds.FindSoundItem("sndShow", false))
+		m_sounds.SetPosition("sndShow", P);
+	if (m_sounds.FindSoundItem("sndHide", false))
+		m_sounds.SetPosition("sndHide", P);
+	if (m_sounds.FindSoundItem("sndThrow", false) && m_fake_missile)
+		m_sounds.SetPosition("sndThrow", m_fake_missile->Position());
+	if (m_sounds.FindSoundItem("sndCheckout", false))
+		m_sounds.SetPosition("sndCheckout", P);
 }
 void CMissile::shedule_Update(u32 dt)
 {
@@ -256,15 +287,20 @@ void CMissile::shedule_Update(u32 dt)
 	} 
 }
 
-void CMissile::State(u32 state) 
+void CMissile::State(u32 state, u32 old_state)
 {
-	switch(GetState()) 
+	switch (state)
 	{
 	case eShowing:
         {
+			if (ParentIsActor()) g_player_hud->attach_item(this);
 			SetPending			(TRUE);
-			PlayHUDMotion("anm_show", FALSE, this, GetState());
-		} break;
+			PlayHUDMotion("anm_show", FALSE, this, GetState(), 1.f, 0.f, false);
+
+			if (m_sounds.FindSoundItem("sndShow", false))
+				m_sounds.PlaySound("sndShow", H_Root()->Position(), H_Root(), !!GetHUDmode());
+		}
+		break;
 	case eIdle:
 		{
 			SetPending			(FALSE);
@@ -274,10 +310,17 @@ void CMissile::State(u32 state)
 		{
 			if(H_Parent())
 			{
+				if (old_state != eHiding)
+				{
 				SetPending			(TRUE);
 				PlayHUDMotion		("anm_hide", TRUE, this, GetState());
+
+					if (m_sounds.FindSoundItem("sndHide", false))
+						m_sounds.PlaySound("sndHide", H_Root()->Position(), H_Root(), !!GetHUDmode());
 			}
-		} break;
+			}
+		}
+		break;
 	case eHidden:
 		{
 			
@@ -298,7 +341,15 @@ void CMissile::State(u32 state)
 			SetPending			(TRUE);
 			m_fThrowForce		= m_fMinForce;
 			PlayHUDMotion		("anm_throw_begin", TRUE, this, GetState());
-		} break;
+
+			if (m_sounds.FindSoundItem("sndCheckout", false))
+			{
+				Fvector C;
+				Center(C);
+				PlaySound("sndCheckout", C);
+			}
+		}
+		break;
 	case eReady:
 		{
 			PlayHUDMotion		("anm_throw_idle", TRUE, this, GetState());
@@ -308,7 +359,15 @@ void CMissile::State(u32 state)
 			SetPending			(TRUE);
 			m_throw				= false;
 			PlayHUDMotion		("anm_throw", TRUE, this, GetState());
-		} break;
+
+			if (m_sounds.FindSoundItem("sndThrow", false))
+			{
+				Fvector C;
+				Center(C);
+				PlaySound("sndThrow", C);
+			}
+		}
+		break;
 	case eThrowEnd:
 		{
 			SwitchState			(eShowing); 
@@ -322,11 +381,11 @@ void CMissile::State(u32 state)
 	}
 }
 
-void CMissile::OnStateSwitch	(u32 S)
+void CMissile::OnStateSwitch(u32 S, u32 oldState)
 {
 	m_dwStateTime				= 0;
-	inherited::OnStateSwitch	(S);
-	State						(S);
+	inherited::OnStateSwitch(S, oldState);
+	State(S, oldState);
 }
 
 

@@ -740,10 +740,15 @@ BOOL CCustomMonster::net_Spawn	(CSE_Abstract* DC)
 
 		if (movement().restrictions().accessible(ai_location().level_vertex_id()))
 			movement().set_level_dest_vertex		(ai_location().level_vertex_id());
-		else {
+		else
+		{
 			Fvector									dest_position;
 			u32										level_vertex_id;
-			level_vertex_id							= movement().restrictions().accessible_nearest(ai().level_graph().vertex_position(ai_location().level_vertex_id()),dest_position);
+			level_vertex_id = movement().restrictions().accessible_nearest(
+				ai().level_graph().vertex_position(ai_location().level_vertex_id()),
+				dest_position);
+			if (level_vertex_id != (u32)-1 && movement().restrictions().accessible(level_vertex_id))
+			{
 			movement().set_level_dest_vertex		(level_vertex_id);
 			movement().detail().set_dest_position	(dest_position);
 		}
@@ -767,6 +772,7 @@ BOOL CCustomMonster::net_Spawn	(CSE_Abstract* DC)
 
 		setVisible				(TRUE);
 		setEnabled				(TRUE);
+	}
 	}
 
 	// Sheduler

@@ -14,7 +14,7 @@
 #include "profiler.h"
 #include "stalker_movement_manager_smart_cover.h"
 
-IC	void CStalkerAnimationManager::play_delayed_callbacks()
+void CStalkerAnimationManager::play_delayed_callbacks()
 {
     if (m_call_script_callback)
     {
@@ -249,10 +249,10 @@ void CStalkerAnimationManager::update()
     {
         Msg("! error in stalker with visual %s", *object().cNameVisual());
         /* avo: prevent game from crashing */
+			global().reset();
         head().reset();
         torso().reset();
         legs().reset();
-        global().reset();
         return;
         //throw;
         /* avo: end */

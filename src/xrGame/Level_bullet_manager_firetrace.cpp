@@ -159,7 +159,6 @@ void CBulletManager::FireShotmark (SBullet* bullet, const Fvector& vDir, const F
 
 	if (R.O)
 	{
-/*  add_SkeletonWallmark not implemented now...
 		particle_dir		 = vDir;
 		particle_dir.invert	();
 
@@ -179,7 +178,6 @@ void CBulletManager::FireShotmark (SBullet* bullet, const Fvector& vDir, const F
 													bullet->dir, 
 													bullet->wallmark_size);
 		}
-*/
 	} 
 	else 
 	{
@@ -245,6 +243,8 @@ void CBulletManager::StaticObjectHit	(CBulletManager::_event& E)
 }
 
 static bool g_clear = false;
+extern float hit_modifier;
+
 void CBulletManager::DynamicObjectHit	(CBulletManager::_event& E)
 {
 	//только для динамических объектов
@@ -323,7 +323,7 @@ void CBulletManager::DynamicObjectHit	(CBulletManager::_event& E)
 			};
 		};
 
-		SHit	Hit = SHit(	hit_param.power,
+		SHit Hit = SHit((E.bullet.parent_id == 0 ? hit_param.power * hit_modifier : hit_param.power), //Make sure only damage dealt by actor is modified
 							original_dir,
 							NULL,
 							u16(E.R.element),

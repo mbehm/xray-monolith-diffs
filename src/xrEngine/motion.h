@@ -85,7 +85,6 @@ public:
 //--------------------------------------------------------------------------
 class ENGINE_API COMotion : public CCustomMotion
 {
-    CEnvelope* envs[ctMaxChannel];
 public:
     COMotion();
     COMotion(COMotion* src);
@@ -99,6 +98,8 @@ public:
 
     virtual void SaveMotion(const char* buf);
     virtual bool LoadMotion (const char* buf);
+
+	CEnvelope* envs[ctMaxChannel];
 
 #ifdef _LW_EXPORT
     void ParseObjectMotion(LWItemID object);

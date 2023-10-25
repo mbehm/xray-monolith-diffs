@@ -5,7 +5,7 @@
 #include "UIDialogWnd.h"
 #include "UIDialogHolder.h"
 #include "../GamePersistent.h"
-#include "UILabel.h"
+//#include "UILabel.h"
 #include "UIMMShniaga.h"
 #include "UITextureMaster.h"
 #include "UIScrollView.h"
@@ -127,7 +127,10 @@ void CUIWindow::script_register(lua_State *L)
 		class_<CUIDialogWnd, CUIWindow>("CUIDialogWnd")
 		.def("ShowDialog",				&CUIDialogWnd::ShowDialog)
 		.def("HideDialog",				&CUIDialogWnd::HideDialog)
-		.def("GetHolder",				&CUIDialogWnd::GetHolder),
+		.def("GetHolder", &CUIDialogWnd::GetHolder)
+		.def("AllowMovement", &CUIDialogWnd::AllowMovement)
+		.def("AllowCursor", &CUIDialogWnd::AllowCursor)
+		.def("AllowCenterCursor", &CUIDialogWnd::AllowCenterCursor),
 
 		class_<CUIFrameWindow, CUIWindow>("CUIFrameWindow")
 		.def(							constructor<>())

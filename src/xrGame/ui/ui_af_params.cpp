@@ -299,6 +299,9 @@ void UIArtefactParamItem::SetValue( float value )
 {
 	value *= m_magnitude;
 	string32	buf;
+	if (value > -1.f && value < 1.f)
+		xr_sprintf(buf, "%+.3f", value);
+	else
 	xr_sprintf( buf, "%+.0f", value );
 	
 	LPSTR		str;

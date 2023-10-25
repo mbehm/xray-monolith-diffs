@@ -594,7 +594,7 @@ void	game_sv_Deathmatch::SM_SwitchOnNextActivePlayer()
 	SM_SwitchOnPlayer				(pNewObject);
 };
 
-#include "WeaponHUD.h"
+//#include "WeaponHUD.h"
 
 void game_sv_Deathmatch::net_Relcase(CObject* O)
 {

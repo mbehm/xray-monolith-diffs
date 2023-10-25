@@ -44,15 +44,19 @@ public:
 				float	GetSatietyPower						()					{return m_fSatietyRestoreSpeed;}
 				float	GetPowerPower						()					{return m_fPowerRestoreSpeed;}
 				float	GetBleedingPower						()					{return m_fBleedingRestoreSpeed;} 
+	float GetImmunity(ALife::EHitType hit_type) { return m_ArtefactHitImmunities.GetHitImmunity(hit_type); }
           
 				void	SetHealthPower						(float value)					{m_fHealthRestoreSpeed = value;}
 				void	SetRadiationPower						(float value)					{m_fRadiationRestoreSpeed = value;}
 				void	SetSatietyPower						(float value)					{m_fSatietyRestoreSpeed = value;}
 				void	SetPowerPower						(float value)					{m_fPowerRestoreSpeed = value;}
 				void	SetBleedingPower						(float value)					{m_fBleedingRestoreSpeed = value;}                                  
+	void SetImmunity(ALife::EHitType hit_type, float val) { m_ArtefactHitImmunities.SetHitImmunity(hit_type, val); }
 
 protected:
-	virtual void					UpdateCLChild					()		{};
+	virtual void UpdateCLChild()
+	{
+	};
 	virtual void					CreateArtefactActivation			();
 
 	SArtefactActivation*			m_activationObj;
@@ -66,7 +70,6 @@ protected:
 	float							m_fTrailLightRange;
 	u8								m_af_rank;
 	bool							m_bLightsEnabled;
-	float							m_additional_weight;
 
 	virtual void					UpdateLights					();
 public:
@@ -82,7 +85,12 @@ public:
 	virtual void					StopLights();
 
 	virtual void					PhDataUpdate					(float step);
-	virtual void					PhTune							(float step)	{};
+
+	virtual void PhTune(float step)
+	{
+	};
+
+	float m_additional_weight;
 
 	float							AdditionalInventoryWeight		() const {return m_additional_weight;}
 	bool							m_bCanSpawnZone;
@@ -108,7 +116,7 @@ public:
 	virtual void					Show				();
 	virtual	void					UpdateXForm			();
 	virtual bool					Action				(u16 cmd, u32 flags);
-	virtual void					OnStateSwitch		(u32 S);
+	virtual void OnStateSwitch(u32 S, u32 oldState);
 	virtual void					OnAnimationEnd		(u32 state);
 	virtual bool					IsHidden			()	const	{return GetState()==eHidden;}
 

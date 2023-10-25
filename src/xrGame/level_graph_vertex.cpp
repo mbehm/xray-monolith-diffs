@@ -219,15 +219,22 @@ float CLevelGraph::farthest_vertex_in_direction(u32 start_vertex_id, const Fvect
 	return					(fCurDistance);
 }
 
-bool CLevelGraph::create_straight_path(u32 start_vertex_id, const Fvector &start_point, const Fvector &finish_point, xr_vector<Fvector> &tpaOutputPoints, xr_vector<u32> &tpaOutputNodes, bool bAddFirstPoint, bool bClearPath) const
+bool CLevelGraph::create_straight_path(u32 start_vertex_id, const Fvector& start_point, const Fvector& finish_point,
+                                       xr_vector<Fvector>& tpaOutputPoints, xr_vector<u32>& tpaOutputNodes,
+                                       bool bAddFirstPoint, bool bClearPath) const
 {
-	return					(create_straight_path(start_vertex_id,v2d(start_point),v2d(finish_point),tpaOutputPoints,tpaOutputNodes,bAddFirstPoint,bClearPath));
+	return (create_straight_path(start_vertex_id, v2d(start_point), v2d(finish_point), tpaOutputPoints, tpaOutputNodes,
+	                             bAddFirstPoint, bClearPath));
 }
 
-u32	 CLevelGraph::check_position_in_direction_slow	(u32 start_vertex_id, const Fvector2 &start_position, const Fvector2 &finish_position) const
+u32 CLevelGraph::check_position_in_direction_slow(u32 start_vertex_id, const Fvector2& start_position,
+                                                  const Fvector2& finish_position) const
 {
 	if (!valid_vertex_position(v3d(finish_position)))
+	{
+		Msg("{@} --- Invalid destination [%f][%f]", finish_position.x, finish_position.y);
 		return				(u32(-1));
+	}
 
 	u32						cur_vertex_id = start_vertex_id, prev_vertex_id = u32(-1);
 	Fbox2					box;

@@ -136,12 +136,17 @@ inline void* AllocContext()
 inline void UnitsCpy(void* Dest,void* Src,UINT NU)
 {
     DWORD* p1=(DWORD*) Dest, * p2=(DWORD*) Src;
-    do {
-        p1[0]=p2[0];                        p1[1]=p2[1];
+	do
+	{
+		p1[0] = p2[0];
+		p1[1] = p2[1];
         p1[2]=p2[2];
-        p1 += 3;                            p2 += 3;
-    } while ( --NU );
+		p1 += 3;
+		p2 += 3;
 }
+	while (--NU);
+}
+
 inline void* ExpandUnits(void* OldPtr,UINT OldNU)
 {
     UINT i0=Units2Indx[OldNU-1], i1=Units2Indx[OldNU-1+1];
@@ -156,15 +161,22 @@ inline void* ShrinkUnits(void* OldPtr,UINT OldNU,UINT NewNU)
 {
     UINT i0=Units2Indx[OldNU-1], i1=Units2Indx[NewNU-1];
     if (i0 == i1)                           return OldPtr;
-    if ( BList[i1].avail() ) {
-        void* ptr=BList[i1].remove();       UnitsCpy(ptr,OldPtr,NewNU);
+	if (BList[i1].avail())
+	{
+		void* ptr = BList[i1].remove();
+		UnitsCpy(ptr, OldPtr, NewNU);
         BList[i0].insert(OldPtr,Indx2Units[i0]);
         return ptr;
-    } else {
-        SplitBlock(OldPtr,i0,i1);           return OldPtr;
     }
+	else
+	{
+		SplitBlock(OldPtr, i0, i1);
+		return OldPtr;
 }
-inline void FreeUnits(void* ptr,UINT NU) {
+}
+
+inline void FreeUnits(void* ptr, UINT NU)
+{
     UINT indx=Units2Indx[NU-1];
     BList[indx].insert(ptr,Indx2Units[indx]);
 }

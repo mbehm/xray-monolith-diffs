@@ -93,7 +93,7 @@ shared_str	CSpaceRestrictionManager::base_out_restrictions		(ALife::_OBJECT_ID i
 	return							((*I).second.m_base_out_restrictions);
 }
 
-IC	CSpaceRestrictionManager::CRestrictionPtr CSpaceRestrictionManager::restriction	(ALife::_OBJECT_ID id)
+CSpaceRestrictionManager::CRestrictionPtr CSpaceRestrictionManager::restriction(ALife::_OBJECT_ID id)
 {
 	CLIENT_RESTRICTIONS::iterator	I = m_clients->find(id);
 	VERIFY							(m_clients->end() != I);
@@ -156,6 +156,8 @@ bool CSpaceRestrictionManager::accessible						(ALife::_OBJECT_ID id, const Fsph
 
 bool CSpaceRestrictionManager::accessible					(ALife::_OBJECT_ID id, u32 level_vertex_id, float radius)
 {
+	if (level_vertex_id == (u32)-1)
+		return false;
 	CRestrictionPtr				client_restriction = restriction(id);
 	if (client_restriction)
 		return					(client_restriction->accessible(level_vertex_id,radius));
@@ -190,7 +192,7 @@ u32	CSpaceRestrictionManager::accessible_nearest			(ALife::_OBJECT_ID id, const 
 	return						(client_restriction->accessible_nearest(position,result));
 }
 
-IC	bool CSpaceRestrictionManager::restriction_presented	(shared_str restrictions, shared_str restriction) const
+bool CSpaceRestrictionManager::restriction_presented(shared_str restrictions, shared_str restriction) const
 {
 	string4096					m_temp;
 	for (u32 i=0, n=_GetItemCount(*restrictions); i<n; ++i)

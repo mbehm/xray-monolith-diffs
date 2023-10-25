@@ -13,5 +13,6 @@ public:
 	void 		SendMessage2Group		(LPCSTR group, LPCSTR message);
 	bool 		NeedSystemRestart		();
 	bool 		NeedVidRestart			();
+	LPCSTR GetRendererName(int index);
 	DECLARE_SCRIPT_REGISTER_FUNCTION
 };

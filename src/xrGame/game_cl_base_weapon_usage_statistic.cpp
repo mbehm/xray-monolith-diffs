@@ -169,7 +169,7 @@ u8 victims_table::get_id_by_name	(shared_str const & player_name) const
 shared_str	victims_table::get_name_by_id	(u8 id) const
 {
 	size_t name_index = static_cast<size_t>(id);
-	if (name_index > m_data.size())
+	if (name_index >= m_data.size())
 		return shared_str();
 	return m_data[name_index];
 }

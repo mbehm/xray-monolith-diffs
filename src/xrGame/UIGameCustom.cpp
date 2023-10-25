@@ -165,7 +165,17 @@ bool CUIGameCustom::ShowActorMenu()
     }
     else
     {
-        HidePdaMenu();
+		if (!psActorFlags.test(AF_3D_PDA)) HidePdaMenu();
+		
+		//---- before inventory mode ---------------------------
+		luabind::functor<bool> funct1;
+		if (ai().script_engine().functor("actor_menu_inventory.CUIActorMenu_OnMode_Inventory", funct1))
+		{
+			if (funct1())
+				return true;
+		}
+		//---------------------------------------------------------
+	
         auto actor = smart_cast<CInventoryOwner*>(Level().CurrentViewEntity());
         VERIFY(actor);
         ActorMenu->SetActor(actor);
@@ -179,6 +189,12 @@ void CUIGameCustom::HideActorMenu()
 {
     if (ActorMenu->IsShown())
         ActorMenu->HideDialog();
+	
+	//-------------------------------
+	luabind::functor<void> funct1;
+	if (ai().script_engine().functor("actor_menu_inventory.CUIActorMenu_OnHideActorMenu", funct1))
+		funct1();
+	//-------------------------------
 }
 
 //Alundaio:
@@ -227,7 +243,7 @@ bool CUIGameCustom::ShowPdaMenu()
     HideActorMenu();
 	if (!PdaMenu->IsShown())
 	{
-		PdaMenu->ShowDialog(true);
+		PdaMenu->ShowDialog(false);
 		return true;
 	}
     return false;
@@ -235,8 +251,8 @@ bool CUIGameCustom::ShowPdaMenu()
 
 void CUIGameCustom::HidePdaMenu()
 {
-    if (PdaMenu->IsShown())
-        PdaMenu->HideDialog();
+	//if (PdaMenu->IsShown())
+	//	PdaMenu->HideDialog();
 }
 
 void CUIGameCustom::SetClGame(game_cl_GameState* gameState)

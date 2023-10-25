@@ -3,6 +3,7 @@
 #pragma once
 
 #include "soundrender.h"
+#include "SoundRender_Core.h"
 #include "soundrender_environment.h"
 
 class CSoundRender_Emitter : public CSound_emitter
@@ -77,9 +78,28 @@ public:
 	virtual void				switch_to_2D			();
 	virtual void				switch_to_3D			();
 	virtual void				set_position			(const Fvector &pos);
-	virtual void				set_frequency			(float scale)			{ VERIFY(_valid(scale));			p_source.freq=scale;}
-	virtual void				set_range				(float min, float max)	{ VERIFY(_valid(min)&&_valid(max));	p_source.min_distance=min; p_source.max_distance=max;}
-	virtual void				set_volume				(float vol)				{ if(!_valid(vol)) vol=0.0f;		p_source.volume=vol;}
+
+	virtual void set_frequency(float scale)
+	{
+		VERIFY(_valid(scale));
+		p_source.freq = scale;
+		if (fTimeToStop != 0.f)
+			fTimeToStop = SoundRender->fTimer_Value + ((get_length_sec() - (SoundRender->fTimer_Value - fTimeStarted)) / (scale * psSpeedOfSound));
+	}
+
+	virtual void set_range(float min, float max)
+	{
+		VERIFY(_valid(min)&&_valid(max));
+		p_source.min_distance = min;
+		p_source.max_distance = max;
+	}
+
+	virtual void set_volume(float vol)
+	{
+		if (!_valid(vol)) vol = 0.0f;
+		p_source.volume = vol;
+	}
+
 	virtual void				set_priority			(float p)				{ priority_scale = p;									}
 	virtual	const CSound_params* get_params				()						{ return &p_source;										}
 

@@ -133,6 +133,8 @@ void CHUDTarget::CursorOnFrame ()
 }
 
 extern ENGINE_API BOOL g_bRendering; 
+u32 g_crosshair_color = C_DEFAULT;
+
 void CHUDTarget::Render()
 {
 
@@ -310,10 +312,11 @@ void CHUDTarget::Render()
 		// unlock VB and Render it as triangle LIST
 		UIRender->SetShader(*hShader);
 		UIRender->FlushPrimitive();
-
-	}else{
+	}
+	else
+	{
 		//отрендерить прицел
-		HUDCrosshair.cross_color	= C;
+		HUDCrosshair.cross_color = (C == C_DEFAULT ? g_crosshair_color : C );
 		HUDCrosshair.OnRender		();
 	}
 }

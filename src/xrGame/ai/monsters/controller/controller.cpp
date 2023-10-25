@@ -39,7 +39,7 @@
 
 #include "controller_psy_hit.h"
 #include "../monster_cover_manager.h"
-#include "controller_psy_aura.h"
+//#include "controller_psy_aura.h"
 
 #ifdef _DEBUG
 #	include <dinput.h>

@@ -55,7 +55,7 @@ void CHelmet::Load(LPCSTR section)
 	m_fPowerRestoreSpeed			= READ_IF_EXISTS(pSettings, r_float, section, "power_restore_speed",     0.0f );
 	m_fBleedingRestoreSpeed			= READ_IF_EXISTS(pSettings, r_float, section, "bleeding_restore_speed",  0.0f );
 	m_fPowerLoss					= READ_IF_EXISTS(pSettings, r_float, section, "power_loss",    1.0f );
-	clamp							( m_fPowerLoss, 0.0f, 1.0f );
+	clamp(m_fPowerLoss, EPS, 1.0f);
 
 	m_BonesProtectionSect			= READ_IF_EXISTS(pSettings, r_string, section, "bones_koeff_protection",  "" );
 	m_fShowNearestEnemiesDistance	= READ_IF_EXISTS(pSettings, r_float, section, "nearest_enemies_show_dist",  0.0f );
@@ -111,9 +111,8 @@ void CHelmet::OnMoveToSlot(const SInvItemPlace& previous_place)
 		CActor* pActor = smart_cast<CActor*> (H_Parent());
 		if (pActor)
 		{
-			CTorch* pTorch = smart_cast<CTorch*>(pActor->inventory().ItemFromSlot(TORCH_SLOT));
-			if(pTorch && pTorch->GetNightVisionStatus())
-				pTorch->SwitchNightVision(true, false);
+			if (pActor->GetNightVisionStatus())
+				pActor->SwitchNightVision(true, false);
 		}
 	}
 }
@@ -126,15 +125,14 @@ void CHelmet::OnMoveToRuck(const SInvItemPlace& previous_place)
 		CActor* pActor = smart_cast<CActor*> (H_Parent());
 		if (pActor)
 		{
-			CTorch* pTorch = smart_cast<CTorch*>(pActor->inventory().ItemFromSlot(TORCH_SLOT));
-			if(pTorch)
-				pTorch->SwitchNightVision(false);
+			pActor->SwitchNightVision(false);
 		}
 	}
 }
 
 void CHelmet::Hit(float hit_power, ALife::EHitType hit_type)
 {
+	if (IsUsingCondition() == false) return;
 	hit_power *= GetHitImmunity(hit_type);
 	ChangeCondition(-hit_power);
 }
@@ -212,37 +210,45 @@ void CHelmet::AddBonesProtection(LPCSTR bones_section)
 		m_boneProtection->add(bones_section, smart_cast<IKinematics*>( parent->Visual() ) );
 }
 
+float CHelmet::get_HitFracActor() const
+{
+	return m_boneProtection->m_fHitFracActor;
+}
+
 float CHelmet::HitThroughArmor(float hit_power, s16 element, float ap, bool& add_wound, ALife::EHitType hit_type)
 {
+	if (strstr(Core.Params, "-dbgbullet"))
+		Msg("CHelmet::HitThroughArmor hit_type=%d | unmodified hit_power=%f", (u32)hit_type, hit_power);
+
 	float NewHitPower = hit_power;
 	if(hit_type == ALife::eHitTypeFireWound)
 	{
 		float ba = GetBoneArmor(element);
-		if(ba<0.0f)
+		if (ba <= 0.0f)
 			return NewHitPower;
 
 		float BoneArmor = ba*GetCondition();
-		if(/*!fis_zero(ba, EPS) && */(ap > BoneArmor))
-		{
-			//пул€ пробила бронь
-			if(!IsGameTypeSingle())
-			{
-				float hit_fraction = (ap - BoneArmor) / ap;
-				if(hit_fraction < m_boneProtection->m_fHitFracActor)
-					hit_fraction = m_boneProtection->m_fHitFracActor;
-
-				NewHitPower *= hit_fraction;
-				NewHitPower *= m_boneProtection->getBoneProtection(element);
-			}
-
-			VERIFY(NewHitPower>=0.0f);
-		}
-		else
+		if (ap <= BoneArmor)
 		{
 			//пул€ Ќ≈ пробила бронь
 			NewHitPower *= m_boneProtection->m_fHitFracActor;
-			add_wound = false; 	//раны нет
+			//add_wound = false; 	//раны нет
+			if (strstr(Core.Params, "-dbgbullet"))
+				Msg("CHelmet::HitThroughArmor AP(%f) <= bone_armor(%f) [HitFracActor=%f] modified hit_power=%f", ap,
+				    BoneArmor, m_boneProtection->m_fHitFracActor, NewHitPower);
+			}
+
+		else
+		{
+			float d_hit_power = (ap - BoneArmor) / (ap * m_boneProtection->APScale);
+			clamp(d_hit_power, m_boneProtection->m_fHitFracActor, 1.0f);
+
+			NewHitPower *= d_hit_power;
 		}
+
+		if (strstr(Core.Params, "-dbgbullet"))
+			Msg("CHelmet::HitThroughArmor AP(%f) > bone_armor(%f) [HitFracActor=%f] modified hit_power=%f", ap,
+			    BoneArmor, m_boneProtection->m_fHitFracActor, NewHitPower);
 	}
 	else
 	{
@@ -259,9 +265,20 @@ float CHelmet::HitThroughArmor(float hit_power, s16 element, float ap, bool& add
 
 		if(NewHitPower < 0.f)
 			NewHitPower = 0.f;
+
+		if (strstr(Core.Params, "-dbgbullet"))
+			Msg("CHelmet::HitThroughArmor hit_type=%d | After HitTypeProtection(%f) hit_power=%f", (u32)hit_type,
+			    protect * one, NewHitPower);
 	}
+
+	if (strstr(Core.Params, "-dbgbullet"))
+		Msg("CHelmet::HitThroughArmor hit_type=%d | After HitFractionActor hit_power=%f", (u32)hit_type, NewHitPower);
+
 	//увеличить изношенность шлема
 	Hit(hit_power, hit_type);
+
+	if (strstr(Core.Params, "-dbgbullet"))
+		Msg("CCustomOutfit::HitThroughArmor hit_type=%d | After immunities hit_power=%f", (u32)hit_type, NewHitPower);
 
 	return NewHitPower;
 }

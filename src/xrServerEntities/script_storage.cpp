@@ -10,7 +10,10 @@
 #include "script_storage.h"
 #include "script_thread.h"
 #include <stdarg.h>
-#include "../xrCore/doug_lea_allocator.h"
+#include <unordered_map>
+#include <set>
+#include <sstream>
+#include <regex>
 
 #if !defined(DEBUG) && defined(USE_LUAJIT_ONE)
 #	include "opt.lua.h"
@@ -63,7 +66,7 @@ LPCSTR	file_header = 0;
 
 #ifndef PURE_ALLOC
 //#	ifndef USE_MEMORY_MONITOR
-#		define USE_DL_ALLOCATOR
+//#		define USE_DL_ALLOCATOR
 //#	endif //!USE_MEMORY_MONITOR
 #endif //!PURE_ALLOC
 
@@ -82,14 +85,19 @@ static void *lua_alloc		(void *ud, void *ptr, size_t osize, size_t nsize) {
         return Memory.mem_realloc		(ptr, nsize);
 #endif // DEBUG_MEMORY_MANAGER
 }
+
+u32 game_lua_memory_usage()
+{
+	return (0);
+}
 #else //USE_DL_ALLOCATOR
-#   include "../xrCore/memory_allocator_options.h"
+
 #   ifdef USE_ARENA_ALLOCATOR
         static const u32			s_arena_size = 96*1024*1024;
         static char					s_fake_array[s_arena_size];
-        static doug_lea_allocator	s_allocator( s_fake_array, s_arena_size, "lua" );
+//        static doug_lea_allocator	s_allocator( s_fake_array, s_arena_size, "lua" );
 #   else //-USE_ARENA_ALLOCATOR
-        static doug_lea_allocator	s_allocator(0, 0, "lua");
+//        static doug_lea_allocator	s_allocator(0, 0, "lua");
 #   endif //-USE_ARENA_ALLOCATOR
 
 static void *lua_alloc(void *ud, void *ptr, size_t osize, size_t nsize)
@@ -291,6 +299,27 @@ CScriptStorage::~CScriptStorage()
         lua_close(m_virtual_machine);
 }
 
+extern int luaopen_lua_extensions(lua_State* L);
+
+void disable_os_funcs(lua_State* L)
+{
+	lua_getglobal(L, "os");
+	lua_pushnil(L);
+	lua_setfield(L, -2, "execute");
+	lua_pushnil(L);
+	lua_setfield(L, -2, "rename");
+	lua_pushnil(L);
+	lua_setfield(L, -2, "remove");
+	lua_pushnil(L);
+	lua_setfield(L, -2, "exit");
+	lua_pop(L, 1);
+
+	lua_getglobal(L, "io");
+	lua_pushnil(L);
+	lua_setfield(L, -2, "popen");
+	lua_pop(L, 1);
+}
+
 void CScriptStorage::reinit()
 {
     if (m_virtual_machine)
@@ -352,6 +381,9 @@ void CScriptStorage::reinit()
     }
 
 #endif //!USE_LUAJIT_ONE
+
+	luaopen_lua_extensions(lua());
+	disable_os_funcs(lua());
 
     if (strstr(Core.Params, "-_g"))
         file_header = file_header_new; //AVO: I get fatal crash at the start if this is used
@@ -512,18 +544,27 @@ int __cdecl CScriptStorage::script_log(ScriptStorage::ELuaMessageType tLuaMessag
     int				result = vscript_log(tLuaMessageType, caFormat, marker);
     va_end(marker);
 
-#ifdef PRINT_CALL_STACK
-#	ifndef ENGINE_BUILD
     static bool	reenterability = false;
     if (!reenterability)
     {
         reenterability = true;
-        if (eLuaMessageTypeError == tLuaMessageType)
+		if (tLuaMessageType == ScriptStorage::eLuaMessageTypeError)
             ai().script_engine().print_stack();
         reenterability = false;
     }
-#	endif //!ENGINE_BUILD
-#endif //-PRINT_CALL_STACK
+
+	// #ifdef PRINT_CALL_STACK
+	// #	ifndef ENGINE_BUILD
+	//     static bool	reenterability = false;
+	//     if (!reenterability)
+	//     {
+	//         reenterability = true;
+	//         if (eLuaMessageTypeError == tLuaMessageType)
+	//             ai().script_engine().print_stack();
+	//         reenterability = false;
+	//     }
+	// #	endif //!ENGINE_BUILD
+	// #endif //-PRINT_CALL_STACK
 
     return			(result);
 }
@@ -626,17 +667,154 @@ bool CScriptStorage::load_buffer(lua_State *L, LPCSTR caBuffer, size_t tSize, LP
 
     if (l_iErrorCode)
     {
-#ifdef DEBUG
-        print_output	(L,caScriptName,l_iErrorCode);
-#endif //-DEBUG
+//#ifdef DEBUG
+		if (strstr(Core.Params, "-dbg")) print_output(L,caScriptName,l_iErrorCode);
+//#endif //-DEBUG
         on_error(L);
         return			(false);
     }
     return				(true);
 }
 
+std::unordered_map<std::string, std::set<std::string>> unlocalizers;
+bool unlocalizerPassed = false;
+
+std::vector<std::string> splitStringMulti(std::string& inputString, std::string separator = " ", bool includeSeparators = false) {
+	std::stringstream stringStream(inputString);
+	std::string line;
+	std::vector<std::string> wordVector;
+	while (std::getline(stringStream, line))
+	{
+		std::size_t prev = 0, pos;
+		while ((pos = line.find_first_of(separator, prev)) != std::string::npos)
+		{
+			if (pos > prev)
+				wordVector.push_back(line.substr(prev, pos - prev));
+
+			if (includeSeparators)
+				wordVector.push_back(line.substr(pos, 1));
+
+			prev = pos + 1;
+		}
+		if (prev < line.length())
+			wordVector.push_back(line.substr(prev, std::string::npos));
+	}
+	return wordVector;
+}
+
+std::vector<std::string> splitStringLimit(std::string& inputString, std::string separator = " ", int limit = 0) {
+	std::stringstream stringStream(inputString);
+	std::string line;
+	std::vector<std::string> wordVector;
+	while (std::getline(stringStream, line))
+	{
+		std::size_t prev = 0, pos;
+		while ((pos = line.find_first_of(separator, prev)) != std::string::npos)
+		{
+			if (pos > prev)
+				wordVector.push_back(line.substr(prev, pos - prev));
+
+			prev = pos + 1;
+			if (limit > 0) {
+				if (wordVector.size() >= limit) {
+					wordVector.push_back(line.substr(prev, std::string::npos));
+					return wordVector;
+				}
+			}
+		}
+		if (prev < line.length())
+			wordVector.push_back(line.substr(prev, std::string::npos));
+	}
+	return wordVector;
+}
+
+static std::string join_list(const std::vector<std::string>& items_vec) {
+	std::string ret;
+	for (const auto& i : items_vec) {
+		ret += i;
+	}
+	return ret;
+};
+
+bool unlocalRegex(std::set<std::string>& unlocals, std::string& s, const std::regex& pattern, const int group, const std::string& replacement) {
+	if (std::regex_match(s, pattern)) {
+		//Msg("matching local function pattern");
+		std::smatch match;
+		std::regex_search(s, match, pattern);
+		std::string variable = match[group];
+		if (unlocals.find(variable) != unlocals.end()) {
+			Msg("[unlocalRegex] found variable %s to unlocal", variable.c_str());
+			s = std::regex_replace(s, pattern, replacement);
+			return true;
+		}
+	} else {
+		return false;
+	}
+	return false;
+};
+
+static void trim(std::string& s, const char* t = " \t\n\r\f\v") {
+	s.erase(s.find_last_not_of(t) + 1);
+	s.erase(0, s.find_first_not_of(t));
+};
+
+
 bool CScriptStorage::do_file(LPCSTR caScriptName, LPCSTR caNameSpaceName)
 {
+	if (!unlocalizerPassed) {
+		auto file_list = FS.file_list_open("$game_config$", "unlocalizers\\", FS_RootOnly | FS_ListFiles);
+		if (!file_list) {
+			unlocalizerPassed = true;
+		} else {
+			xr_string id;
+			auto i = file_list->begin();
+			auto e = file_list->end();
+			for (; i != e; ++i)
+			{
+				u32 length = xr_strlen(*i);
+
+				if (!((length >= 4) &&
+					((*i)[length - 4] == '.') &&
+					((*i)[length - 3] == 'l') &&
+					((*i)[length - 2] == 't') &&
+					((*i)[length - 1] == 'x')))
+					continue;
+
+				id.assign(*i, length - 4);
+
+				string_path file_name;
+				FS.update_path(file_name, "$game_config$", (xr_string("unlocalizers\\") + id).c_str());
+				xr_strcat(file_name, ".ltx");
+
+				Msg("opening file %s", file_name);
+				CInifile* config = CInifile::Create(file_name);
+
+				typedef CInifile::Root sections_type;
+				sections_type& sections = config->sections();
+
+				sections_type::const_iterator i = sections.begin();
+				sections_type::const_iterator e = sections.end();
+				for (; i != e; ++i)
+				{
+					auto sectionName = std::string((*i)->Name.c_str());
+					if (unlocalizers.find(sectionName) == unlocalizers.end()) {
+
+						// construct set that contains top level variables to delocalize by section name
+						unlocalizers[sectionName].clear();
+						Msg("creating unlocalizer for script %s", sectionName.c_str());
+					}
+					auto& data = (*i)->Data;
+					for (auto& item : data) {
+						unlocalizers[sectionName].insert(std::string(item.first.c_str()));
+						Msg("adding variable %s for unlocalizer for script %s", item.first.c_str(), sectionName.c_str());
+					}
+				}
+				CInifile::Destroy(config);
+			}
+			FS.file_list_close(file_list);
+			unlocalizerPassed = true;
+		}
+	}
     int				start = lua_gettop(lua());
     string_path		l_caLuaFileName;
     IReader			*l_tpFileReader = FS.r_open(caScriptName);
@@ -645,9 +823,119 @@ bool CScriptStorage::do_file(LPCSTR caScriptName, LPCSTR caNameSpaceName)
         script_log(eLuaMessageTypeError, "Cannot open file \"%s\"", caScriptName);
         return		(false);
     }
+
+	// Unlocalize variables in the script defined by unlocalizers map
+	auto scriptContents = static_cast<LPCSTR>(l_tpFileReader->pointer());
+	auto scriptLength = (size_t)l_tpFileReader->length();
+	if (unlocalizers.find(std::string(caNameSpaceName)) != unlocalizers.end()) {
+		Msg("found script %s in unlocalizers data", caNameSpaceName);
+
+		// Get contents of the script file and split by lines
+		std::vector<std::string> tokens;
+		std::string temp;
+		while (!l_tpFileReader->eof())
+		{
+			char c = l_tpFileReader->r_u8();
+			temp += c;
+		}
+
+		std::stringstream stringStream(temp);
+		std::string line;
+		tokens.clear();
+		while (std::getline(stringStream, line)) {
+			tokens.push_back(line);
+		}
+
+		// Iterate lines and unlocalize variables
+		auto& unlocals = unlocalizers[std::string(caNameSpaceName)];
+
+		/*for (auto& u : unlocals) {
+			Msg("%s", u);
+		}*/
+
+		for (auto& s : tokens) {
+
+			//Msg("%s", s.c_str());
+
+			trim(s, "\n\r");
+			if (s.empty()) {
+				continue;
+			}
+
+			std::regex pattern;
+
+			//local function x(a,b,c)
+			pattern = std::regex(R"((^local)([\t ]+)(function)([\t ]+)([_a-zA-Z].*)([\t ]*)(\(.*$))");
+			if (unlocalRegex(unlocals, s, pattern, 5, "$3$4$5$6$7")) {
+				continue;
+			}
+
+			//local a = ...
+			//local a
+			//local a,b,c = ... (if one of a,b,c is in unlocalizers list - all of them will be unlocalized)
+			//local x; local y; - unsupported yet
+			pattern = std::regex(R"((^local)([\t ]+)(.*))");
+			if (std::regex_match(s, pattern)) {
+				std::smatch match;
+				std::regex_search(s, match, pattern);
+				std::string m = match[3];
+
+				// strip comments
+				std::regex r = std::regex(R"((.*)--.*)");
+				if (std::regex_match(m, r)) {
+					//Msg("found comments\n");
+					std::smatch noncomments;
+					std::regex_search(m, noncomments, r);
+					m = noncomments[1];
+				}
+
+
+				auto variablesAndValues = splitStringLimit(m, "=", 1);
+				bool hasValue = variablesAndValues.size() > 1;
+				auto variables = splitStringMulti(variablesAndValues[0], ",");
+				for (auto v : variables) {
+					trim(v);
+					//Msg("%s\n", v.c_str());
+					if (unlocals.find(v) != unlocals.end()) {
+						Msg("found variable %s to unlocal", v.c_str());
+						s = std::regex_replace(s, pattern, "$3");
+						if (!hasValue) {
+
+							// strip comments
+							std::regex r = std::regex(R"((.*)(--.*))");
+							if (std::regex_match(s, r)) {
+								//Msg("found comments\n");
+								std::smatch noncomments;
+								std::regex_search(s, noncomments, r);
+								s = std::string(noncomments[1]) + "= nil " + std::string(noncomments[2]);
+							} else {
+								s += " = nil";
+							}
+						}
+						break;
+					}
+				}
+			}
+		}
+
+		// Store result back
+		for (auto& s : tokens) {
+			s += "\n";
+		}
+
+		/*for (auto& s : tokens) {
+			Msg("%s", s.c_str());
+		}*/
+
+		auto result = join_list(tokens);
+		scriptContents = result.c_str();
+		scriptLength = strlen(scriptContents);
+	}
+
     strconcat(sizeof(l_caLuaFileName), l_caLuaFileName, "@", caScriptName);
 
-    if (!load_buffer(lua(), static_cast<LPCSTR>(l_tpFileReader->pointer()), (size_t) l_tpFileReader->length(), l_caLuaFileName, caNameSpaceName))
+	if (!load_buffer(lua(), scriptContents, scriptLength,
+	                 l_caLuaFileName, caNameSpaceName))
     {
         //		VERIFY		(lua_gettop(lua()) >= 4);
         //		lua_pop		(lua(),4);
@@ -684,9 +972,9 @@ bool CScriptStorage::do_file(LPCSTR caScriptName, LPCSTR caNameSpaceName)
 #endif // #ifdef USE_DEBUGGER
     if (l_iErrorCode)
     {
-#ifdef DEBUG
-        print_output(lua(),caScriptName,l_iErrorCode);
-#endif
+//#ifdef DEBUG
+		if (strstr(Core.Params, "-dbg")) print_output(lua(),caScriptName,l_iErrorCode);
+//#endif
         on_error(lua());
         lua_settop(lua(), start);
         return		(false);

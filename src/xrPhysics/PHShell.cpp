@@ -93,12 +93,11 @@ void CPHShell::DisableObject()
     //InterpolateGlobalTransform(&mXFORM);
     CPHObject::deactivate();
     if(m_spliter_holder)m_spliter_holder->Deactivate();
-    if(m_flags.test(flRemoveCharacterCollisionAfterDisable))
-                                        DisableCharacterCollision       ();
 }
-void     CPHShell:: DisableCharacterCollision       ()
+
+void CPHShell::SetDeadBody()
 {
-        CPHCollideValidator::SetCharacterClassNotCollide(*this);
+	CPHObject::SetDeadBody();
 }
 void CPHShell::Disable()
 {
@@ -316,6 +315,30 @@ float val=dir.magnitude();
         applyForce(dir,val);
     }
 };
+
+// demonized: applyTorque
+void CPHShell::applyTorque(const Fvector& dir, float val)
+{
+	if (!isActive()) return;
+	ELEMENT_I i = elements.begin(), e = elements.end();
+	val /= getMass();
+	for (; e != i; ++i)
+		(*i)->applyTorque(dir, val * (*i)->getMass());
+	EnableObject(0);
+};
+
+void CPHShell::applyTorque(float x, float y, float z)
+{
+	Fvector dir;
+	dir.set(x, y, z);
+	float val = dir.magnitude();
+	if (!fis_zero(val))
+	{
+		dir.mul(1.f / val);
+		applyTorque(dir, val);
+	}
+};
+
 void    CPHShell::      applyImpulse            (const Fvector& dir, float val)             
 {
     if(!isActive()) return;
@@ -992,9 +1015,9 @@ void CPHShell::EnabledCallbacks(BOOL val)
             CBoneInstance& B    = m_pKinematics->LL_GetBoneInstance((*i)->m_SelfID);
             B.set_callback_overwrite(TRUE);
         }
-    }else       ZeroCallbacks();
 }
-
+	else ZeroCallbacks();
+}
 
 
 template< typename T>
@@ -1038,7 +1061,15 @@ void CPHShell::SetCallbacks( )
     struct set_bone_reference: private boost::noncopyable
     {
         IKinematics &K;
-        set_bone_reference( IKinematics &K_ ): K( K_ ){}
+
+		set_bone_reference(IKinematics& K_): K(K_)
+		{
+		}
+
+		set_bone_reference(set_bone_reference&& other) : K(other.K)
+		{
+		}
+
         void operator() ( u16 id )
         {
             CBoneInstance &bi  = K.LL_GetBoneInstance(id);

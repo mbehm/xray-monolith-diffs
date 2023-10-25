@@ -15,6 +15,27 @@
 #include "character_info_defs.h"
 #include "game_graph_space.h"
 #include "game_location_selector.h"
+#include "Actor.h"
+#include "Car.h"
+#include "helicopter.h"
+#include "InventoryOwner.h"
+#include "InventoryBox.h"
+#include "CustomZone.h"
+#include "TorridZone.h"
+#include "MosquitoBald.h"
+#include "ZoneCampfire.h"
+#include "CustomOutfit.h"
+#include "ActorHelmet.h"
+#include "Artefact.h"
+#include "Weapon.h"
+#include "WeaponAmmo.h"
+#include "WeaponMagazined.h"
+#include "WeaponMagazinedWGrenade.h"
+#include "eatable_item.h"
+#include "FoodItem.h"
+#include "medkit.h"
+#include "antirad.h"
+#include "BottleItem.h"
 
 enum EPdaMsg;
 enum ESoundTypes;
@@ -144,7 +165,7 @@ public:
     virtual					~CScriptGameObject		();
                             operator CObject*		();
 
-    IC		CGameObject			&object				() const;
+	CGameObject& object() const;
             CScriptGameObject	*Parent				() const;
             void				Hit					(CScriptHit *tLuaHit);
             int					clsid				() const;
@@ -166,6 +187,9 @@ public:
             u32					Cost				() const;
             float				GetCondition		() const;
             void				SetCondition		(float val);
+	float GetPowerCritical() const;
+	float GetPsyFactor() const;
+	void SetPsyFactor(float val);
 
     // CEntity
     _DECLARE_FUNCTION10	(DeathTime	,	u32		);
@@ -180,22 +204,35 @@ public:
     // CEntityAlive
     _DECLARE_FUNCTION10	(GetFOV				,			float);
     _DECLARE_FUNCTION10	(GetRange			,			float);
-    _DECLARE_FUNCTION10	(GetHealth			,			float);
-    _DECLARE_FUNCTION10	(GetPsyHealth		,			float);
-    _DECLARE_FUNCTION10	(GetPower			,			float);
-    _DECLARE_FUNCTION10	(GetRadiation		,			float);
-    _DECLARE_FUNCTION10	(GetSatiety			,			float);
-    _DECLARE_FUNCTION10	(GetBleeding		,			float);
-    _DECLARE_FUNCTION10	(GetMorale			,			float);
 
+	_DECLARE_FUNCTION10(GetHealth, float);
     _DECLARE_FUNCTION11	(SetHealth,			void, float);
+	_DECLARE_FUNCTION11(ChangeHealth, void, float);
+
+	_DECLARE_FUNCTION10(GetPsyHealth, float);
     _DECLARE_FUNCTION11	(SetPsyHealth,		void, float);
+	_DECLARE_FUNCTION11(ChangePsyHealth, void, float);
+
+	_DECLARE_FUNCTION10(GetPower, float);
     _DECLARE_FUNCTION11	(SetPower,			void, float);
+	_DECLARE_FUNCTION11(ChangePower, void, float);
+
+	_DECLARE_FUNCTION10(GetSatiety, float);
+	_DECLARE_FUNCTION11(SetSatiety, void, float);
     _DECLARE_FUNCTION11	(ChangeSatiety,		void, float);
+
+	_DECLARE_FUNCTION10(GetRadiation, float);
     _DECLARE_FUNCTION11	(SetRadiation,		void, float);
-    _DECLARE_FUNCTION11	(SetBleeding,		void, float);
-    _DECLARE_FUNCTION11	(SetCircumspection,	void, float);
+	_DECLARE_FUNCTION11(ChangeRadiation, void, float);
+
+	_DECLARE_FUNCTION10(GetMorale, float);
     _DECLARE_FUNCTION11	(SetMorale,			void, float);
+	_DECLARE_FUNCTION11(ChangeMorale, void, float);
+
+	_DECLARE_FUNCTION10(GetBleeding, float);
+	_DECLARE_FUNCTION11(ChangeBleeding, void, float);
+
+	_DECLARE_FUNCTION11(ChangeCircumspection, void, float);
 
             void				set_fov				(float new_fov);
             void				set_range			(float new_range);
@@ -215,8 +252,11 @@ public:
             void				AddAction			(const CScriptEntityAction *tpEntityAction, bool bHighPriority = false);
             void				ResetActionQueue	();
     // Actor only
-            void				SetActorPosition	(Fvector pos);
+	void SetActorPosition(Fvector pos, bool bskip_collision_correct = false);
             void				SetActorDirection	(float dir);
+	void SetActorDirection(float dir, float pitch);
+	void SetActorDirection(float dir, float pitch, float roll);
+	void SetActorDirection(const Fvector& dir);
             void				SetNpcPosition		(Fvector pos);
             void				DisableHitMarks		(bool disable);
             bool				DisableHitMarks		() const;
@@ -254,6 +294,7 @@ public:
 
     // CBaseMonster
             void				set_override_animation	(pcstr anim_name);
+	void set_override_animation(u32 AnimType, u32 AnimIndex);
             void				clear_override_animation();
 
             void				force_stand_sleep_animation	(u32 index);
@@ -337,20 +378,33 @@ public:
 
 
             void				ActorLookAtPoint	(Fvector point);
+	void ActorStopLookAtPoint();
             void				IterateInventory	(luabind::functor<bool> functor, luabind::object object);
+	void IterateRuck(luabind::functor<bool> functor, luabind::object object);
+	void IterateBelt(luabind::functor<bool> functor, luabind::object object);
             void				IterateInventoryBox	(luabind::functor<bool> functor, luabind::object object);
-            void				MarkItemDropped		(CScriptGameObject *item);
+	void MarkItemDropped(CScriptGameObject* item, bool flag);
             bool				MarkedDropped		(CScriptGameObject *item);
-            void				UnloadMagazine		();
+	void UnloadMagazine(bool bKeepAmmo);
+	void ForceUnloadMagazine(bool bKeepAmmo);
+
+	void SetCanBeHarmed(bool state);
+	bool CanBeHarmed();
 
             void				DropItem			(CScriptGameObject* pItem);
             void				DropItemAndTeleport	(CScriptGameObject* pItem, Fvector position);
-            void				ForEachInventoryItems(const luabind::functor<void> &functor);
+	void ForEachInventoryItems(const luabind::functor<bool>& functor);
             void				TransferItem		(CScriptGameObject* pItem, CScriptGameObject* pForWho);
+	void TakeItem(CScriptGameObject* pItem);
             void				TransferMoney		(int money, CScriptGameObject* pForWho);
             void				GiveMoney			(int money);
             u32					Money				();
             void				MakeItemActive		(CScriptGameObject* pItem);
+	void MoveItemToRuck(CScriptGameObject* pItem);
+	void MoveItemToSlot(CScriptGameObject* pItem, u16 slot_id);
+	void MoveItemToBelt(CScriptGameObject* pItem);
+	void ItemAllowTrade(CScriptGameObject* pItem);
+	void ItemDenyTrade(CScriptGameObject* pItem);
             
             void				SetRelation			(ALife::ERelationType relation, CScriptGameObject* pWhoToSet);
             
@@ -411,6 +465,7 @@ public:
 
             CScriptGameObject	*GetObjectByName	(LPCSTR caObjectName) const;
             CScriptGameObject	*GetObjectByIndex	(int iIndex) const;
+	CScriptGameObject * GetObjectById(u16 id) const;
 
             
     // Callbacks			
@@ -583,6 +638,7 @@ public:
             void				enable_attachable_item	(bool value);			
             bool				attachable_item_enabled	() const;
             void				enable_night_vision		(bool value);			
+	void night_vision_allowed(bool value);
             bool				night_vision_enabled	() const;
             void				enable_torch			(bool value);
             bool				torch_enabled			() const;
@@ -591,8 +647,12 @@ public:
             // CustomZone
             void				EnableAnomaly			();
             void				DisableAnomaly			();
+	void ChangeAnomalyIdlePart(LPCSTR name, bool bIdleLight);
             float				GetAnomalyPower			();
             void				SetAnomalyPower			(float p);
+	float GetAnomalyRadius();
+	void SetAnomalyRadius(float p);
+	void MoveAnomaly(Fvector pos);
     
             // HELICOPTER
             CHelicopter*		get_helicopter			();
@@ -600,16 +660,19 @@ public:
             CCar*				get_car					();
             //LAMP
             CHangingLamp*		get_hanging_lamp		();
+
+	//Torch
+	void set_color_animator(LPCSTR name, bool bFlicker, int flickerChance, float flickerDelay, int framerate);
+	void reset_color_animator();
+
             CHolderCustom*		get_custom_holder		();
             CHolderCustom*		get_current_holder		(); //actor only
 
             void				start_particles			(LPCSTR pname, LPCSTR bone);
             void				stop_particles			(LPCSTR pname, LPCSTR bone);
 
-            Fvector				bone_position			(LPCSTR bone_name) const;
             bool				is_body_turning			() const;
     cphysics_shell_scripted*	get_physics_shell		() const;
-            u16					get_bone_id				(LPCSTR bone_name) const;					
             bool				weapon_strapped			() const;
             bool				weapon_unstrapped		() const;
             void				eat						(CScriptGameObject *item);
@@ -635,7 +698,10 @@ public:
             void				make_object_visible_somewhen		(CScriptGameObject *object);
 
             CScriptGameObject	*item_in_slot						(u32 slot_id) const;
-            CScriptGameObject	*active_detector					() const;
+	CScriptGameObject* active_device() const;
+	void show_device(bool bFast);
+	void hide_device(bool bFast);
+	void force_hide_device();
             u32					active_slot							();
             void				activate_slot						(u32 slot_id);
             void				enable_level_changer				(bool b);
@@ -674,8 +740,12 @@ public:
             bool				invulnerable						() const;
             void				invulnerable						(bool invulnerable);
             LPCSTR				get_smart_cover_description			() const;
-            void				set_visual_name						(LPCSTR visual);
+	void set_visual_name(LPCSTR visual, bool bForce);
+	float get_current_weight();
+	float get_max_weight();
             LPCSTR				get_visual_name						() const;
+
+	void reload_weapon();
 
             bool				can_throw_grenades					() const;
             void				can_throw_grenades					(bool can_throw_grenades);
@@ -789,6 +859,7 @@ public:
             //_DECLARE_FUNCTION10(IsEatableItem, bool);
             //_DECLARE_FUNCTION10(IsAntirad, bool);
             _DECLARE_FUNCTION10(IsCustomOutfit, bool);
+	_DECLARE_FUNCTION10(IsHelmet, bool);
             _DECLARE_FUNCTION10(IsScope, bool);
             _DECLARE_FUNCTION10(IsSilencer, bool);
             _DECLARE_FUNCTION10(IsGrenadeLauncher, bool);
@@ -815,6 +886,29 @@ public:
 #endif
 //Alundaio
 #ifdef GAME_OBJECT_EXTENDED_EXPORTS
+	_DECLARE_FUNCTION14(cast_Actor, CActor);
+	_DECLARE_FUNCTION14(cast_Car, CCar);
+	_DECLARE_FUNCTION14(cast_Heli, CHelicopter);
+	_DECLARE_FUNCTION14(cast_InventoryOwner, CInventoryOwner);
+	_DECLARE_FUNCTION14(cast_InventoryBox, CInventoryBox);
+	_DECLARE_FUNCTION14(cast_CustomZone, CCustomZone);
+	_DECLARE_FUNCTION14(cast_TorridZone, CTorridZone);
+	_DECLARE_FUNCTION14(cast_MosquitoBald, CMosquitoBald);
+	_DECLARE_FUNCTION14(cast_ZoneCampfire, CZoneCampfire);
+	_DECLARE_FUNCTION14(cast_InventoryItem, CInventoryItem);
+	_DECLARE_FUNCTION14(cast_CustomOutfit, CCustomOutfit);
+	_DECLARE_FUNCTION14(cast_Helmet, CHelmet);
+	_DECLARE_FUNCTION14(cast_Artefact, CArtefact);
+	_DECLARE_FUNCTION14(cast_Ammo, CWeaponAmmo);
+	_DECLARE_FUNCTION14(cast_Weapon, CWeapon);
+	_DECLARE_FUNCTION14(cast_WeaponMagazined, CWeaponMagazined);
+	_DECLARE_FUNCTION14(cast_WeaponMagazinedWGrenade, CWeaponMagazinedWGrenade);
+	_DECLARE_FUNCTION14(cast_EatableItem, CEatableItem);
+	_DECLARE_FUNCTION14(cast_Medkit, CMedkit);
+	_DECLARE_FUNCTION14(cast_Antirad, CAntirad);
+	_DECLARE_FUNCTION14(cast_FoodItem, CFoodItem);
+	_DECLARE_FUNCTION14(cast_BottleItem, CBottleItem);
+
             void SetHealthEx(float hp); //AVO
 			float				GetLuminocityHemi();
 			float				GetLuminocity();
@@ -824,13 +918,20 @@ public:
 			void				SetWeight(float w);
 			void				IterateFeelTouch(luabind::functor<void> functor);
 			u32					GetSpatialType();
+	void DestroyObject();
 			void				SetSpatialType(u32 sptype);
 			u8					GetRestrictionType();
 			void				SetRestrictionType(u8 typ);
 
+	// demonized: add getters and setters for pathfinding for npcs around anomalies and damage for npcs
+	bool get_enable_anomalies_pathfinding();
+	void set_enable_anomalies_pathfinding(bool v);
+	bool get_enable_anomalies_damage();
+	void set_enable_anomalies_damage(bool v);
+
 			//Weapon
 			void				Weapon_AddonAttach(CScriptGameObject* item);
-			void				Weapon_AddonDetach(LPCSTR item_section);
+	void Weapon_AddonDetach(LPCSTR item_section, bool b_spawn_item = true);
 			bool				HasAmmoType(u8 type);
 			int					GetAmmoCount(u8 type);
 			void				SetAmmoType(u8 type);
@@ -841,6 +942,10 @@ public:
 			u8					GetWeaponSubstate();
 			u8					GetAmmoType();
 
+	//Scope
+	void Weapon_SetCurrentScope(u8 type);
+	u8 Weapon_GetCurrentScope();
+
 			//CWeaponAmmo
 			u16					AmmoGetCount();
 			void				AmmoSetCount(u16 count);
@@ -849,7 +954,7 @@ public:
 			//Weapon & Outfit
 			bool				InstallUpgrade(LPCSTR upgrade);
 			bool				HasUpgrade(LPCSTR upgrade);
-			void				IterateInstalledUpgrades(luabind::functor<void> functor);
+	void IterateInstalledUpgrades(const luabind::functor<bool>& functor);
 			bool				WeaponInGrenadeMode();
 
 			//Car
@@ -858,17 +963,46 @@ public:
 			void				DetachVehicle(bool bForce = false);
 
 			//Any class that is derived from CHudItem
-			u32					PlayHudMotion(LPCSTR M, bool bMixIn, u32 state);
+	u32 PlayHudMotion(LPCSTR M, bool bMixIn, u32 state, float speed = 0.f, float end = 0.f);
 			void				SwitchState(u32 state);
 			u32					GetState();
 			//Works for anything with visual
-			bool				IsBoneVisible(LPCSTR bone_name);
-			void				SetBoneVisible(LPCSTR bone_name, bool bVisibility, bool bRecursive = true);
+	u16 bone_id(LPCSTR bone_name, bool bHud);
+	u16 bone_id(LPCSTR bone_name) { return bone_id(bone_name, false); }
+	LPCSTR bone_name(u16 bone_id, bool bHud);
+	LPCSTR bone_name(u16 bone_id) { return bone_name(bone_id, false); }
+
+	bool is_bone_visible(u16 bone_id, bool bHud);
+	bool is_bone_visible(u16 bone_id) { return is_bone_visible(bone_id, false); }
+	bool is_bone_visible(LPCSTR bone_name, bool bHud) { return is_bone_visible(bone_id(bone_name, bHud), bHud); }
+	bool is_bone_visible(LPCSTR bone_name) { return is_bone_visible(bone_id(bone_name), false); }
+
+	void set_bone_visible(u16 bone_id, bool bVisibility, bool bRecursive, bool bHud);
+	void set_bone_visible(u16 bone_id, bool bVisibility, bool bRecursive) { set_bone_visible(bone_id, bVisibility, bRecursive, false); }
+	void set_bone_visible(LPCSTR bone_name, bool bVisibility, bool bRecursive, bool bHud) { set_bone_visible(bone_id(bone_name, bHud), bVisibility, bRecursive, bHud); }
+	void set_bone_visible(LPCSTR bone_name, bool bVisibility, bool bRecursive) { set_bone_visible(bone_id(bone_name), bVisibility, bRecursive, false); }
+
+	Fvector bone_position(u16 bone_id, bool bHud);
+	Fvector bone_position(u16 bone_id) { return bone_position(bone_id, false); }
+	Fvector bone_position(LPCSTR bone_name, bool bHud) { return bone_position(bone_id(bone_name, bHud), bHud); }
+	Fvector bone_position(LPCSTR bone_name) { return bone_position(bone_id(bone_name), false); }
+
+	Fvector bone_direction(u16 bone_id, bool bHud);
+	Fvector bone_direction(u16 bone_id) { return bone_direction(bone_id, false); }
+	Fvector bone_direction(LPCSTR bone_name, bool bHud) { return bone_direction(bone_id(bone_name, bHud), bHud); }
+	Fvector bone_direction(LPCSTR bone_name) { return bone_direction(bone_id(bone_name), false); }
+
+	u16 bone_parent(u16 bone_id, bool bHud);
+	u16 bone_parent(u16 bone_id) { return bone_parent(bone_id, false); }
+	u16 bone_parent(LPCSTR bone_name, bool bHud) { return bone_parent(bone_id(bone_name, bHud), bHud); }
+	u16 bone_parent(LPCSTR bone_name) { return bone_parent(bone_id(bone_name), false); }
 
 			//CAI_Stalker
 			void				ResetBoneProtections(LPCSTR imm_sect, LPCSTR bone_sect);
 			//Anything with PPhysicShell (ie. car, actor, stalker, monster, heli)
 			void				ForceSetPosition(Fvector pos, bool bActivate = false);
+	void ForceSetAngle(Fvector ang, bool bActivate);
+	Fvector Angle();
 
 			//Artifacts
 			float				GetArtefactHealthRestoreSpeed();
@@ -876,12 +1010,17 @@ public:
 			float				GetArtefactSatietyRestoreSpeed();
 			float				GetArtefactPowerRestoreSpeed();
 			float				GetArtefactBleedingRestoreSpeed();
+	float GetArtefactImmunity(ALife::EHitType hit_type);
 
 			void				SetArtefactHealthRestoreSpeed(float value);
 			void				SetArtefactRadiationRestoreSpeed(float value);
 			void				SetArtefactSatietyRestoreSpeed(float value);
 			void				SetArtefactPowerRestoreSpeed(float value);
 			void				SetArtefactBleedingRestoreSpeed(float value);
+	void SetArtefactImmunity(ALife::EHitType hit_type, float value);
+
+	float GetArtefactAdditionalInventoryWeight();
+	void SetArtefactAdditionalInventoryWeight(float value);
 
 			//Eatable items
 			void				SetRemainingUses(u8 value);
@@ -912,6 +1051,14 @@ public:
 		    void        SetActorRunCoef   (float run_coef);       
 		    float       GetActorRunBackCoef  () const;
 		    void        SetActorRunBackCoef   (float run_back_coef);
+	float GetActorWalkAccel() const;
+	void SetActorWalkAccel(float val);
+	float GetActorWalkBackCoef() const;
+	void SetActorWalkBackCoef(float val);
+
+	// demonized: Adjust Lookout coeff
+	float GetActorLookoutCoef() const;
+	void SetActorLookoutCoef(float val);
 
 			void		SetCharacterIcon(LPCSTR iconName);
 #endif

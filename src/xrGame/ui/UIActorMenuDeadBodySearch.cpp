@@ -49,6 +49,56 @@ bool move_item_check( PIItem itm, CInventoryOwner* from, CInventoryOwner* to, bo
 
 // -------------------------------------------------------------------------------------------------
 
+void CUIActorMenu::FilterDeadBodyList(int mode)
+{
+	m_pDeadBodyBagList->ClearAll(true);
+
+	TIItemContainer items_list;
+	if (m_pPartnerInvOwner)
+	{
+		m_pPartnerInvOwner->inventory().AddAvailableItems(items_list, false, m_pPartnerInvOwner->is_alive()); //true
+		UpdatePartnerBag();
+	}
+	else
+	{
+		VERIFY(m_pInvBox);
+		m_pInvBox->set_in_use(true);
+		m_pInvBox->AddAvailableItems(items_list);
+	}
+
+	std::sort(items_list.begin(), items_list.end(), InventoryUtilities::GreaterRoomInRuck);
+
+	TIItemContainer::iterator it = items_list.begin();
+	TIItemContainer::iterator it_e = items_list.end();
+	for (; it != it_e; ++it)
+	{
+		PIItem iitm = *it;
+		int kinds = _GetItemCount(m_sort_kinds[mode]);
+
+		if (0 == xr_strcmp(m_sort_kinds[mode], "s_all"))
+		{
+			CUICellItem* itm = create_cell_item(*it);
+			m_pDeadBodyBagList->SetItem(itm);
+		}
+		else
+		{
+			for (int i = 0; i < kinds; i++)
+			{
+				string256 kind;
+				_GetItem(m_sort_kinds[mode], i, kind);
+
+				if (iitm->m_kind != NULL && iitm->m_kind.equal(kind))
+				{
+					CUICellItem* itm = create_cell_item(*it);
+					m_pDeadBodyBagList->SetItem(itm);
+				}
+			}
+		}
+	}
+
+	UpdateDeadBodyBag();
+}
+
 void CUIActorMenu::InitDeadBodySearchMode()
 {
 	m_pDeadBodyBagList->Show		(true);
@@ -56,6 +106,7 @@ void CUIActorMenu::InitDeadBodySearchMode()
 	m_PartnerBottomInfo->Show		(true);
 	m_PartnerWeight->Show			(true);
 	m_takeall_button->Show			(true);
+	m_putall_button->Show(true);
 
 	if ( m_pPartnerInvOwner )
 	{
@@ -123,6 +174,7 @@ void CUIActorMenu::DeInitDeadBodySearchMode()
 	m_PartnerBottomInfo->Show		(false);
 	m_PartnerWeight->Show			(false);
 	m_takeall_button->Show			(false);
+	m_putall_button->Show(false);
 
 	if ( m_pInvBox )
 	{
@@ -187,7 +239,32 @@ void CUIActorMenu::UpdateDeadBodyBag()
 	string64 buf;
 
 	LPCSTR kg_str = CStringTable().translate( "st_kg" ).c_str();
-	float total	= CalcItemsWeight( m_pDeadBodyBagList );
+	float total = 0.f;
+
+	if (xr_strcmp(m_sort_kinds[current_sort_mode()], "s_all"))
+	{
+		TIItemContainer items_list;
+
+		if (m_pPartnerInvOwner)
+			m_pPartnerInvOwner->inventory().AddAvailableItems(items_list, false, m_pPartnerInvOwner->is_alive());
+		else
+			m_pInvBox->AddAvailableItems(items_list);
+
+		if (!items_list.empty())
+		{
+			TIItemContainer::iterator it = items_list.begin();
+			TIItemContainer::iterator it_e = items_list.end();
+
+			for (; it != it_e; it++)
+			{
+				PIItem itm = *it;
+				total += itm->Weight();
+			}
+		}
+	}
+	else
+		total = CalcItemsWeight(m_pDeadBodyBagList);
+
 	xr_sprintf( buf, "%.1f %s", total, kg_str );
 	m_PartnerWeight->SetText( buf );
 	m_PartnerWeight->AdjustWidthToText();
@@ -222,8 +299,9 @@ void CUIActorMenu::TakeAllFromPartner(CUIWindow* w, void* d)
 		}
 		PIItem item = (PIItem)(ci->m_pData);
 		move_item_check( item, m_pPartnerInvOwner, m_pActorInvOwner, false );
-	}//for i
-	m_pDeadBodyBagList->ClearAll( true ); // false
+	}
+
+	m_pDeadBodyBagList->ClearAll(true);
 }
 
 void CUIActorMenu::TakeAllFromInventoryBox()
@@ -242,6 +320,60 @@ void CUIActorMenu::TakeAllFromInventoryBox()
 
 		PIItem item = (PIItem)(ci->m_pData);
 		move_item_from_to( m_pInvBox->ID(), actor_id, item->object_id() );
-	}//for i
-	m_pDeadBodyBagList->ClearAll( true ); // false
+	}
+
+	m_pDeadBodyBagList->ClearAll(true);
+}
+
+void CUIActorMenu::PutAllToPartner(CUIWindow* w, void* d)
+{
+	VERIFY(m_pActorInvOwner);
+	if (!m_pPartnerInvOwner)
+	{
+		if (m_pInvBox)
+		{
+			PutAllToInventoryBox();
+		}
+		return;
+	}
+
+	u32 const cnt = m_pInventoryBagList->ItemsCount();
+	for (u32 i = 0; i < cnt; ++i)
+	{
+		CUICellItem* ci = m_pInventoryBagList->GetItemIdx(i);
+		for (u32 j = 0; j < ci->ChildsCount(); ++j)
+		{
+			PIItem j_item = (PIItem)(ci->Child(j)->m_pData);
+			if (j_item->IsQuestItem()) continue;
+			move_item_check(j_item, m_pActorInvOwner, m_pPartnerInvOwner, false);
+		}
+		PIItem item = (PIItem)(ci->m_pData);
+		if (item->IsQuestItem()) continue;
+		move_item_check(item, m_pActorInvOwner, m_pPartnerInvOwner, false);
+	}
+
+	FilterActorBagList(current_sort_mode());
+}
+
+void CUIActorMenu::PutAllToInventoryBox()
+{
+	u16 actor_id = m_pActorInvOwner->object_id();
+
+	u32 const cnt = m_pInventoryBagList->ItemsCount();
+	for (u32 i = 0; i < cnt; ++i)
+	{
+		CUICellItem* ci = m_pInventoryBagList->GetItemIdx(i);
+		for (u32 j = 0; j < ci->ChildsCount(); ++j)
+		{
+			PIItem j_item = (PIItem)(ci->Child(j)->m_pData);
+			if (j_item->IsQuestItem()) continue;
+			move_item_from_to(actor_id, m_pInvBox->ID(), j_item->object_id());
+		}
+
+		PIItem item = (PIItem)(ci->m_pData);
+		if (item->IsQuestItem()) continue;
+		move_item_from_to(actor_id, m_pInvBox->ID(), item->object_id());
+	}
+
+	FilterActorBagList(current_sort_mode());
 }

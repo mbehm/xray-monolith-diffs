@@ -21,6 +21,8 @@
 #ifdef DEBUG
 #include "PHDebug.h"
 #endif
+#include "3rd party/luabind/luabind/luabind.hpp"
+#include "script_game_object.h"
 
 void CActor::OnEvent(NET_Packet& P, u16 type)
 {
@@ -239,11 +241,19 @@ void CActor::OnEvent(NET_Packet& P, u16 type)
 				inventory().Ruck( iitem ); 
 				break;//2
 			case GEG_PLAYER_ITEM_EAT:	 
+				luabind::functor<bool> funct;
+				if (iitem && ai().script_engine().functor("_G.CInventory__eat", funct))
+				{
+					CGameObject* GO = iitem->cast_game_object();
+					if (GO && funct(GO->lua_game_object()))
+					{
 				inventory().Eat( iitem );
 				break;//2
+					}
+				}
 			}//switch
-
-		}break;//1
+		}
+		break; //1
 	case GEG_PLAYER_ACTIVATE_SLOT:
 		{
 			u16							slot_id;
@@ -257,12 +267,15 @@ void CActor::OnEvent(NET_Packet& P, u16 type)
 		{
 			s8 cmd				= P.r_s8();
 			m_block_sprint_counter = m_block_sprint_counter+cmd;
-			Msg("m_block_sprint_counter=%d",m_block_sprint_counter);
+			//Msg("m_block_sprint_counter=%d", m_block_sprint_counter);
 			if(m_block_sprint_counter>0)
 			{
 				mstate_wishful	&=~mcSprint;
 			}
-		}break;
+			else
+				m_block_sprint_counter = 0;
+		}
+		break;
 
 	case GEG_PLAYER_WEAPON_HIDE_STATE:
 		{
@@ -282,8 +295,8 @@ void CActor::OnEvent(NET_Packet& P, u16 type)
 		{
 			conditions().MaxPower();
 			conditions().ClearWounds();
-			ClearBloodWounds();
-		}break;
+		}
+		break;
 	case GE_ACTOR_MAX_HEALTH:
 		{
 			SetfHealth(GetMaxHealth());

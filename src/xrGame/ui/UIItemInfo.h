@@ -68,4 +68,8 @@ public:
 
 	Fvector2			UIItemImageSize; 
 	CUIStatic*			UIItemImage;
+private:
+	LPCSTR GetItemName(CInventoryItem& pInvItem, LPCSTR m_item_name);
+	LPCSTR GetItemShortName(CInventoryItem& pInvItem, LPCSTR m_item_short_name);
+	LPCSTR GetItemDescription(CInventoryItem& pInvItem, LPCSTR m_item_description);
 };

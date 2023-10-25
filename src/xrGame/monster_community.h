@@ -54,6 +54,8 @@ public:
 	int							relation			(MONSTER_COMMUNITY_INDEX to);
 
 	static void					DeleteIdToIndexData	();
+
+	static void Reset() { m_relation_table.clear(); }
 private:
 	typedef CIni_Table<int, MONSTER_COMMUNITY> MONSTER_RELATION_TABLE;
 	friend MONSTER_RELATION_TABLE;

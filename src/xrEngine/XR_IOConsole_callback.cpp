@@ -39,6 +39,14 @@ void CConsole::Register_callbacks()
 
     ec().assign_callback(DIK_ESCAPE, text_editor::ks_free, Callback(this, &CConsole::Hide_cmd_esc));
     ec().assign_callback(DIK_GRAVE, text_editor::ks_free, Callback(this, &CConsole::Hide_cmd));
+
+	//Screenshot
+	ec().assign_callback(DIK_F12, text_editor::ks_free, Callback(this, &CConsole::Screenshot));
+}
+
+void CConsole::Screenshot()
+{
+	Device.Screenshot();
 }
 
 void CConsole::Prev_log() // DIK_PRIOR=PAGE_UP

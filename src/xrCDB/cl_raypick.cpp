@@ -136,10 +136,13 @@ namespace RAPID {
 						rp_inf.id		= B->tri_index[i];
 						rp_inf.range	= 0;
 						tri&			T = model1->tris[rp_inf.id];
-						if (TestRayTri(rmodel_C,rmodel_D, T.verts, rp_inf.u, rp_inf.v, rp_inf.range, ray_flags&RAY_CULL))
+						if (TestRayTri(rmodel_C, rmodel_D, T.verts, rp_inf.u, rp_inf.v, rp_inf.range,
+						               ray_flags & RAY_CULL))
 						{
-							if (rp_inf.range>0) {
-								if (rmodel_L2W) {
+							if (rp_inf.range > 0)
+							{
+								if (rmodel_L2W)
+						{
 									rmodel_L2W->transform_tiny(rp_inf.p[0], *T.verts[0]);
 									rmodel_L2W->transform_tiny(rp_inf.p[1], *T.verts[1]);
 									rmodel_L2W->transform_tiny(rp_inf.p[2], *T.verts[2]);
@@ -181,10 +184,13 @@ namespace RAPID {
 						rp_inf.id		= B->tri_index[i];
 						rp_inf.range	= 0;
 						tri&			T = model1->tris[rp_inf.id];
-						if (TestRayTri(rmodel_C,rmodel_D, T.verts, rp_inf.u, rp_inf.v, rp_inf.range, ray_flags&RAY_CULL))
+						if (TestRayTri(rmodel_C, rmodel_D, T.verts, rp_inf.u, rp_inf.v, rp_inf.range,
+						               ray_flags & RAY_CULL))
 						{
-							if (rp_inf.range>0) {
-								if (rmodel_L2W) {
+							if (rp_inf.range > 0)
+							{
+								if (rmodel_L2W)
+						{
 									rmodel_L2W->transform_tiny(rp_inf.p[0], *T.verts[0]);
 									rmodel_L2W->transform_tiny(rp_inf.p[1], *T.verts[1]);
 									rmodel_L2W->transform_tiny(rp_inf.p[2], *T.verts[2]);

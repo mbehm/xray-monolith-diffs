@@ -40,8 +40,8 @@ public:
 								CScriptParticles	(LPCSTR caParticlesName);
 	virtual						~CScriptParticles	();
 
-	void						Play				();
-	void						PlayAtPos			(const Fvector &pos);
+	void Play(bool bHudMode = false);
+	void PlayAtPos(const Fvector& pos, bool bHudMode = false);
 	void						Stop				();
 	void						StopDeffered		();
 
@@ -49,6 +49,7 @@ public:
 	bool						IsLooped			() const;
 
 	void						MoveTo				(const Fvector &pos, const Fvector& vel);
+	void XFORMMoveTo(const Fvector & pos);
   void						SetDirection		(const Fvector &dir);
 	void						SetOrientation		(float yaw, float pitch, float roll);
 	Fvector						LastPosition()		const { return m_transform.c; }

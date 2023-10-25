@@ -23,7 +23,7 @@ BOOL CVisualZone::	net_Spawn						(CSE_Abstract* DC)
 	CSE_ALifeZoneVisual			*Z  = smart_cast<CSE_ALifeZoneVisual*>(e);
 	IKinematicsAnimated			*SA = smart_cast<IKinematicsAnimated*>(Visual());
 	m_attack_animation			= SA->ID_Cycle_Safe(Z->attack_animation);
-	R_ASSERT2				(
+	VERIFY2(
 		m_attack_animation.valid(),
 		make_string(
 			"object[%s]: cannot find attack animation[%s] in model[%s]",
@@ -34,7 +34,7 @@ BOOL CVisualZone::	net_Spawn						(CSE_Abstract* DC)
 	) ;
 
 	m_idle_animation			= SA->ID_Cycle_Safe(Z->startup_animation);
-	R_ASSERT2				(
+	VERIFY2(
 		m_idle_animation.valid(),
 		make_string(
 			"object[%s]: cannot find startup animation[%s] in model[%s]",
@@ -43,6 +43,8 @@ BOOL CVisualZone::	net_Spawn						(CSE_Abstract* DC)
 			cNameVisual().c_str()
 		)
 	) ;
+
+//	if (!(m_attack_animation.valid() && m_idle_animation.valid())) return FALSE;
 
 	SA->PlayCycle				(m_idle_animation);
 

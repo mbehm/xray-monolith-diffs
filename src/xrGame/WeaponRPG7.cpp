@@ -55,7 +55,7 @@ void CWeaponRPG7::UpdateMissileVisibility()
 
 	IKinematics* pWeaponVisual	= smart_cast<IKinematics*>(Visual()); 
 	VERIFY						(pWeaponVisual);
-	pWeaponVisual->LL_SetBoneVisible(pWeaponVisual->LL_BoneID("grenade"), vis_weap, TRUE);
+	if (pWeaponVisual) pWeaponVisual->LL_SetBoneVisible(pWeaponVisual->LL_BoneID("grenade"), vis_weap, TRUE);
 }
 
 BOOL CWeaponRPG7::net_Spawn(CSE_Abstract* DC) 
@@ -69,9 +69,9 @@ BOOL CWeaponRPG7::net_Spawn(CSE_Abstract* DC)
 	return l_res;
 }
 
-void CWeaponRPG7::OnStateSwitch(u32 S) 
+void CWeaponRPG7::OnStateSwitch(u32 S, u32 oldState)
 {
-	inherited::OnStateSwitch(S);
+	inherited::OnStateSwitch(S, oldState);
 	UpdateMissileVisibility();
 }
 
@@ -163,7 +163,7 @@ void CWeaponRPG7::switch2_Fire()
 void CWeaponRPG7::PlayAnimReload()
 {
 	VERIFY(GetState()==eReload);
-	PlayHUDMotion("anm_reload", FALSE, this, GetState());
+	PlayHUDMotion("anm_reload", TRUE, this, GetState());
 }
 
 void CWeaponRPG7::OnEvent(NET_Packet& P, u16 type) 

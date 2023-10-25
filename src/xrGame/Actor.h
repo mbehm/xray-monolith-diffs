@@ -60,6 +60,9 @@ class CActorStatisticMgr;
 
 class CLocationManager;
 
+class CNightVisionEffector;
+class CFPCamEffector;
+
 class	CActor: 
     public CEntityAlive, 
     public IInputReceiver,
@@ -78,6 +81,14 @@ private:
 public:
                                         CActor				();
     virtual								~CActor				();
+
+// demonized: First Person Death
+public:
+	CFPCamEffector* m_FPCam;
+
+public:
+	void initFPCam();
+	void removeFPCam();
 
 public:
     virtual BOOL						AlwaysTheCrow				()						{ return TRUE; }
@@ -173,13 +184,10 @@ public:
     virtual	void						PHHit			(SHit &H);
     virtual void						HitSignal		(float P, Fvector &vLocalDir,	CObject* who, s16 element);
             void						HitSector		(CObject* who, CObject* weapon);
-            void						HitMark			(float P, Fvector dir,			CObject* who, s16 element, Fvector position_in_bone_space, float impulse,  ALife::EHitType hit_type);
+	void HitMark(float P, Fvector dir, CObject* who, s16 element, Fvector position_in_bone_space, float impulse,
+	             ALife::EHitType hit_type);
 
-//Alundaio
-#ifdef	ACTOR_FEEL_GRENADE
             void						Feel_Grenade_Update( float rad );
-#endif
-//-Alundaio
 
     virtual float						GetMass				() ;
     virtual float						Radius				() const;
@@ -257,7 +265,6 @@ protected:
     CHolderCustom*			m_holder;
     u16						m_holderID;
     bool					use_Holder				(CHolderCustom* holder);
-    bool					use_Vehicle				(CHolderCustom* object);
     void					ActorUse				();
 
 protected:
@@ -320,6 +327,12 @@ public:
     IC EActorCameras active_cam() {return cam_active;} //KD: need to know which cam active outside actor methods
 	virtual	void			cam_Set(EActorCameras style); //Alundaio: made public
     //-Swartz
+
+	// Rezy - Freelook
+	u8 cam_freelook;
+	float freelook_cam_control;
+	float old_torso_yaw;
+
 protected:
     //virtual	void			cam_Set					(EActorCameras style);
     void					cam_Update				(float dt, float fFOV);
@@ -327,6 +340,10 @@ protected:
     void					camUpdateLadder			(float dt);
     void					cam_SetLadder			();
     void					cam_UnsetLadder			();
+	void camUpdateFreelook(float dt);
+	void cam_SetFreelook();
+	void cam_UnsetFreelook();
+	bool CanUseFreelook();
     float					currentFOV				();
 
     // Cameras
@@ -342,6 +359,9 @@ protected:
     //менеджер эффекторов, есть у каждого актрера
     CActorCameraManager*	m_pActorEffector;
     static float			f_Ladder_cam_limit;
+public: //--#SM+#--
+	float fFPCamYawMagnitude;
+	float fFPCamPitchMagnitude;
 public:
     virtual void			feel_touch_new				(CObject* O);
     virtual void			feel_touch_delete			(CObject* O);
@@ -369,22 +389,24 @@ protected:
     shared_str				m_sInventoryItemUseAction;
     shared_str				m_sInventoryBoxUseAction;
     
-//	shared_str				m_quick_use_slots[4];
-    //режим подбирания предметов
     bool					m_bPickupMode;
-    //расстояние (в метрах) на котором актер чувствует гранату (любую)
-//Alundaio
-#ifdef	ACTOR_FEEL_GRENADE
-    float					m_fFeelGrenadeRadius;
-    float					m_fFeelGrenadeTime; 	//время гранаты (сек) после которого актер чувствует гранату
-#endif
-//-Alundaio
-    //расстояние подсветки предметов
-    float					m_fPickupInfoRadius;
 
-    void					PickupModeUpdate	();
+    float					m_fFeelGrenadeRadius;
+    float					m_fFeelGrenadeTime;
+    float					m_fPickupInfoRadius;
+protected:
+	struct pickup_result_t
+	{
+		bool allow_pickup;
+		bool callback_handled;
+	};
+	pickup_result_t PickupModeUpdate();
     void					PickupInfoDraw		(CObject* object);
-    void					PickupModeUpdate_COD ();
+	void PickupModeUpdate_COD(pickup_result_t pickup_state);
+
+public:
+	void DrawPickupItems();
+	bool m_bDelayDrawPickupItems;
 
     //////////////////////////////////////////////////////////////////////////
     // Motions (передвижения актрера)
@@ -409,6 +431,7 @@ public:
     bool					CanSprint				();
     bool					CanRun					();
     void					StopAnyMove				();
+	void StopSprint() { mstate_wishful &= ~mcSprint; }
 
     bool					AnyAction				()	{return (mstate_real & mcAnyAction) != 0;};
     bool					AnyMove					()	{return (mstate_real & mcAnyMove) != 0;};
@@ -434,6 +457,10 @@ public:
 
     float					m_fWalk_StrafeFactor;
     float					m_fRun_StrafeFactor;
+	float m_fSprint_StrafeFactor;
+
+	// demonized: lookout modifier
+	float m_fLookoutFactor = 1;
 
 public:
     Fvector					GetMovementSpeed		() {return NET_SavedAccel;};
@@ -787,6 +814,25 @@ private:
 				mstate_wishful = state;
 			}
       
+public:
+	void SwitchNightVision(bool light_on, bool use_sounds = true, bool send_event = true);
+
+	bool GetNightVisionStatus() { return m_bNightVisionOn; }
+	void SetNightVisionAllowed(bool bAllow) { m_bNightVisionAllow = bAllow; }
+	CNightVisionEffector* GetNightVision() { return m_night_vision; }
+protected:
+	bool m_bNightVisionOn;
+	bool m_bNightVisionAllow;
+	bool m_bSafemode;
+public:
+	bool is_safemode() { return m_bSafemode; }
+	void set_safemode(bool status);
+
+	void RPC_UpdateFaction();
+	void RPC_UpdateRank();
+	void RPC_UpdateReputation();
+
+	CNightVisionEffector* m_night_vision;
 DECLARE_SCRIPT_REGISTER_FUNCTION
 };
 add_to_type_list(CActor)

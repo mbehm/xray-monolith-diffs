@@ -3,7 +3,7 @@
 
 #include "xr_input.h"
 #include "IInputReceiver.h"
-#include "../include/editor/ide.hpp"
+//#include "../include/editor/ide.hpp"
 
 #ifndef _EDITOR
 # include "xr_input_xinput.h"
@@ -21,7 +21,9 @@ float stop_vibration_time = flt_max;
 #define KEYBOARDBUFFERSIZE 64
 #define _KEYDOWN(name,key) ( name[key] & 0x80 )
 
-static bool g_exclusive = true;
+static bool g_exclusive = false;
+extern u32 g_screenmode;
+
 static void on_error_dialog(bool before)
 {
 #ifdef INGAME_EDITOR
@@ -253,14 +255,17 @@ void CInput::KeyUpdate()
             }
         }
 
-        for (i = 0; i < COUNT_KB_BUTTONS; i++)
+		for (u32 i = 0; i < COUNT_KB_BUTTONS; i++)
             if (KBState[i])
                 cbStack.back()->IR_OnKeyboardHold(i);
     }
 
 #ifndef _EDITOR
-    if (b_alt_tab)
+	if (b_alt_tab) {
+		BOOL fullscreen = (g_screenmode == 2);
+		if (fullscreen)
         SendMessage(Device.m_hWnd, WM_SYSCOMMAND, SC_MINIMIZE, 0);
+	}
 #endif
     /*
     #ifndef _EDITOR
@@ -341,6 +346,8 @@ BOOL CInput::iGetAsyncKeyState(int dik)
 
 BOOL CInput::iGetAsyncBtnState(int btn)
 {
+	if ((btn == 0 || btn == 1) && !!GetSystemMetrics(SM_SWAPBUTTON))
+		btn = btn == 0 ? 1 : 0;
     return !!mouseState[btn];
 }
 
@@ -376,6 +383,8 @@ void CInput::MouseUpdate()
     mouse_prev[6] = mouseState[6];
     mouse_prev[7] = mouseState[7];
 
+	bool bSwitched = !!GetSystemMetrics(SM_SWAPBUTTON);
+
     offs[0] = offs[1] = offs[2] = 0;
     for (u32 i = 0; i < dwElements; i++)
     {
@@ -397,24 +406,24 @@ void CInput::MouseUpdate()
             if (od[i].dwData & 0x80)
             {
                 mouseState[0] = TRUE;
-                cbStack.back()->IR_OnMousePress(0);
+				cbStack.back()->IR_OnMousePress(bSwitched ? 1 : 0);
             }
             if (!(od[i].dwData & 0x80))
             {
                 mouseState[0] = FALSE;
-                cbStack.back()->IR_OnMouseRelease(0);
+				cbStack.back()->IR_OnMouseRelease(bSwitched ? 1 : 0);
             }
             break;
         case DIMOFS_BUTTON1:
             if (od[i].dwData & 0x80)
             {
                 mouseState[1] = TRUE;
-                cbStack.back()->IR_OnMousePress(1);
+				cbStack.back()->IR_OnMousePress(bSwitched ? 0 : 1);
             }
             if (!(od[i].dwData & 0x80))
             {
                 mouseState[1] = FALSE;
-                cbStack.back()->IR_OnMouseRelease(1);
+				cbStack.back()->IR_OnMouseRelease(bSwitched ? 0 : 1);
             }
             break;
         case DIMOFS_BUTTON2:
@@ -433,60 +442,60 @@ void CInput::MouseUpdate()
             if (od[i].dwData & 0x80)
             {
                 mouseState[3] = TRUE;
-                cbStack.back()->IR_OnKeyboardPress(0xED + 103);
+				cbStack.back()->IR_OnMousePress(3);
             }
             if (!(od[i].dwData & 0x80))
             {
                 mouseState[3] = FALSE;
-                cbStack.back()->IR_OnKeyboardRelease(0xED + 103);
+				cbStack.back()->IR_OnMouseRelease(3);
             }
             break;
         case DIMOFS_BUTTON4:
             if (od[i].dwData & 0x80)
             {
                 mouseState[4] = TRUE;
-                cbStack.back()->IR_OnKeyboardPress(0xED + 104);
+				cbStack.back()->IR_OnMousePress(4);
             }
             if (!(od[i].dwData & 0x80))
             {
                 mouseState[4] = FALSE;
-                cbStack.back()->IR_OnKeyboardRelease(0xED + 104);
+				cbStack.back()->IR_OnMouseRelease(4);
             }
             break;
         case DIMOFS_BUTTON5:
             if (od[i].dwData & 0x80)
             {
                 mouseState[5] = TRUE;
-                cbStack.back()->IR_OnKeyboardPress(0xED + 105);
+				cbStack.back()->IR_OnMousePress(5);
             }
             if (!(od[i].dwData & 0x80))
             {
                 mouseState[5] = FALSE;
-                cbStack.back()->IR_OnKeyboardRelease(0xED + 105);
+				cbStack.back()->IR_OnMouseRelease(5);
             }
             break;
         case DIMOFS_BUTTON6:
             if (od[i].dwData & 0x80)
             {
                 mouseState[6] = TRUE;
-                cbStack.back()->IR_OnKeyboardPress(0xED + 106);
+				cbStack.back()->IR_OnMousePress(6);
             }
             if (!(od[i].dwData & 0x80))
             {
                 mouseState[6] = FALSE;
-                cbStack.back()->IR_OnKeyboardRelease(0xED + 106);
+				cbStack.back()->IR_OnMouseRelease(6);
             }
             break;
         case DIMOFS_BUTTON7:
             if (od[i].dwData & 0x80)
             {
                 mouseState[7] = TRUE;
-                cbStack.back()->IR_OnKeyboardPress(0xED + 107);
+				cbStack.back()->IR_OnMousePress(7);
             }
             if (!(od[i].dwData & 0x80))
             {
                 mouseState[7] = FALSE;
-                cbStack.back()->IR_OnKeyboardRelease(0xED + 107);
+				cbStack.back()->IR_OnMouseRelease(7);
             }
             break;
         }
@@ -494,18 +503,44 @@ void CInput::MouseUpdate()
 
     if (mouseState[0] && mouse_prev[0])
     {
-        cbStack.back()->IR_OnMouseHold(0);
+		cbStack.back()->IR_OnMouseHold(bSwitched ? 1 : 0);
     }
 
     if (mouseState[1] && mouse_prev[1])
     {
-        cbStack.back()->IR_OnMouseHold(1);
+		cbStack.back()->IR_OnMouseHold(bSwitched ? 0 : 1);
     }
 
     if (mouseState[2] && mouse_prev[2])
     {
         cbStack.back()->IR_OnMouseHold(2);
     }
+
+	if (mouseState[3] && mouse_prev[3])
+	{
+		cbStack.back()->IR_OnMouseHold(3);
+	}
+
+	if (mouseState[4] && mouse_prev[4])
+	{
+		cbStack.back()->IR_OnMouseHold(4);
+	}
+
+	if (mouseState[5] && mouse_prev[5])
+	{
+		cbStack.back()->IR_OnMouseHold(5);
+	}
+
+	if (mouseState[6] && mouse_prev[6])
+	{
+		cbStack.back()->IR_OnMouseHold(6);
+	}
+
+	if (mouseState[7] && mouse_prev[7])
+	{
+		cbStack.back()->IR_OnMouseHold(7);
+	}
+
     if (dwElements)
     {
         if (offs[0] || offs[1]) cbStack.back()->IR_OnMouseMove(offs[0], offs[1]);
@@ -585,6 +620,18 @@ void CInput::OnAppDeactivate(void)
     ZeroMemory(timeStamp, sizeof(timeStamp));
     ZeroMemory(timeSave, sizeof(timeStamp));
     ZeroMemory(offs, sizeof(offs));
+}
+
+void CInput::DeactivateSoft()
+{
+	if (CurrentIR())
+		CurrentIR()->IR_OnDeactivate();
+
+	ZeroMemory(mouseState, sizeof(mouseState));
+	ZeroMemory(KBState, sizeof(KBState));
+	ZeroMemory(timeStamp, sizeof(timeStamp));
+	ZeroMemory(timeSave, sizeof(timeStamp));
+	ZeroMemory(offs, sizeof(offs));
 }
 
 void CInput::OnFrame(void)

@@ -31,8 +31,12 @@ IC	void construct_string					(LPSTR result, u32 const result_size, const xr_vect
 	u32		count = xr_strlen(result) ? _GetItemCount(result) : 0;
 	xr_vector<ALife::_OBJECT_ID>::const_iterator	I = restrictions.begin();
 	xr_vector<ALife::_OBJECT_ID>::const_iterator	E = restrictions.end();
-	for ( ; I != E; ++I) {
+	for (; I != E; ++I)
+	{
 		CSE_ALifeDynamicObject	*object = ai().alife().objects().object(*I);
+		if (!object)
+			continue;
+			
 		if (ai().game_graph().vertex(object->m_tGraphID)->level_id() != ai().level_graph().level_id())
 			continue;
 

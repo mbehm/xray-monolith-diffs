@@ -61,10 +61,17 @@
 # else
 # define NODEFAULT __assume(0)
 # endif
+#ifdef USE_VERIFY_IN_RELEASE
+# define VERIFY(expr) do {if (!(expr)) ::Debug.soft_fail(#expr,DEBUG_INFO);} while(0)
+# define VERIFY2(expr,e2) do {if (!(expr)) ::Debug.soft_fail(#expr,e2,DEBUG_INFO);} while(0)
+# define VERIFY3(expr,e2,e3) do {if (!(expr)) ::Debug.soft_fail(#expr,e2,e3,DEBUG_INFO);} while(0)
+# define VERIFY4(expr,e2,e3,e4)do {if (!(expr)) ::Debug.soft_fail(#expr,e2,e3,e4,DEBUG_INFO);} while(0)
+#else // USE_VERIFY_IN_RELEASE
 # define VERIFY(expr) do {} while (0)
 # define VERIFY2(expr, e2) do {} while (0)
 # define VERIFY3(expr, e2, e3) do {} while (0)
 # define VERIFY4(expr, e2, e3, e4)do {} while (0)
+#endif // USE_VERIFY_IN_RELEASE
 # define CHK_DX(a) a
 # endif // DEBUG
 

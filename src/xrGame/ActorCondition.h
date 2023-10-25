@@ -5,6 +5,8 @@
 
 #include "EntityCondition.h"
 #include "actor_defs.h"
+#include "script_export_space.h"
+#include "Wound.h"
 
 template <typename _return_type>
 class CScriptCallbackEx;
@@ -37,33 +39,35 @@ public:
 
 	virtual void		LoadCondition				(LPCSTR section);
 	virtual void		reinit						();
+	virtual SConditionChangeV& change_v();
 
 	virtual CWound*		ConditionHit				(SHit* pHDS);
 	virtual void		UpdateCondition				();
 			void		UpdateBoosters				();
+	float GetBoosterValue(LPCSTR name, bool type);
 
 	virtual void 		ChangeAlcohol				(const float value);
 	virtual void 		ChangeSatiety				(const float value);
 
 	void 				BoostParameters				(const SBooster& B);
 	void 				DisableBoostParameters		(const SBooster& B);
-	IC void				BoostMaxWeight				(const float value);
-	IC void				BoostHpRestore				(const float value);
-	IC void				BoostPowerRestore			(const float value);
-	IC void				BoostRadiationRestore		(const float value);
-	IC void				BoostBleedingRestore		(const float value);
-	IC void				BoostBurnImmunity			(const float value);
-	IC void				BoostShockImmunity			(const float value);
-	IC void				BoostRadiationImmunity		(const float value);
-	IC void				BoostTelepaticImmunity		(const float value);
-	IC void				BoostChemicalBurnImmunity	(const float value);
-	IC void				BoostExplImmunity			(const float value);
-	IC void				BoostStrikeImmunity			(const float value);
-	IC void				BoostFireWoundImmunity		(const float value);
-	IC void				BoostWoundImmunity			(const float value);
-	IC void				BoostRadiationProtection	(const float value);
-	IC void				BoostTelepaticProtection	(const float value);
-	IC void				BoostChemicalBurnProtection	(const float value);
+	void BoostMaxWeight(const float value);
+	void BoostHpRestore(const float value);
+	void BoostPowerRestore(const float value);
+	void BoostRadiationRestore(const float value);
+	void BoostBleedingRestore(const float value);
+	void BoostBurnImmunity(const float value);
+	void BoostShockImmunity(const float value);
+	void BoostRadiationImmunity(const float value);
+	void BoostTelepaticImmunity(const float value);
+	void BoostChemicalBurnImmunity(const float value);
+	void BoostExplImmunity(const float value);
+	void BoostStrikeImmunity(const float value);
+	void BoostFireWoundImmunity(const float value);
+	void BoostWoundImmunity(const float value);
+	void BoostRadiationProtection(const float value);
+	void BoostTelepaticProtection(const float value);
+	void BoostChemicalBurnProtection(const float value);
 	BOOSTER_MAP			GetCurBoosterInfluences		() {return m_booster_influences;};
 
 	// хромание при потере сил и здоровья
@@ -71,19 +75,25 @@ public:
 	virtual bool		IsCantWalk					() const;
 	virtual bool		IsCantWalkWeight			();
 	virtual bool		IsCantSprint				() const;
+	bool IsSleeping() const;
 
 			void		PowerHit					(float power, bool apply_outfit);
-			float		GetPower					() const { return m_fPower; }
 
 			void		ConditionJump				(float weight);
 			void		ConditionWalk				(float weight, bool accel, bool sprint);
 			void		ConditionStand				(float weight);
 	IC		float		MaxWalkWeight				() const	{ return m_MaxWalkWeight; }
+	IC void SetMaxWalkWeight(float mww) { m_MaxWalkWeight = mww; }
+	IC float GetCarryWeightBoost() const { return m_CarryWeightBoost; }
+
+	float GetPsyBar() { return m_fPsyBar; }
+	void SetPsyBar(float psybar) { m_fPsyBar = psybar; }
 			
 			float	xr_stdcall	GetAlcohol			()	{return m_fAlcohol;}
 			float	xr_stdcall	GetPsy				()	{return 1.0f-GetPsyHealth();}
-			float				GetSatiety			()  {return m_fSatiety;}
-	IC		float				GetSatietyPower		() const {return m_fV_SatietyPower*m_fSatiety;};
+	virtual float GetSatiety() { return m_fSatiety; }
+	virtual void SetSatiety(float satiety) { m_fSatiety = satiety; }
+	IC float GetSatietyPower() const { return IsSleeping() ? m_fV_SatietyPowerSleep * m_fSatiety : m_fV_SatietyPower * m_fSatiety; };
 
 			void		AffectDamage_InjuriousMaterialAndMonstersInfluence();
 			float		GetInjuriousMaterialDamage	();
@@ -100,9 +110,9 @@ public:
 	virtual void			save					(NET_Packet &output_packet);
 	virtual void			load					(IReader &input_packet);
 //	IC		float const&	Satiety					()	{ return m_fSatiety; }
-	IC		float const&	V_Satiety				()	{ return m_fV_Satiety; }
-	IC		float const&	V_SatietyPower			()	{ return m_fV_SatietyPower; }
-	IC		float const&	V_SatietyHealth			()	{ return m_fV_SatietyHealth; }
+	IC float const& V_Satiety() { return IsSleeping() ? m_fV_SatietySleep : m_fV_Satiety; }
+	IC float const& V_SatietyPower() { return IsSleeping() ? m_fV_SatietyPowerSleep : m_fV_SatietyPower; }
+	IC float const& V_SatietyHealth() { return IsSleeping() ? m_fV_SatietyHealthSleep : m_fV_SatietyHealth; }
 	IC		float const&	SatietyCritical			()	{ return m_fSatietyCritical; }
 	
 	float	GetZoneMaxPower							(ALife::EInfluenceType type) const;
@@ -118,17 +128,27 @@ public:
 	float	GetMaxFireWoundProtection				() {return m_max_fire_wound_protection;};
 
 protected:
+	SConditionChangeV m_change_v_sleep;
+	
 	SMedicineInfluenceValues						m_curr_medicine_influence;
+	float m_fPsyBar;
+
 	float m_fAlcohol;
 	float m_fV_Alcohol;
+	float m_fV_AlcoholSleep;
 //--
 	float m_fSatiety;
+	float m_fSatietyChange;
 	float m_fV_Satiety;
+	float m_fV_SatietySleep;
 	float m_fV_SatietyPower;
+	float m_fV_SatietyPowerSleep;
 	float m_fV_SatietyHealth;
+	float m_fV_SatietyHealthSleep;
 	float m_fSatietyCritical;
 //--
 	float m_fPowerLeakSpeed;
+	float m_fPowerLeakSpeedSleep;
 
 	float m_fJumpPower;
 	float m_fStandPower;
@@ -140,9 +160,9 @@ protected:
 	float m_fAccelK;
 	float m_fSprintK;
 	
-public:
 	float	m_MaxWalkWeight;
-protected:
+	float m_CarryWeightBoost;
+
 	float	m_zone_max_power[ALife::infl_max_count];
 	float	m_zone_danger[ALife::infl_max_count];
 	float	m_f_time_affected;
@@ -170,6 +190,8 @@ protected:
 	//typedef xr_vector<SMedicineInfluenceValues>::iterator BOOSTS_VECTOR_ITER;
 	//BOOSTS_VECTOR m_vecBoosts;
 	ref_sound m_use_sound;
+	
+	DECLARE_SCRIPT_REGISTER_FUNCTION
 };
 
 class CActorDeathEffector
